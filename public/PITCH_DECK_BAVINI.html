@@ -1,0 +1,1744 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BAVINI - Pitch Deck Investisseurs 2026</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #8B5CF6;
+            --primary-light: #A78BFA;
+            --secondary: #06B6D4;
+            --accent: #F59E0B;
+            --success: #10B981;
+            --danger: #EF4444;
+            --dark: #0A0A0F;
+            --dark-card: #12121A;
+            --dark-border: #1E1E2E;
+            --gray-100: #F3F4F6;
+            --gray-400: #9CA3AF;
+            --gray-500: #6B7280;
+            --gray-600: #4B5563;
+            --gradient-primary: linear-gradient(135deg, #8B5CF6 0%, #06B6D4 100%);
+            --gradient-warm: linear-gradient(135deg, #F59E0B 0%, #EF4444 100%);
+            --gradient-cool: linear-gradient(135deg, #06B6D4 0%, #8B5CF6 100%);
+            --glow: 0 0 60px rgba(139, 92, 246, 0.3);
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--dark);
+            color: white;
+            line-height: 1.5;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* Slide Base */
+        .slide {
+            min-height: 100vh;
+            padding: 80px 100px;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            isolation: isolate;
+            background: var(--dark);
+        }
+
+        .slide::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background:
+                radial-gradient(ellipse 80% 50% at 20% -10%, rgba(139, 92, 246, 0.15), transparent),
+                radial-gradient(ellipse 60% 40% at 80% 110%, rgba(6, 182, 212, 0.1), transparent);
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .slide > * {
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Navigation */
+        .nav {
+            position: absolute;
+            top: 30px;
+            left: 40px;
+            z-index: 10;
+        }
+
+        .logo {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 28px;
+            font-weight: 700;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .slide-counter {
+            position: absolute;
+            bottom: 40px;
+            right: 50px;
+            font-size: 14px;
+            color: var(--gray-500);
+            font-weight: 500;
+            letter-spacing: 2px;
+        }
+
+        /* Typography */
+        h1 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 80px;
+            font-weight: 700;
+            line-height: 1.05;
+            letter-spacing: -2px;
+            margin-bottom: 24px;
+        }
+
+        h2 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 52px;
+            font-weight: 600;
+            line-height: 1.1;
+            margin-bottom: 48px;
+            letter-spacing: -1px;
+        }
+
+        h3 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: var(--gray-100);
+        }
+
+        p {
+            font-size: 20px;
+            color: var(--gray-400);
+            max-width: 700px;
+        }
+
+        .gradient-text {
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            font-size: 24px;
+            color: var(--gray-500);
+            font-weight: 400;
+            margin-bottom: 32px;
+        }
+
+        /* Components */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 8px 16px;
+            background: rgba(139, 92, 246, 0.15);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 100px;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--primary-light);
+            margin-right: 12px;
+            margin-bottom: 12px;
+        }
+
+        .badge.success {
+            background: rgba(16, 185, 129, 0.15);
+            border-color: rgba(16, 185, 129, 0.3);
+            color: var(--success);
+        }
+
+        .badge.warning {
+            background: rgba(245, 158, 11, 0.15);
+            border-color: rgba(245, 158, 11, 0.3);
+            color: var(--accent);
+        }
+
+        .badge.danger {
+            background: rgba(239, 68, 68, 0.15);
+            border-color: rgba(239, 68, 68, 0.3);
+            color: var(--danger);
+        }
+
+        .card {
+            background: var(--dark-card);
+            border: 1px solid var(--dark-border);
+            border-radius: 20px;
+            padding: 32px;
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            border-color: rgba(139, 92, 246, 0.4);
+            box-shadow: var(--glow);
+        }
+
+        .card-icon {
+            width: 56px;
+            height: 56px;
+            background: var(--gradient-primary);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            margin-bottom: 20px;
+        }
+
+        /* Grid System */
+        .grid {
+            display: grid;
+            gap: 32px;
+        }
+
+        .grid-2 { grid-template-columns: repeat(2, 1fr); }
+        .grid-3 { grid-template-columns: repeat(3, 1fr); }
+        .grid-4 { grid-template-columns: repeat(4, 1fr); }
+
+        /* Stats */
+        .stat {
+            text-align: center;
+            padding: 40px 24px;
+        }
+
+        .stat-value {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 64px;
+            font-weight: 700;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            line-height: 1;
+        }
+
+        .stat-label {
+            font-size: 16px;
+            color: var(--gray-500);
+            margin-top: 12px;
+            font-weight: 500;
+        }
+
+        /* Table */
+        .comparison-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin-top: 32px;
+        }
+
+        .comparison-table th {
+            padding: 20px 24px;
+            text-align: left;
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--gray-500);
+            border-bottom: 1px solid var(--dark-border);
+        }
+
+        .comparison-table th.highlight {
+            background: rgba(139, 92, 246, 0.1);
+            color: var(--primary);
+            border-radius: 12px 12px 0 0;
+        }
+
+        .comparison-table td {
+            padding: 18px 24px;
+            font-size: 15px;
+            border-bottom: 1px solid var(--dark-border);
+            color: var(--gray-400);
+        }
+
+        .comparison-table td.highlight {
+            background: rgba(139, 92, 246, 0.05);
+        }
+
+        .comparison-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .comparison-table tr:last-child td.highlight {
+            border-radius: 0 0 12px 12px;
+        }
+
+        .check { color: var(--success); font-size: 20px; }
+        .cross { color: var(--danger); font-size: 20px; }
+        .partial { color: var(--accent); font-size: 16px; }
+
+        /* Progress Bar */
+        .progress-container {
+            margin-bottom: 24px;
+        }
+
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .progress-label {
+            font-size: 15px;
+            color: var(--gray-400);
+        }
+
+        .progress-value {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--primary-light);
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: var(--dark-border);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--gradient-primary);
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+
+        /* Competitor Cards */
+        .competitor-card {
+            text-align: center;
+            padding: 30px 20px;
+        }
+
+        .competitor-logo {
+            width: 64px;
+            height: 64px;
+            background: var(--dark-border);
+            border-radius: 16px;
+            margin: 0 auto 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: 700;
+        }
+
+        .competitor-name {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .competitor-valuation {
+            font-size: 14px;
+            color: var(--success);
+            font-weight: 500;
+        }
+
+        /* Screenshot mockup */
+        .screenshot-container {
+            background: var(--dark-card);
+            border: 1px solid var(--dark-border);
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: var(--glow);
+        }
+
+        .screenshot-header {
+            padding: 12px 16px;
+            background: var(--dark-border);
+            display: flex;
+            gap: 8px;
+        }
+
+        .screenshot-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .screenshot-dot.red { background: #EF4444; }
+        .screenshot-dot.yellow { background: #F59E0B; }
+        .screenshot-dot.green { background: #10B981; }
+
+        .screenshot-img {
+            width: 100%;
+            display: block;
+        }
+
+        /* Pricing Cards */
+        .pricing-card {
+            text-align: center;
+            padding: 40px 28px;
+            position: relative;
+        }
+
+        .pricing-card.featured {
+            border-color: var(--primary);
+            background: linear-gradient(180deg, rgba(139, 92, 246, 0.1) 0%, transparent 100%);
+        }
+
+        .pricing-card.featured::before {
+            content: 'Populaire';
+            position: absolute;
+            top: -12px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--gradient-primary);
+            padding: 6px 16px;
+            border-radius: 100px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .pricing-name {
+            font-size: 18px;
+            color: var(--gray-500);
+            margin-bottom: 16px;
+            font-weight: 500;
+        }
+
+        .pricing-price {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 48px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .pricing-period {
+            font-size: 14px;
+            color: var(--gray-500);
+            margin-bottom: 24px;
+        }
+
+        .pricing-features {
+            list-style: none;
+            text-align: left;
+        }
+
+        .pricing-features li {
+            padding: 10px 0;
+            font-size: 14px;
+            color: var(--gray-400);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .pricing-features li::before {
+            content: '✓';
+            color: var(--success);
+            font-weight: bold;
+        }
+
+        /* CTA Section */
+        .cta-section {
+            background: var(--gradient-primary);
+            border-radius: 32px;
+            padding: 80px 60px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .cta-section::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 50%);
+            animation: pulse 4s ease-in-out infinite;
+            will-change: transform, opacity;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.5; }
+            50% { transform: scale(1.05); opacity: 0.3; }
+        }
+
+        .cta-section h2 {
+            color: white;
+            -webkit-text-fill-color: white;
+            position: relative;
+        }
+
+        .cta-section p {
+            color: rgba(255,255,255,0.9);
+            max-width: none;
+            position: relative;
+        }
+
+        .cta-amount {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 96px;
+            font-weight: 700;
+            color: white;
+            margin: 32px 0;
+            position: relative;
+        }
+
+        /* Timeline */
+        .timeline {
+            position: relative;
+            padding-left: 48px;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 12px;
+            top: 8px;
+            bottom: 8px;
+            width: 2px;
+            background: var(--gradient-primary);
+        }
+
+        .timeline-item {
+            position: relative;
+            padding-bottom: 40px;
+        }
+
+        .timeline-item:last-child {
+            padding-bottom: 0;
+        }
+
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -42px;
+            top: 6px;
+            width: 16px;
+            height: 16px;
+            background: var(--primary);
+            border-radius: 50%;
+            box-shadow: 0 0 0 4px var(--dark), 0 0 20px rgba(139, 92, 246, 0.5);
+        }
+
+        .timeline-date {
+            font-size: 14px;
+            color: var(--primary-light);
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .timeline-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: white;
+        }
+
+        .timeline-desc {
+            font-size: 15px;
+            color: var(--gray-500);
+        }
+
+        /* Cover Slide */
+        .cover-slide {
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            min-height: 100vh;
+        }
+
+        .cover-slide::before {
+            background:
+                radial-gradient(ellipse 100% 100% at 50% 50%, rgba(139, 92, 246, 0.2), transparent 70%),
+                radial-gradient(ellipse 60% 60% at 70% 70%, rgba(6, 182, 212, 0.15), transparent);
+        }
+
+        .cover-tagline {
+            font-size: 28px;
+            color: var(--gray-400);
+            max-width: 800px;
+            margin: 0 auto 48px;
+        }
+
+        /* Feature List */
+        .feature-list {
+            list-style: none;
+        }
+
+        .feature-list li {
+            padding: 14px 0;
+            font-size: 18px;
+            color: var(--gray-400);
+            display: flex;
+            align-items: flex-start;
+            gap: 16px;
+        }
+
+        .feature-list li .icon {
+            color: var(--success);
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+
+        /* Market Sizing */
+        .market-circle {
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto;
+        }
+
+        .market-circle.tam {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(139, 92, 246, 0.1));
+            border: 2px solid var(--primary);
+        }
+
+        .market-circle.sam {
+            background: linear-gradient(135deg, rgba(6, 182, 212, 0.3), rgba(6, 182, 212, 0.1));
+            border: 2px solid var(--secondary);
+            width: 160px;
+            height: 160px;
+        }
+
+        .market-circle.som {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(16, 185, 129, 0.1));
+            border: 2px solid var(--success);
+            width: 120px;
+            height: 120px;
+        }
+
+        .market-value {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 32px;
+            font-weight: 700;
+        }
+
+        .market-label {
+            font-size: 12px;
+            color: var(--gray-500);
+            margin-top: 4px;
+        }
+
+        /* Print/PDF styles */
+        @media print {
+            * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+                color-adjust: exact !important;
+            }
+
+            html, body {
+                margin: 0;
+                padding: 0;
+                background: var(--dark) !important;
+            }
+
+            .slide {
+                width: 297mm;
+                height: 210mm;
+                min-height: 210mm !important;
+                max-height: 210mm !important;
+                padding: 50px 50px 30px 50px;
+                page-break-after: always;
+                page-break-inside: avoid;
+                break-after: page;
+                break-inside: avoid;
+                overflow: hidden;
+                box-sizing: border-box;
+            }
+
+            .slide:last-child {
+                page-break-after: auto;
+            }
+
+            /* Scale down typography for print */
+            h1 { font-size: 56px; margin-bottom: 16px; }
+            h2 { font-size: 36px; margin-bottom: 24px; }
+            h3 { font-size: 18px; margin-bottom: 10px; }
+            p { font-size: 14px; }
+
+            .cover-tagline { font-size: 20px; margin: 0 auto 32px; }
+            .cta-amount { font-size: 64px; margin: 20px 0; }
+
+            .stat-value { font-size: 42px; }
+            .stat-label { font-size: 12px; margin-top: 8px; }
+            .stat { padding: 20px 12px; }
+
+            .card { padding: 20px; border-radius: 12px; }
+            .card-icon { width: 40px; height: 40px; font-size: 20px; margin-bottom: 12px; }
+
+            .badge { padding: 4px 10px; font-size: 11px; margin-right: 8px; margin-bottom: 8px; }
+
+            .grid { gap: 16px; }
+            .two-col { gap: 40px; }
+
+            .nav { top: 15px; left: 30px; }
+            .logo { font-size: 18px; }
+            .slide-counter { bottom: 15px; right: 30px; font-size: 11px; }
+
+            /* Add space below nav for content */
+            .slide > h2:first-of-type,
+            .slide > .nav + h2 {
+                margin-top: 30px;
+            }
+
+            .feature-list li { padding: 8px 0; font-size: 14px; gap: 10px; }
+            .feature-list li .icon { font-size: 16px; }
+
+            .comparison-table th { padding: 10px 12px; font-size: 10px; }
+            .comparison-table td { padding: 8px 12px; font-size: 12px; }
+            .check, .cross { font-size: 14px; }
+            .partial { font-size: 11px; }
+
+            .pricing-card { padding: 20px 16px; }
+            .pricing-price { font-size: 32px; }
+            .pricing-name { font-size: 14px; margin-bottom: 10px; }
+            .pricing-period { font-size: 11px; margin-bottom: 16px; }
+            .pricing-features li { padding: 6px 0; font-size: 11px; }
+
+            .progress-container { margin-bottom: 14px; }
+            .progress-label, .progress-value { font-size: 12px; }
+            .progress-bar { height: 6px; }
+
+            .timeline { padding-left: 32px; }
+            .timeline-item { padding-bottom: 24px; }
+            .timeline-item::before {
+                left: -28px;
+                width: 12px;
+                height: 12px;
+                box-shadow: none !important;
+            }
+            .timeline::before {
+                background: var(--primary) !important;
+            }
+            .timeline-date { font-size: 11px; }
+            .timeline-title { font-size: 14px; margin-bottom: 4px; }
+            .timeline-desc { font-size: 12px; }
+
+            .market-circle { width: 120px; height: 120px; }
+            .market-circle.sam { width: 100px; height: 100px; }
+            .market-circle.som { width: 80px; height: 80px; }
+            .market-value { font-size: 22px; }
+            .market-label { font-size: 10px; }
+
+            .competitor-card { padding: 16px 12px; }
+            .competitor-logo { width: 44px; height: 44px; font-size: 18px; margin-bottom: 10px; }
+            .competitor-name { font-size: 14px; }
+            .competitor-valuation { font-size: 11px; }
+
+            .cta-section { padding: 40px 30px; border-radius: 20px; }
+            .cta-section h2 { font-size: 24px; }
+            .cta-section p { font-size: 14px; }
+
+            .screenshot-container {
+                border-radius: 10px;
+                box-shadow: none !important;
+            }
+            .screenshot-header { padding: 6px 10px; gap: 5px; }
+            .screenshot-dot { width: 7px; height: 7px; }
+
+            /* Slide 4 - Product Demo: horizontal layout */
+            .two-col-40-60 {
+                display: flex !important;
+                flex-direction: column !important;
+                gap: 16px !important;
+            }
+            .two-col-40-60 > div:first-child {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 8px;
+            }
+            .two-col-40-60 > div:first-child h3 {
+                margin-bottom: 0;
+                margin-right: 16px;
+            }
+            .two-col-40-60 .feature-list {
+                display: flex !important;
+                flex-wrap: wrap !important;
+                margin-top: 0 !important;
+                gap: 4px 20px;
+            }
+            .two-col-40-60 .feature-list li {
+                padding: 2px 0;
+                font-size: 11px;
+                width: auto;
+            }
+            .two-col-40-60 > div:last-child {
+                flex: 1;
+                display: flex;
+                justify-content: center;
+            }
+            .two-col-40-60 .screenshot-container {
+                max-width: 90%;
+            }
+            .two-col-40-60 .screenshot-img {
+                width: 100%;
+                height: auto;
+                object-fit: contain;
+            }
+
+            /* Hide animations in print */
+            .cta-section::before { animation: none; opacity: 0.3; }
+
+            /* Specific slide adjustments for print */
+            .cover-slide {
+                justify-content: center;
+                padding-top: 60px;
+            }
+            .cover-slide h1 { font-size: 64px; }
+
+            /* Competitor slide - reduce table */
+            .comparison-table { margin-top: 16px; }
+
+            /* Business model slide - smaller pricing cards */
+            .pricing-card.featured::before {
+                top: -8px;
+                padding: 4px 12px;
+                font-size: 10px;
+            }
+
+            /* Financial projections */
+            .two-col .comparison-table th,
+            .two-col .comparison-table td {
+                padding: 6px 10px;
+                font-size: 11px;
+            }
+
+            /* Traction slide */
+            .grid-4 .stat.card .stat-value { font-size: 36px; }
+
+            /* Team slide */
+            .grid-3 .card[style*="48px"] { padding: 24px !important; }
+            .grid-3 .card div[style*="100px"] {
+                width: 60px !important;
+                height: 60px !important;
+                margin-bottom: 12px !important;
+            }
+            .grid-3 .card div[style*="32px"] { font-size: 20px !important; }
+
+            /* Ask slide */
+            .grid-4 .card[style*="text-align: center"] .stat-value[style*="40px"] {
+                font-size: 32px !important;
+            }
+
+            /* Roadmap cards */
+            .card[style*="border-top: 3px"] ul {
+                font-size: 12px !important;
+                line-height: 1.8 !important;
+            }
+
+            /* Ensure all grids fit */
+            .grid-4 { grid-template-columns: repeat(4, 1fr); gap: 12px; }
+            .grid-3 { grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        }
+
+        /* Two column layout */
+        .two-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 80px;
+            align-items: center;
+        }
+
+        .two-col-60-40 {
+            grid-template-columns: 1.5fr 1fr;
+        }
+
+        .two-col-40-60 {
+            grid-template-columns: 1fr 1.5fr;
+        }
+    </style>
+</head>
+<body>
+
+<!-- ==================== SLIDE 1: COVER ==================== -->
+<section class="slide cover-slide">
+    <div>
+        <div style="margin-bottom: 32px;">
+            <span class="badge">Pre-Seed 2026</span>
+            <span class="badge">AI + SaaS</span>
+            <span class="badge">B2B</span>
+        </div>
+        <h1><span class="gradient-text">BAVINI</span></h1>
+        <p class="cover-tagline">
+            L'IDE IA nouvelle generation qui transforme vos idees en applications web professionnelles en quelques minutes
+        </p>
+        <div style="margin-top: 48px;">
+            <p style="font-size: 16px; color: var(--gray-600);">
+                Pitch Deck Confidentiel | Janvier 2026
+            </p>
+        </div>
+    </div>
+    <div class="slide-counter">01 / 16</div>
+</section>
+
+<!-- ==================== SLIDE 2: PROBLEM ==================== -->
+<section class="slide">
+    <div class="nav"><span class="logo">BAVINI</span></div>
+    <h2>Le <span class="gradient-text">Probleme</span></h2>
+
+    <div class="two-col">
+        <div>
+            <p style="font-size: 24px; color: var(--gray-100); margin-bottom: 40px;">
+                Le developpement web reste trop lent, couteux et inaccessible pour la majorite des entreprises et entrepreneurs.
+            </p>
+
+            <ul class="feature-list">
+                <li>
+                    <span class="icon" style="color: var(--danger);">!</span>
+                    <span><strong>6-12 mois</strong> pour creer une application web complexe</span>
+                </li>
+                <li>
+                    <span class="icon" style="color: var(--danger);">!</span>
+                    <span><strong>50K-200K EUR</strong> de cout moyen de developpement</span>
+                </li>
+                <li>
+                    <span class="icon" style="color: var(--danger);">!</span>
+                    <span><strong>3.5M de postes</strong> de developpeurs non pourvus en Europe</span>
+                </li>
+                <li>
+                    <span class="icon" style="color: var(--danger);">!</span>
+                    <span><strong>70% des projets IT</strong> depassent leur budget initial</span>
+                </li>
+            </ul>
+        </div>
+
+        <div>
+            <div class="card" style="text-align: center; padding: 48px;">
+                <div class="stat-value" style="font-size: 80px; background: var(--gradient-warm); -webkit-background-clip: text;">85%</div>
+                <p style="margin-top: 16px; font-size: 18px;">des entreprises peinent a recruter des developpeurs qualifies</p>
+                <p style="font-size: 14px; color: var(--gray-600); margin-top: 12px;">Source: Stack Overflow Survey 2025</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="slide-counter">02 / 16</div>
+</section>
+
+<!-- ==================== SLIDE 3: SOLUTION ==================== -->
+<section class="slide">
+    <div class="nav"><span class="logo">BAVINI</span></div>
+    <h2>Notre <span class="gradient-text">Solution</span></h2>
+
+    <p style="font-size: 26px; margin-bottom: 48px; max-width: 900px;">
+        BAVINI est un <strong style="color: white;">environnement de developpement IA complet</strong> qui permet de creer des applications web professionnelles directement dans le navigateur.
+    </p>
+
+    <div class="grid grid-3">
+        <div class="card">
+            <div class="card-icon">🤖</div>
+            <h3>8 Agents IA Specialises</h3>
+            <p style="font-size: 16px;">Orchestrateur, Coder, Builder, Tester, Deployer, Reviewer, Fixer, Explorer - travaillant en parallele sur vos projets.</p>
+        </div>
+        <div class="card">
+            <div class="card-icon">🌐</div>
+            <h3>100% dans le Navigateur</h3>
+            <p style="font-size: 16px;">Node.js complet via WebContainer. npm, terminal, preview live. Aucune installation requise.</p>
+        </div>
+        <div class="card">
+            <div class="card-icon">🔌</div>
+            <h3>Integrations Enterprise</h3>
+            <p style="font-size: 16px;">GitHub, Figma, Supabase, Stripe, Notion, Netlify connectes en OAuth. Deploy en un clic.</p>
+        </div>
+    </div>
+
+    <div class="slide-counter">03 / 16</div>
+</section>
+
+<!-- ==================== SLIDE 4: PRODUCT DEMO ==================== -->
+<section class="slide">
+    <div class="nav"><span class="logo">BAVINI</span></div>
+    <h2>Le <span class="gradient-text">Produit</span></h2>
+
+    <div class="two-col-40-60">
+        <div>
+            <h3>Interface tout-en-un</h3>
+            <ul class="feature-list" style="margin-top: 24px;">
+                <li><span class="icon">✓</span> Chat IA conversationnel</li>
+                <li><span class="icon">✓</span> Editeur de code avance</li>
+                <li><span class="icon">✓</span> Terminal interactif</li>
+                <li><span class="icon">✓</span> Preview responsive live</li>
+                <li><span class="icon">✓</span> Gestionnaire de fichiers</li>
+                <li><span class="icon">✓</span> Git integre</li>
+                <li><span class="icon">✓</span> Checkpoints (time-travel)</li>
+            </ul>
+        </div>
+        <div>
+            <div class="screenshot-container">
+                <div class="screenshot-header">
+                    <div class="screenshot-dot red"></div>
+                    <div class="screenshot-dot yellow"></div>
+                    <div class="screenshot-dot green"></div>
+                </div>
+                <img src="pitch-screenshots/01-main-interface.png" alt="BAVINI Interface" class="screenshot-img" style="opacity: 0.95;">
+            </div>
+        </div>
+    </div>
+
+    <div class="slide-counter">04 / 16</div>
+</section>
+
+<!-- ==================== SLIDE 5: TECH DIFFERENTIATION ==================== -->
+<section class="slide">
+    <div class="nav"><span class="logo">BAVINI</span></div>
+    <h2>Architecture <span class="gradient-text">Multi-Agents</span></h2>
+    <p style="margin-bottom: 40px;">Notre avantage technologique cle : 8 agents IA specialises vs 1 agent generique chez les concurrents</p>
+
+    <div class="grid grid-4">
+        <div class="card" style="text-align: center; padding: 24px;">
+            <div style="font-size: 40px; margin-bottom: 12px;">🎯</div>
+            <h3 style="font-size: 16px; margin-bottom: 8px;">Orchestrator</h3>
+            <p style="font-size: 13px;">Planification & delegation</p>
+        </div>
+        <div class="card" style="text-align: center; padding: 24px;">
+            <div style="font-size: 40px; margin-bottom: 12px;">💻</div>
+            <h3 style="font-size: 16px; margin-bottom: 8px;">Coder</h3>
+            <p style="font-size: 13px;">Generation de code</p>
+        </div>
+        <div class="card" style="text-align: center; padding: 24px;">
+            <div style="font-size: 40px; margin-bottom: 12px;">🔨</div>
+            <h3 style="font-size: 16px; margin-bottom: 8px;">Builder</h3>
+            <p style="font-size: 13px;">Build & dependencies</p>
+        </div>
+        <div class="card" style="text-align: center; padding: 24px;">
+            <div style="font-size: 40px; margin-bottom: 12px;">🧪</div>
+            <h3 style="font-size: 16px; margin-bottom: 8px;">Tester</h3>
+            <p style="font-size: 13px;">Tests automatises</p>
+        </div>
+        <div class="card" style="text-align: center; padding: 24px;">
+            <div style="font-size: 40px; margin-bottom: 12px;">🚀</div>
+            <h3 style="font-size: 16px; margin-bottom: 8px;">Deployer</h3>
+            <p style="font-size: 13px;">Git & deployment</p>
+        </div>
+        <div class="card" style="text-align: center; padding: 24px;">
+            <div style="font-size: 40px; margin-bottom: 12px;">👁️</div>
+            <h3 style="font-size: 16px; margin-bottom: 8px;">Reviewer</h3>
+            <p style="font-size: 13px;">Code quality</p>
+        </div>
+        <div class="card" style="text-align: center; padding: 24px;">
+            <div style="font-size: 40px; margin-bottom: 12px;">🔧</div>
+            <h3 style="font-size: 16px; margin-bottom: 8px;">Fixer</h3>
+            <p style="font-size: 13px;">Debug & correction</p>
+        </div>
+        <div class="card" style="text-align: center; padding: 24px;">
+            <div style="font-size: 40px; margin-bottom: 12px;">🔍</div>
+            <h3 style="font-size: 16px; margin-bottom: 8px;">Explorer</h3>
+            <p style="font-size: 13px;">Analyse codebase</p>
+        </div>
+    </div>
+
+    <div style="margin-top: 40px; text-align: center;">
+        <span class="badge success">Execution parallele</span>
+        <span class="badge success">Prompts specialises</span>
+        <span class="badge success">140+ outils dedies</span>
+        <span class="badge success">3,500+ tests</span>
+    </div>
+
+    <div class="slide-counter">05 / 16</div>
+</section>
+
+<!-- ==================== SLIDE 6: COMPETITIVE LANDSCAPE ==================== -->
+<section class="slide">
+    <div class="nav"><span class="logo">BAVINI</span></div>
+    <h2>Paysage <span class="gradient-text">Concurrentiel</span></h2>
+
+    <div class="grid grid-4" style="margin-bottom: 32px;">
+        <div class="competitor-card">
+            <div class="competitor-logo" style="background: #F97316;">B</div>
+            <div class="competitor-name">Bolt.new</div>
+            <div class="competitor-valuation">~$50M (StackBlitz)</div>
+            <p style="font-size: 13px; margin-top: 8px;">Browser IDE, React/Supabase</p>
+        </div>
+        <div class="competitor-card">
+            <div class="competitor-logo" style="background: #EC4899;">L</div>
+            <div class="competitor-name">Lovable</div>
+            <div class="competitor-valuation">~$15-20M Seed</div>
+            <p style="font-size: 13px; margin-top: 8px;">No-code, design-first</p>
+        </div>
+        <div class="competitor-card">
+            <div class="competitor-logo" style="background: #3B82F6;">C</div>
+            <div class="competitor-name">Cursor</div>
+            <div class="competitor-valuation">~$400M Serie A</div>
+            <p style="font-size: 13px; margin-top: 8px;">IDE desktop, VS Code fork</p>
+        </div>
+        <div class="competitor-card">
+            <div class="competitor-logo" style="background: #F59E0B;">R</div>
+            <div class="competitor-name">Replit</div>
+            <div class="competitor-valuation">$1.16B Serie B</div>
+            <p style="font-size: 13px; margin-top: 8px;">Cloud IDE, education</p>
+        </div>
+    </div>
+
+    <table class="comparison-table">
+        <thead>
+            <tr>
+                <th>Fonctionnalite</th>
+                <th class="highlight">BAVINI</th>
+                <th>Bolt.new</th>
+                <th>Lovable</th>
+                <th>Cursor</th>
+                <th>Replit</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Multi-agents IA specialises</td>
+                <td class="highlight"><span class="check">✓</span> 8 agents</td>
+                <td><span class="cross">✗</span> 1 agent</td>
+                <td><span class="cross">✗</span> 1 agent</td>
+                <td><span class="cross">✗</span> 1 agent</td>
+                <td><span class="partial">~ 1 agent</span></td>
+            </tr>
+            <tr>
+                <td>OAuth Enterprise (6+ providers)</td>
+                <td class="highlight"><span class="check">✓</span> 6 integrations</td>
+                <td><span class="partial">~ GitHub only</span></td>
+                <td><span class="partial">~ 2 providers</span></td>
+                <td><span class="cross">✗</span></td>
+                <td><span class="partial">~ 3 providers</span></td>
+            </tr>
+            <tr>
+                <td>100% navigateur (zero install)</td>
+                <td class="highlight"><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="cross">✗</span> Desktop</td>
+                <td><span class="check">✓</span></td>
+            </tr>
+            <tr>
+                <td>Support francais natif</td>
+                <td class="highlight"><span class="check">✓</span> UI + Prompts</td>
+                <td><span class="cross">✗</span></td>
+                <td><span class="cross">✗</span></td>
+                <td><span class="cross">✗</span></td>
+                <td><span class="cross">✗</span></td>
+            </tr>
+            <tr>
+                <td>Checkpoints (time-travel)</td>
+                <td class="highlight"><span class="check">✓</span></td>
+                <td><span class="cross">✗</span></td>
+                <td><span class="partial">~ Partiel</span></td>
+                <td><span class="cross">✗</span></td>
+                <td><span class="cross">✗</span></td>
+            </tr>
+            <tr>
+                <td>Modes controle (Strict/Permissif)</td>
+                <td class="highlight"><span class="check">✓</span> 3 modes</td>
+                <td><span class="cross">✗</span></td>
+                <td><span class="cross">✗</span></td>
+                <td><span class="cross">✗</span></td>
+                <td><span class="cross">✗</span></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="slide-counter">06 / 16</div>
+</section>
+
+<!-- ==================== SLIDE 7: WHY NOW ==================== -->
+<section class="slide">
+    <div class="nav"><span class="logo">BAVINI</span></div>
+    <h2>Pourquoi <span class="gradient-text">Maintenant</span> ?</h2>
+
+    <div class="grid grid-2">
+        <div>
+            <div class="timeline">
+                <div class="timeline-item">
+                    <div class="timeline-date">Tendance #1</div>
+                    <div class="timeline-title">Explosion des outils IA pour developpeurs</div>
+                    <div class="timeline-desc">+35% CAGR du marche AI Dev Tools. Replit passe de $10M a $100M ARR en 6 mois apres le lancement de leur Agent.</div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-date">Tendance #2</div>
+                    <div class="timeline-title">Democratisation du developpement</div>
+                    <div class="timeline-desc">500M de "citizen developers" attendus d'ici 2030. 70% des devs utiliseront l'IA pour coder d'ici 2027 (Gartner).</div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-date">Tendance #3</div>
+                    <div class="timeline-title">Marche francais sous-exploite</div>
+                    <div class="timeline-desc">Aucun concurrent natif en France. Opportunite unique de capturer le marche francophone europeen.</div>
+                </div>
+            </div>
+        </div>
+        <div>
+            <div class="card" style="padding: 40px;">
+                <h3 style="margin-bottom: 24px;">Maturite technologique</h3>
+                <div class="progress-container">
+                    <div class="progress-header">
+                        <span class="progress-label">LLMs (Claude, GPT-4)</span>
+                        <span class="progress-value">Production-ready</span>
+                    </div>
+                    <div class="progress-bar"><div class="progress-fill" style="width: 95%;"></div></div>
+                </div>
+                <div class="progress-container">
+                    <div class="progress-header">
+                        <span class="progress-label">WebContainer (WASM)</span>
+                        <span class="progress-value">Stable</span>
+                    </div>
+                    <div class="progress-bar"><div class="progress-fill" style="width: 90%;"></div></div>
+                </div>
+                <div class="progress-container">
+                    <div class="progress-header">
+                        <span class="progress-label">Edge Computing (Cloudflare)</span>
+                        <span class="progress-value">Mature</span>
+                    </div>
+                    <div class="progress-bar"><div class="progress-fill" style="width: 95%;"></div></div>
+                </div>
+                <div class="progress-container">
+                    <div class="progress-header">
+                        <span class="progress-label">Adoption marche</span>
+                        <span class="progress-value">En acceleration</span>
+                    </div>
+                    <div class="progress-bar"><div class="progress-fill" style="width: 70%;"></div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="slide-counter">07 / 16</div>
+</section>
+
+<!-- ==================== SLIDE 8: MARKET SIZE ==================== -->
+<section class="slide">
+    <div class="nav"><span class="logo">BAVINI</span></div>
+    <h2>Opportunite de <span class="gradient-text">Marche</span></h2>
+
+    <div class="grid grid-3" style="margin-bottom: 48px;">
+        <div class="card" style="text-align: center; padding: 48px;">
+            <div class="market-circle tam">
+                <div class="market-value" style="color: var(--primary);">$89B</div>
+                <div class="market-label">TAM 2030</div>
+            </div>
+            <h3 style="margin-top: 24px;">Total Addressable Market</h3>
+            <p style="font-size: 14px;">Marche mondial des outils de developpement</p>
+        </div>
+        <div class="card" style="text-align: center; padding: 48px;">
+            <div class="market-circle sam">
+                <div class="market-value" style="color: var(--secondary);">$12B</div>
+                <div class="market-label">SAM 2030</div>
+            </div>
+            <h3 style="margin-top: 24px;">Serviceable Market</h3>
+            <p style="font-size: 14px;">Low-code/No-code + AI Dev Tools</p>
+        </div>
+        <div class="card" style="text-align: center; padding: 48px;">
+            <div class="market-circle som">
+                <div class="market-value" style="color: var(--success);">$450M</div>
+                <div class="market-label">SOM</div>
+            </div>
+            <h3 style="margin-top: 24px;">Obtainable Market</h3>
+            <p style="font-size: 14px;">Europe francophone + early adopters tech</p>
+        </div>
+    </div>
+
+    <div class="card" style="padding: 32px;">
+        <div class="grid grid-4">
+            <div class="stat">
+                <div class="stat-value" style="font-size: 48px;">+35%</div>
+                <div class="stat-label">CAGR AI Dev Tools</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" style="font-size: 48px;">500M</div>
+                <div class="stat-label">Citizen Devs 2030</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" style="font-size: 48px;">70%</div>
+                <div class="stat-label">Devs using AI 2027</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" style="font-size: 48px;">#1</div>
+                <div class="stat-label">En France (objectif)</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="slide-counter">08 / 16</div>
+</section>
+
+<!-- ==================== SLIDE 9: BUSINESS MODEL ==================== -->
+<section class="slide">
+    <div class="nav"><span class="logo">BAVINI</span></div>
+    <h2>Business <span class="gradient-text">Model</span></h2>
+    <p style="margin-bottom: 40px;">Modele SaaS freemium avec conversion vers plans payants et entreprise</p>
+
+    <div class="grid grid-4">
+        <div class="card pricing-card">
+            <div class="pricing-name">Free</div>
+            <div class="pricing-price">0 EUR</div>
+            <div class="pricing-period">pour toujours</div>
+            <ul class="pricing-features">
+                <li>5 projets</li>
+                <li>100 messages IA/jour</li>
+                <li>Templates de base</li>
+                <li>Communaute Discord</li>
+            </ul>
+        </div>
+        <div class="card pricing-card featured">
+            <div class="pricing-name">Pro</div>
+            <div class="pricing-price gradient-text">29 EUR</div>
+            <div class="pricing-period">/mois</div>
+            <ul class="pricing-features">
+                <li>Projets illimites</li>
+                <li>1000 messages IA/jour</li>
+                <li>Toutes integrations OAuth</li>
+                <li>Support prioritaire</li>
+                <li>Templates premium</li>
+            </ul>
+        </div>
+        <div class="card pricing-card">
+            <div class="pricing-name">Team</div>
+            <div class="pricing-price">79 EUR</div>
+            <div class="pricing-period">/user/mois</div>
+            <ul class="pricing-features">
+                <li>Tout Pro +</li>
+                <li>Collaboration temps reel</li>
+                <li>Admin & permissions</li>
+                <li>Analytics equipe</li>
+                <li>SSO</li>
+            </ul>
+        </div>
+        <div class="card pricing-card">
+            <div class="pricing-name">Enterprise</div>
+            <div class="pricing-price">Custom</div>
+            <div class="pricing-period">sur devis</div>
+            <ul class="pricing-features">
+                <li>Tout Team +</li>
+                <li>On-premise possible</li>
+                <li>SLA garanti 99.9%</li>
+                <li>Support dedie</li>
+                <li>Formation equipe</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="slide-counter">09 / 16</div>
+</section>
+
+<!-- ==================== SLIDE 10: FINANCIAL PROJECTIONS ==================== -->
+<section class="slide">
+    <div class="nav"><span class="logo">BAVINI</span></div>
+    <h2>Projections <span class="gradient-text">Financieres</span></h2>
+
+    <div class="two-col">
+        <div>
+            <table class="comparison-table">
+                <thead>
+                    <tr>
+                        <th>Metrique</th>
+                        <th>Y1</th>
+                        <th>Y2</th>
+                        <th>Y3</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Utilisateurs Free</td>
+                        <td>5,000</td>
+                        <td>25,000</td>
+                        <td>100,000</td>
+                    </tr>
+                    <tr>
+                        <td>Utilisateurs Payants</td>
+                        <td>620</td>
+                        <td>3,500</td>
+                        <td>15,000</td>
+                    </tr>
+                    <tr>
+                        <td>Taux de conversion</td>
+                        <td>12.4%</td>
+                        <td>14%</td>
+                        <td>15%</td>
+                    </tr>
+                    <tr>
+                        <td><strong>ARR (Revenu Annuel Recurrent)</strong></td>
+                        <td><strong style="color: var(--success);">258K EUR</strong></td>
+                        <td><strong style="color: var(--success);">1.8M EUR</strong></td>
+                        <td><strong style="color: var(--success);">7.2M EUR</strong></td>
+                    </tr>
+                    <tr>
+                        <td>MRR (Revenu Mensuel Recurrent)</td>
+                        <td>21.5K EUR</td>
+                        <td>150K EUR</td>
+                        <td>600K EUR</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div>
+            <div class="card" style="padding: 40px;">
+                <h3 style="margin-bottom: 24px;">Metriques SaaS cles</h3>
+                <div class="progress-container">
+                    <div class="progress-header">
+                        <span class="progress-label">LTV (Valeur Vie Client)</span>
+                        <span class="progress-value">870 EUR</span>
+                    </div>
+                </div>
+                <div class="progress-container">
+                    <div class="progress-header">
+                        <span class="progress-label">CAC (Cout d'Acquisition Client)</span>
+                        <span class="progress-value">45 EUR</span>
+                    </div>
+                </div>
+                <div class="progress-container">
+                    <div class="progress-header">
+                        <span class="progress-label">Ratio LTV/CAC</span>
+                        <span class="progress-value" style="color: var(--success);">19.3x</span>
+                    </div>
+                </div>
+                <div class="progress-container">
+                    <div class="progress-header">
+                        <span class="progress-label">Churn (Taux d'attrition) mensuel</span>
+                        <span class="progress-value">&lt; 3%</span>
+                    </div>
+                </div>
+                <div class="progress-container">
+                    <div class="progress-header">
+                        <span class="progress-label">Marge brute</span>
+                        <span class="progress-value">75%</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="slide-counter">10 / 16</div>
+</section>
+
+<!-- ==================== SLIDE 11: TRACTION ==================== -->
+<section class="slide">
+    <div class="nav"><span class="logo">BAVINI</span></div>
+    <h2>Traction & <span class="gradient-text">Milestones</span></h2>
+
+    <div class="grid grid-4" style="margin-bottom: 48px;">
+        <div class="stat card">
+            <div class="stat-value">v25</div>
+            <div class="stat-label">Version actuelle</div>
+        </div>
+        <div class="stat card">
+            <div class="stat-value">3,500+</div>
+            <div class="stat-label">Tests automatises</div>
+        </div>
+        <div class="stat card">
+            <div class="stat-value">140+</div>
+            <div class="stat-label">Outils IA</div>
+        </div>
+        <div class="stat card">
+            <div class="stat-value">8</div>
+            <div class="stat-label">Agents specialises</div>
+        </div>
+    </div>
+
+    <div class="two-col">
+        <div class="timeline">
+            <div class="timeline-item">
+                <span class="badge success">Complete</span>
+                <div class="timeline-title" style="margin-top: 12px;">MVP Fonctionnel</div>
+                <div class="timeline-desc">IDE complet, multi-agents, 6 integrations OAuth, terminal, preview live</div>
+            </div>
+            <div class="timeline-item">
+                <span class="badge success">Complete</span>
+                <div class="timeline-title" style="margin-top: 12px;">Architecture Enterprise-Ready</div>
+                <div class="timeline-desc">Securite, 3,500+ tests, CI/CD, documentation, ADRs</div>
+            </div>
+            <div class="timeline-item">
+                <span class="badge">En cours</span>
+                <div class="timeline-title" style="margin-top: 12px;">Beta Privee</div>
+                <div class="timeline-desc">Premiers utilisateurs, feedback, iterations</div>
+            </div>
+            <div class="timeline-item">
+                <span class="badge warning">Q2 2026</span>
+                <div class="timeline-title" style="margin-top: 12px;">Lancement Public</div>
+                <div class="timeline-desc">Marketing, acquisition, monetisation</div>
+            </div>
+        </div>
+        <div>
+            <div class="card">
+                <h3>Stack Technique</h3>
+                <div style="margin-top: 20px; display: flex; flex-wrap: wrap; gap: 8px;">
+                    <span class="badge">Claude Opus 4.5</span>
+                    <span class="badge">React 18</span>
+                    <span class="badge">Remix</span>
+                    <span class="badge">TypeScript</span>
+                    <span class="badge">WebContainer</span>
+                    <span class="badge">Cloudflare Workers</span>
+                    <span class="badge">Vitest</span>
+                    <span class="badge">Playwright</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="slide-counter">11 / 16</div>
+</section>
+
+<!-- ==================== SLIDE 12: GO-TO-MARKET ==================== -->
+<section class="slide">
+    <div class="nav"><span class="logo">BAVINI</span></div>
+    <h2>Strategie <span class="gradient-text">Go-to-Market</span></h2>
+
+    <div class="two-col">
+        <div>
+            <h3>Phase 1: France (0-12 mois)</h3>
+            <ul class="feature-list" style="margin-bottom: 32px;">
+                <li><span class="icon">✓</span> Communaute developpeurs francais (Twitter, Discord)</li>
+                <li><span class="icon">✓</span> Partenariats ecoles (42, Epitech, EPITA, Le Wagon)</li>
+                <li><span class="icon">✓</span> Presence events (VivaTech, Web Summit)</li>
+                <li><span class="icon">✓</span> Content marketing (YouTube, Blog technique)</li>
+                <li><span class="icon">✓</span> Programme ambassadeurs developpeurs</li>
+            </ul>
+
+            <h3>Phase 2: Europe (12-24 mois)</h3>
+            <ul class="feature-list">
+                <li><span class="icon">✓</span> Expansion Benelux, Suisse, Allemagne</li>
+                <li><span class="icon">✓</span> Localisation EN, DE</li>
+                <li><span class="icon">✓</span> Partenariats agences digitales</li>
+            </ul>
+        </div>
+        <div>
+            <div class="card" style="padding: 40px;">
+                <h3 style="margin-bottom: 24px;">Canaux d'acquisition</h3>
+                <div class="progress-container">
+                    <div class="progress-header">
+                        <span class="progress-label">Organique / SEO / Content</span>
+                        <span class="progress-value">40%</span>
+                    </div>
+                    <div class="progress-bar"><div class="progress-fill" style="width: 40%;"></div></div>
+                </div>
+                <div class="progress-container">
+                    <div class="progress-header">
+                        <span class="progress-label">Referral / Bouche-a-oreille</span>
+                        <span class="progress-value">30%</span>
+                    </div>
+                    <div class="progress-bar"><div class="progress-fill" style="width: 30%;"></div></div>
+                </div>
+                <div class="progress-container">
+                    <div class="progress-header">
+                        <span class="progress-label">Paid (Google, LinkedIn, Twitter)</span>
+                        <span class="progress-value">20%</span>
+                    </div>
+                    <div class="progress-bar"><div class="progress-fill" style="width: 20%;"></div></div>
+                </div>
+                <div class="progress-container">
+                    <div class="progress-header">
+                        <span class="progress-label">Partenariats & Events</span>
+                        <span class="progress-value">10%</span>
+                    </div>
+                    <div class="progress-bar"><div class="progress-fill" style="width: 10%;"></div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="slide-counter">12 / 16</div>
+</section>
+
+<!-- ==================== SLIDE 13: ROADMAP ==================== -->
+<section class="slide">
+    <div class="nav"><span class="logo">BAVINI</span></div>
+    <h2>Roadmap <span class="gradient-text">2026</span></h2>
+
+    <div class="grid grid-4">
+        <div class="card" style="border-top: 3px solid var(--primary);">
+            <h3 style="color: var(--primary); margin-bottom: 20px;">Q1 2026</h3>
+            <ul style="list-style: none; font-size: 15px; color: var(--gray-400); line-height: 2;">
+                <li>→ Beta publique</li>
+                <li>→ Bibliotheque shadcn/ui</li>
+                <li>→ 50+ templates premium</li>
+                <li>→ Onboarding guide</li>
+                <li>→ Documentation complete</li>
+            </ul>
+        </div>
+        <div class="card" style="border-top: 3px solid var(--secondary);">
+            <h3 style="color: var(--secondary); margin-bottom: 20px;">Q2 2026</h3>
+            <ul style="list-style: none; font-size: 15px; color: var(--gray-400); line-height: 2;">
+                <li>→ Lancement commercial</li>
+                <li>→ Collaboration temps reel</li>
+                <li>→ Marketplace templates</li>
+                <li>→ API publique v1</li>
+                <li>→ 1000 utilisateurs payants</li>
+            </ul>
+        </div>
+        <div class="card" style="border-top: 3px solid var(--success);">
+            <h3 style="color: var(--success); margin-bottom: 20px;">Q3 2026</h3>
+            <ul style="list-style: none; font-size: 15px; color: var(--gray-400); line-height: 2;">
+                <li>→ Mobile app preview</li>
+                <li>→ Integrations CMS (Sanity, Contentful)</li>
+                <li>→ Multi-langue (EN, DE)</li>
+                <li>→ SSO Enterprise</li>
+                <li>→ 5000 utilisateurs payants</li>
+            </ul>
+        </div>
+        <div class="card" style="border-top: 3px solid var(--accent);">
+            <h3 style="color: var(--accent); margin-bottom: 20px;">Q4 2026</h3>
+            <ul style="list-style: none; font-size: 15px; color: var(--gray-400); line-height: 2;">
+                <li>→ Option on-premise</li>
+                <li>→ White-label solution</li>
+                <li>→ AI fine-tuning custom</li>
+                <li>→ Expansion internationale</li>
+                <li>→ Serie A preparation</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="slide-counter">13 / 16</div>
+</section>
+
+<!-- ==================== SLIDE 14: TEAM ==================== -->
+<section class="slide">
+    <div class="nav"><span class="logo">BAVINI</span></div>
+    <h2>L'<span class="gradient-text">Equipe</span></h2>
+
+    <div class="grid grid-3" style="margin-bottom: 48px;">
+        <div class="card" style="text-align: center; padding: 48px;">
+            <div style="width: 100px; height: 100px; background: var(--gradient-primary); border-radius: 50%; margin: 0 auto 20px;"></div>
+            <h3>Robespierre Ganro</h3>
+            <p style="font-size: 16px; color: var(--primary-light); font-weight: 600;">Co-fondateur & CEO</p>
+            <p style="font-size: 14px; color: var(--gray-500); margin-top: 8px;">Vision produit, strategie business, levees de fonds et partenariats</p>
+            <div style="margin-top: 20px;">
+                <span class="badge">Strategie</span>
+                <span class="badge">Business Dev</span>
+                <span class="badge">Product</span>
+            </div>
+        </div>
+        <div class="card" style="text-align: center; padding: 48px;">
+            <div style="width: 100px; height: 100px; background: var(--gradient-cool); border-radius: 50%; margin: 0 auto 20px;"></div>
+            <h3>Mathis Noel</h3>
+            <p style="font-size: 16px; color: var(--secondary); font-weight: 600;">Co-fondateur & CTO</p>
+            <p style="font-size: 14px; color: var(--gray-500); margin-top: 8px;">Architecture technique, R&D, infrastructure et leadership engineering</p>
+            <div style="margin-top: 20px;">
+                <span class="badge">Full-Stack</span>
+                <span class="badge">AI/ML</span>
+                <span class="badge">Architecture</span>
+            </div>
+        </div>
+        <div class="card" style="text-align: center; padding: 48px; border-style: dashed;">
+            <div style="width: 100px; height: 100px; background: var(--dark-border); border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; font-size: 32px; color: var(--gray-600);">?</div>
+            <h3 style="color: var(--gray-500);">Growth Manager (A recruter Q3)</h3>
+            <p style="font-size: 14px; color: var(--gray-600); margin-top: 8px;">Marketing, acquisition et growth</p>
+            <div style="margin-top: 20px;">
+                <span class="badge" style="opacity: 0.5;">Growth</span>
+                <span class="badge" style="opacity: 0.5;">B2B SaaS</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="card" style="padding: 32px;">
+        <h3 style="margin-bottom: 20px;">Advisors & Mentors recherches</h3>
+        <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+            <span class="badge success">Expert IA / LLM</span>
+            <span class="badge success">Serial Entrepreneur SaaS</span>
+            <span class="badge success">Investisseur Tech France</span>
+            <span class="badge success">Expert Developer Tools</span>
+        </div>
+    </div>
+
+    <div class="slide-counter">14 / 16</div>
+</section>
+
+<!-- ==================== SLIDE 15: THE ASK ==================== -->
+<section class="slide">
+    <div class="nav"><span class="logo">BAVINI</span></div>
+    <h2>Notre <span class="gradient-text">Demande</span></h2>
+
+    <div class="cta-section">
+        <h2 style="font-size: 32px; margin-bottom: 0;">Levee Pre-Seed</h2>
+        <div class="cta-amount">300,000 EUR</div>
+        <p style="font-size: 20px; max-width: 600px; margin: 0 auto;">
+            Pour accelerer le developpement produit et lancer la commercialisation en France
+        </p>
+    </div>
+
+    <div class="grid grid-4" style="margin-top: 48px;">
+        <div class="card" style="text-align: center;">
+            <div class="stat-value" style="font-size: 40px;">40%</div>
+            <p style="font-size: 16px; margin-top: 8px;">Produit & Tech</p>
+            <p style="font-size: 14px; color: var(--gray-600);">120,000 EUR</p>
+        </div>
+        <div class="card" style="text-align: center;">
+            <div class="stat-value" style="font-size: 40px;">30%</div>
+            <p style="font-size: 16px; margin-top: 8px;">Marketing & Growth</p>
+            <p style="font-size: 14px; color: var(--gray-600);">90,000 EUR</p>
+        </div>
+        <div class="card" style="text-align: center;">
+            <div class="stat-value" style="font-size: 40px;">20%</div>
+            <p style="font-size: 16px; margin-top: 8px;">Recrutement</p>
+            <p style="font-size: 14px; color: var(--gray-600);">60,000 EUR</p>
+        </div>
+        <div class="card" style="text-align: center;">
+            <div class="stat-value" style="font-size: 40px;">10%</div>
+            <p style="font-size: 16px; margin-top: 8px;">Operations & Legal</p>
+            <p style="font-size: 14px; color: var(--gray-600);">30,000 EUR</p>
+        </div>
+    </div>
+
+    <div style="text-align: center; margin-top: 32px;">
+        <p style="font-size: 18px; color: var(--gray-500);">
+            Valorisation pre-money : <span style="color: var(--success); font-weight: 600;">950,000 EUR</span> |
+            Dilution : <span style="color: var(--success); font-weight: 600;">~24%</span> |
+            Runway : <span style="color: var(--success); font-weight: 600;">12 mois</span>
+        </p>
+    </div>
+
+    <div class="slide-counter">15 / 16</div>
+</section>
+
+<!-- ==================== SLIDE 16: CONTACT ==================== -->
+<section class="slide cover-slide">
+    <div>
+        <h1 style="font-size: 64px; margin-bottom: 24px;">
+            Construisons ensemble<br>
+            <span class="gradient-text">le futur du dev web</span>
+        </h1>
+        <p class="cover-tagline" style="margin-bottom: 64px;">
+            BAVINI democratise la creation d'applications web grace a l'intelligence artificielle
+        </p>
+
+        <div class="card" style="display: inline-block; padding: 48px 64px;">
+            <div style="display: flex; gap: 64px; align-items: center;">
+                <div style="text-align: left;">
+                    <p style="font-size: 14px; color: var(--gray-600); margin-bottom: 4px;">Website</p>
+                    <p style="font-size: 20px; font-weight: 600;">bavini.dev</p>
+                </div>
+                <div style="text-align: left;">
+                    <p style="font-size: 14px; color: var(--gray-600); margin-bottom: 4px;">Email</p>
+                    <p style="font-size: 20px; font-weight: 600;">bavini.dev@gmail.com</p>
+                </div>
+                <div style="text-align: left;">
+                    <p style="font-size: 14px; color: var(--gray-600); margin-bottom: 4px;">Demo</p>
+                    <p style="font-size: 20px; font-weight: 600;">app.bavini.dev</p>
+                </div>
+            </div>
+        </div>
+
+        <p style="margin-top: 48px; font-size: 14px; color: var(--gray-600);">
+            Merci de votre attention | Pitch Deck Confidentiel | Janvier 2026
+        </p>
+    </div>
+    <div class="slide-counter">16 / 16</div>
+</section>
+
+</body>
+</html>

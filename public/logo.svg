@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 360" width="320" height="360">
+  <!-- Fond bouclier -->
+  <path d="M40 20C40 9 49 0 60 0H260C271 0 280 9 280 20V240C280 270 160 340 160 340C160 340 40 270 40 240V20Z" fill="#2F4F4F"/>
+
+  <!-- Symbole central -->
+  <circle cx="160" cy="160" r="25" fill="#F5F5DC"/>
+
+  <!-- Têtes arrondies -->
+  <ellipse cx="160" cy="80" rx="22" ry="28" fill="#F5F5DC"/>
+  <ellipse cx="160" cy="240" rx="22" ry="28" fill="#F5F5DC"/>
+  <ellipse cx="80" cy="160" rx="28" ry="22" fill="#F5F5DC"/>
+  <ellipse cx="240" cy="160" rx="28" ry="22" fill="#F5F5DC"/>
+
+  <!-- Connexions (bras) -->
+  <rect x="148" y="105" width="24" height="35" rx="4" fill="#F5F5DC"/>
+  <rect x="148" y="180" width="24" height="35" rx="4" fill="#F5F5DC"/>
+  <rect x="105" y="148" width="35" height="24" rx="4" fill="#F5F5DC"/>
+  <rect x="180" y="148" width="35" height="24" rx="4" fill="#F5F5DC"/>
+</svg>

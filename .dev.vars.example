@@ -1,0 +1,21 @@
+# BAVINI OAuth Configuration
+# Copy this file to .dev.vars and fill in your credentials
+# DO NOT commit .dev.vars to version control
+
+# GitHub OAuth App
+# Create at: https://github.com/settings/developers
+# Callback URL: http://localhost:5173/api/auth/callback
+GITHUB_CLIENT_ID=your_github_client_id
+GITHUB_CLIENT_SECRET=your_github_client_secret
+
+# Netlify OAuth App
+# Create at: https://app.netlify.com/user/applications
+# Redirect URI: http://localhost:5173/api/auth/callback
+NETLIFY_CLIENT_ID=your_netlify_client_id
+NETLIFY_CLIENT_SECRET=your_netlify_client_secret
+
+# Supabase OAuth
+# Configure at: https://supabase.com/dashboard
+# Redirect URL: http://localhost:5173/api/auth/callback
+SUPABASE_CLIENT_ID=your_supabase_client_id
+SUPABASE_CLIENT_SECRET=your_supabase_client_secret

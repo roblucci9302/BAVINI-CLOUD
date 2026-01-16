@@ -1,0 +1,2281 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BAVINI - Business Plan 2026</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --primary: #8B5CF6;
+            --primary-dark: #7C3AED;
+            --secondary: #06B6D4;
+            --accent: #F59E0B;
+            --success: #10B981;
+            --danger: #EF4444;
+            --dark: #1F2937;
+            --gray-50: #F9FAFB;
+            --gray-100: #F3F4F6;
+            --gray-200: #E5E7EB;
+            --gray-300: #D1D5DB;
+            --gray-400: #9CA3AF;
+            --gray-500: #6B7280;
+            --gray-600: #4B5563;
+            --gray-700: #374151;
+            --gray-800: #1F2937;
+        }
+
+        @page {
+            size: A4;
+            margin: 0;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: white;
+            color: var(--gray-800);
+            line-height: 1.6;
+            font-size: 11pt;
+        }
+
+        .page {
+            width: 210mm;
+            min-height: 297mm;
+            padding: 20mm 25mm;
+            background: white;
+            position: relative;
+            page-break-after: always;
+            page-break-inside: avoid;
+        }
+
+        .page:last-child { page-break-after: auto; }
+
+        /* Cover Page */
+        .cover-page {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            background: linear-gradient(135deg, #8B5CF6 0%, #06B6D4 100%);
+            color: white;
+            padding: 0;
+        }
+
+        .cover-logo {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 72px;
+            font-weight: 700;
+            margin-bottom: 20px;
+        }
+
+        .cover-title {
+            font-size: 32px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .cover-subtitle {
+            font-size: 18px;
+            opacity: 0.9;
+            margin-bottom: 60px;
+        }
+
+        .cover-info {
+            margin-top: 80px;
+            font-size: 14px;
+            opacity: 0.8;
+        }
+
+        .cover-info p { margin: 8px 0; }
+
+        .cover-badge {
+            display: inline-block;
+            background: rgba(255,255,255,0.2);
+            padding: 8px 20px;
+            border-radius: 50px;
+            font-size: 14px;
+            margin-top: 30px;
+        }
+
+        /* Headers */
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 15px;
+            border-bottom: 2px solid var(--gray-200);
+            margin-bottom: 25px;
+        }
+
+        .page-header-logo {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .page-header-title {
+            font-size: 12px;
+            color: var(--gray-500);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Typography */
+        h1 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--gray-800);
+            margin-bottom: 20px;
+        }
+
+        h2 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--primary);
+            margin: 25px 0 15px 0;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--gray-200);
+            page-break-after: avoid;
+        }
+
+        h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--gray-700);
+            margin: 20px 0 10px 0;
+            page-break-after: avoid;
+        }
+
+        p { margin-bottom: 12px; }
+
+        .lead {
+            font-size: 13px;
+            color: var(--gray-600);
+            line-height: 1.7;
+        }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            font-size: 10px;
+            page-break-inside: avoid;
+        }
+
+        th, td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--gray-200);
+        }
+
+        th {
+            background: var(--gray-50);
+            font-weight: 600;
+            color: var(--gray-700);
+            text-transform: uppercase;
+            font-size: 9px;
+            letter-spacing: 0.5px;
+        }
+
+        tr:hover { background: var(--gray-50); }
+
+        .table-highlight {
+            background: rgba(139, 92, 246, 0.05);
+        }
+
+        /* Cards & Boxes */
+        .highlight-box {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(6, 182, 212, 0.1));
+            border-left: 4px solid var(--primary);
+            padding: 15px 20px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+            page-break-inside: avoid;
+        }
+
+        .highlight-box h3 {
+            color: var(--primary);
+            margin-top: 0;
+        }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin: 20px 0;
+            page-break-inside: avoid;
+        }
+
+        .stat-card {
+            background: var(--gray-50);
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid var(--gray-200);
+        }
+
+        .stat-value {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .stat-label {
+            font-size: 10px;
+            color: var(--gray-500);
+            margin-top: 5px;
+        }
+
+        /* Lists */
+        ul, ol {
+            margin: 10px 0 15px 20px;
+            page-break-inside: avoid;
+        }
+
+        li {
+            margin-bottom: 6px;
+            color: var(--gray-700);
+        }
+
+        /* Footer */
+        .page-footer {
+            position: absolute;
+            bottom: 15mm;
+            left: 25mm;
+            right: 25mm;
+            display: flex;
+            justify-content: space-between;
+            font-size: 9px;
+            color: var(--gray-400);
+            border-top: 1px solid var(--gray-200);
+            padding-top: 10px;
+        }
+
+        /* Two columns */
+        .two-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            page-break-inside: avoid;
+        }
+
+        .three-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+            page-break-inside: avoid;
+        }
+
+        /* Tags */
+        .tag {
+            display: inline-block;
+            background: var(--gray-100);
+            color: var(--gray-600);
+            padding: 3px 10px;
+            border-radius: 50px;
+            font-size: 9px;
+            margin-right: 5px;
+            margin-bottom: 5px;
+        }
+
+        .tag.primary {
+            background: rgba(139, 92, 246, 0.15);
+            color: var(--primary);
+        }
+
+        .tag.success {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--success);
+        }
+
+        /* SWOT */
+        .swot-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin: 15px 0;
+            page-break-inside: avoid;
+        }
+
+        .swot-card {
+            padding: 15px;
+            border-radius: 8px;
+            page-break-inside: avoid;
+        }
+
+        .swot-card.strengths { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); }
+        .swot-card.weaknesses { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); }
+        .swot-card.opportunities { background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.3); }
+        .swot-card.threats { background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); }
+
+        .swot-card h4 {
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .swot-card.strengths h4 { color: var(--success); }
+        .swot-card.weaknesses h4 { color: var(--danger); }
+        .swot-card.opportunities h4 { color: var(--primary); }
+        .swot-card.threats h4 { color: var(--accent); }
+
+        .swot-card ul { margin: 0; padding-left: 15px; }
+        .swot-card li { font-size: 10px; margin-bottom: 4px; }
+
+        /* Print */
+        @media print {
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .page { margin: 0; box-shadow: none; }
+        }
+
+        /* TOC */
+        .toc-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px dotted var(--gray-300);
+        }
+
+        .toc-item span:first-child { color: var(--gray-700); }
+        .toc-item span:last-child { color: var(--gray-500); }
+
+        /* Progress bar */
+        .progress-bar {
+            height: 8px;
+            background: var(--gray-200);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 8px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            border-radius: 4px;
+        }
+
+        /* Timeline */
+        .timeline {
+            position: relative;
+            padding-left: 25px;
+            page-break-inside: avoid;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 5px;
+            top: 5px;
+            bottom: 5px;
+            width: 2px;
+            background: var(--primary);
+        }
+
+        .timeline-item {
+            position: relative;
+            padding-bottom: 20px;
+            page-break-inside: avoid;
+        }
+
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -23px;
+            top: 5px;
+            width: 10px;
+            height: 10px;
+            background: var(--primary);
+            border-radius: 50%;
+        }
+
+        .timeline-date {
+            font-size: 10px;
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        .timeline-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--gray-800);
+            margin: 3px 0;
+        }
+
+        .timeline-desc {
+            font-size: 10px;
+            color: var(--gray-600);
+            white-space: normal;
+            word-spacing: normal;
+        }
+    </style>
+</head>
+<body>
+
+<!-- PAGE 1: COVER -->
+<div class="page cover-page">
+    <div class="cover-logo">BAVINI</div>
+    <div class="cover-title">Business Plan 2026-2028</div>
+    <div class="cover-subtitle">L'IDE IA qui democratise le developpement web</div>
+    <div class="cover-badge">Document Confidentiel</div>
+    <div class="cover-info">
+        <p><strong>Pre-Seed Round</strong></p>
+        <p>Montant recherche : 300 000 EUR</p>
+        <p>Valorisation pre-money : 950 000 EUR</p>
+        <p style="margin-top: 30px;">Janvier 2026</p>
+        <p>Contact : bavini.dev@gmail.com</p>
+    </div>
+</div>
+
+<!-- PAGE 2: TABLE OF CONTENTS -->
+<div class="page">
+    <div class="page-header">
+        <span class="page-header-logo">BAVINI</span>
+        <span class="page-header-title">Business Plan 2026</span>
+    </div>
+
+    <h1>Table des Matieres</h1>
+
+    <div style="margin-top: 30px;">
+        <div class="toc-item"><span><strong>1.</strong> Executive Summary</span><span>3</span></div>
+        <div class="toc-item"><span><strong>2.</strong> Presentation de l'Entreprise</span><span>5</span></div>
+        <div class="toc-item"><span><strong>3.</strong> Analyse de Marche</span><span>7</span></div>
+        <div class="toc-item"><span><strong>4.</strong> Analyse Concurrentielle</span><span>10</span></div>
+        <div class="toc-item"><span><strong>5.</strong> Produit et Technologie</span><span>12</span></div>
+        <div class="toc-item"><span><strong>6.</strong> Strategie Commerciale et Marketing</span><span>15</span></div>
+        <div class="toc-item"><span><strong>7.</strong> Plan Operationnel</span><span>18</span></div>
+        <div class="toc-item"><span><strong>8.</strong> Projections Financieres</span><span>20</span></div>
+        <div class="toc-item"><span><strong>9.</strong> Plan de Financement</span><span>25</span></div>
+        <div class="toc-item"><span><strong>10.</strong> Analyse des Risques</span><span>27</span></div>
+        <div class="toc-item"><span><strong>11.</strong> Annexes</span><span>29</span></div>
+    </div>
+
+    <div class="page-footer">
+        <span>BAVINI - Business Plan Confidentiel</span>
+        <span>Page 2</span>
+    </div>
+</div>
+
+<!-- PAGE 3: EXECUTIVE SUMMARY -->
+<div class="page">
+    <div class="page-header">
+        <span class="page-header-logo">BAVINI</span>
+        <span class="page-header-title">Executive Summary</span>
+    </div>
+
+    <h1>1. Executive Summary</h1>
+
+    <div class="highlight-box">
+        <h3>Notre Mission</h3>
+        <p class="lead">BAVINI democratise le developpement web en permettant a quiconque de creer des applications professionnelles grace a l'intelligence artificielle, directement dans le navigateur.</p>
+    </div>
+
+    <h2>L'Opportunite</h2>
+    <p>Le marche mondial des outils de developpement atteindra <strong>89 milliards USD d'ici 2030</strong>. La penurie de developpeurs (3,5 millions de postes non pourvus en Europe) et l'explosion de l'IA generative creent une opportunite unique pour une solution francaise innovante.</p>
+
+    <h2>Notre Solution</h2>
+    <p>BAVINI est un environnement de developpement integre (IDE) base sur l'IA qui permet de creer des applications web completes sans expertise technique prealable. Notre architecture unique a <strong>8 agents IA specialises</strong> offre une qualite et une fiabilite superieures aux solutions concurrentes.</p>
+
+    <div class="stat-grid">
+        <div class="stat-card">
+            <div class="stat-value">8</div>
+            <div class="stat-label">Agents IA Specialises</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">140+</div>
+            <div class="stat-label">Outils Integres</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">6</div>
+            <div class="stat-label">Integrations OAuth</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">100%</div>
+            <div class="stat-label">Dans le Navigateur</div>
+        </div>
+    </div>
+
+    <h2>Chiffres Cles du Projet</h2>
+    <table>
+        <tr>
+            <td><strong>Levee de fonds</strong></td>
+            <td>300 000 EUR (Pre-Seed)</td>
+            <td><strong>Valorisation pre-money</strong></td>
+            <td>950 000 EUR</td>
+        </tr>
+        <tr>
+            <td><strong>ARR (Revenu Annuel Recurrent) Annee 1</strong></td>
+            <td>258 000 EUR</td>
+            <td><strong>ARR (Revenu Annuel Recurrent) Annee 3</strong></td>
+            <td>7,2 M EUR</td>
+        </tr>
+        <tr>
+            <td><strong>Point mort</strong></td>
+            <td>Mois 18</td>
+            <td><strong>Marge brute cible</strong></td>
+            <td>75%</td>
+        </tr>
+    </table>
+
+    <div class="page-footer">
+        <span>BAVINI - Business Plan Confidentiel</span>
+        <span>Page 3</span>
+    </div>
+</div>
+
+<!-- PAGE 4: EXECUTIVE SUMMARY (suite) -->
+<div class="page">
+    <div class="page-header">
+        <span class="page-header-logo">BAVINI</span>
+        <span class="page-header-title">Executive Summary</span>
+    </div>
+
+    <h2>L'Equipe Fondatrice</h2>
+    <div class="two-col">
+        <div>
+            <h3>Robespierre Ganro - CEO</h3>
+            <p>Vision produit et strategie business. Responsable du developpement commercial, des levees de fonds et des partenariats strategiques.</p>
+            <div>
+                <span class="tag primary">Strategie</span>
+                <span class="tag primary">Business Dev</span>
+                <span class="tag primary">Product</span>
+            </div>
+        </div>
+        <div>
+            <h3>Mathis Noel - CTO</h3>
+            <p>Architecture technique et leadership engineering. Responsable de la R&D, de l'infrastructure et de l'equipe technique.</p>
+            <div>
+                <span class="tag primary">Full-Stack</span>
+                <span class="tag primary">AI/ML</span>
+                <span class="tag primary">Architecture</span>
+            </div>
+        </div>
+    </div>
+
+    <h2>Utilisation des Fonds (300 000 EUR)</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Poste</th>
+                <th>Allocation</th>
+                <th>Montant</th>
+                <th>Details</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Produit & Tech</strong></td>
+                <td>40%</td>
+                <td>120 000 EUR</td>
+                <td>Infrastructure cloud, API IA, developpement</td>
+            </tr>
+            <tr>
+                <td><strong>Marketing & Growth</strong></td>
+                <td>30%</td>
+                <td>90 000 EUR</td>
+                <td>Acquisition, content, evenements</td>
+            </tr>
+            <tr>
+                <td><strong>Recrutement</strong></td>
+                <td>20%</td>
+                <td>60 000 EUR</td>
+                <td>1-2 developpeurs senior</td>
+            </tr>
+            <tr>
+                <td><strong>Operations & Legal</strong></td>
+                <td>10%</td>
+                <td>30 000 EUR</td>
+                <td>Creation SAS, juridique, comptabilite</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>Objectifs a 12 Mois</h2>
+    <ul>
+        <li><strong>5 000 utilisateurs inscrits</strong> dont 620 payants (12,4% conversion)</li>
+        <li><strong>258 000 EUR d'ARR (Revenu Annuel Recurrent)</strong> soit 21 480 EUR de MRR (Revenu Mensuel Recurrent)</li>
+        <li><strong>Lancement commercial</strong> sur le marche francais</li>
+        <li><strong>Equipe de 4 personnes</strong></li>
+        <li><strong>Preparation Serie Seed</strong> (objectif : 1,5M EUR)</li>
+    </ul>
+
+    <div class="highlight-box">
+        <h3>Pourquoi Investir Maintenant ?</h3>
+        <p>Le marche des outils IA pour developpeurs croit de +35% par an. BAVINI est positionne pour devenir le leader francais et europeen, avec une technologie differenciante et une equipe complementaire. L'absence de concurrent natif en France represente une opportunite unique de premier entrant.</p>
+    </div>
+
+    <div class="page-footer">
+        <span>BAVINI - Business Plan Confidentiel</span>
+        <span>Page 4</span>
+    </div>
+</div>
+
+<!-- PAGE 5: PRESENTATION ENTREPRISE -->
+<div class="page">
+    <div class="page-header">
+        <span class="page-header-logo">BAVINI</span>
+        <span class="page-header-title">Presentation de l'Entreprise</span>
+    </div>
+
+    <h1>2. Presentation de l'Entreprise</h1>
+
+    <h2>Vision et Mission</h2>
+    <div class="two-col">
+        <div class="highlight-box" style="margin: 0;">
+            <h3>Vision</h3>
+            <p>Devenir la reference europeenne des outils de developpement assistes par IA, en rendant la creation d'applications web accessible a tous.</p>
+        </div>
+        <div class="highlight-box" style="margin: 0; background: linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(139, 92, 246, 0.1));">
+            <h3>Mission</h3>
+            <p>Democratiser le developpement web en combinant intelligence artificielle avancee et experience utilisateur intuitive.</p>
+        </div>
+    </div>
+
+    <h2>Structure Juridique</h2>
+    <table>
+        <tr>
+            <td><strong>Forme juridique</strong></td>
+            <td>SAS (Societe par Actions Simplifiee) - a creer</td>
+        </tr>
+        <tr>
+            <td><strong>Capital social prevu</strong></td>
+            <td>10 000 EUR</td>
+        </tr>
+        <tr>
+            <td><strong>Siege social</strong></td>
+            <td>France</td>
+        </tr>
+        <tr>
+            <td><strong>Date de creation prevue</strong></td>
+            <td>Q1 2026</td>
+        </tr>
+        <tr>
+            <td><strong>Repartition capital initial</strong></td>
+            <td>50% R. Ganro / 50% M. Noel</td>
+        </tr>
+    </table>
+
+    <h2>Pourquoi une SAS ?</h2>
+    <ul>
+        <li><strong>Flexibilite statutaire</strong> : adaptation facile aux besoins de croissance</li>
+        <li><strong>Levee de fonds</strong> : emission d'actions, BSA, BSPCE pour attirer les talents</li>
+        <li><strong>Credibilite</strong> : forme privilegiee par les investisseurs et partenaires</li>
+        <li><strong>Protection</strong> : responsabilite limitee aux apports</li>
+        <li><strong>Regime social</strong> : dirigeants assimiles salaries</li>
+    </ul>
+
+    <h2>Historique et Jalons</h2>
+    <div class="timeline">
+        <div class="timeline-item">
+            <div class="timeline-date">2025</div>
+            <div class="timeline-title">Developpement du MVP</div>
+            <div class="timeline-desc">Conception et developpement de la plateforme. Architecture multi-agents, 3 500+ tests, 140+ outils.</div>
+        </div>
+        <div class="timeline-item">
+            <div class="timeline-date">Q1 2026</div>
+            <div class="timeline-title">Creation de la SAS & Levee Pre-Seed</div>
+            <div class="timeline-desc">Constitution juridique, levee de 300K EUR, lancement beta publique.</div>
+        </div>
+        <div class="timeline-item">
+            <div class="timeline-date">Q2 2026</div>
+            <div class="timeline-title">Lancement Commercial</div>
+            <div class="timeline-desc">Monetisation, premiers clients payants, croissance organique.</div>
+        </div>
+        <div class="timeline-item">
+            <div class="timeline-date">Q4 2026</div>
+            <div class="timeline-title">Serie Seed</div>
+            <div class="timeline-desc">Levee de 1-2M EUR pour acceleration europeenne.</div>
+        </div>
+    </div>
+
+    <div class="page-footer">
+        <span>BAVINI - Business Plan Confidentiel</span>
+        <span>Page 5</span>
+    </div>
+</div>
+
+<!-- PAGE 6: PRESENTATION ENTREPRISE (suite) -->
+<div class="page">
+    <div class="page-header">
+        <span class="page-header-logo">BAVINI</span>
+        <span class="page-header-title">Presentation de l'Entreprise</span>
+    </div>
+
+    <h2>Valeurs de l'Entreprise</h2>
+    <div class="three-col">
+        <div class="stat-card">
+            <div class="stat-value" style="font-size: 28px;">Innovation</div>
+            <div class="stat-label">Toujours a la pointe de la technologie IA</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" style="font-size: 28px;">Accessibilite</div>
+            <div class="stat-label">Rendre le dev web accessible a tous</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" style="font-size: 28px;">Excellence</div>
+            <div class="stat-label">Qualite et fiabilite sans compromis</div>
+        </div>
+    </div>
+
+    <h2>Propriete Intellectuelle</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Actif</th>
+                <th>Description</th>
+                <th>Protection</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Architecture Multi-Agents</strong></td>
+                <td>Systeme de 8 agents IA specialises travaillant en parallele</td>
+                <td>Secret industriel, code proprietaire</td>
+            </tr>
+            <tr>
+                <td><strong>Prompts Optimises</strong></td>
+                <td>Bibliotheque de 140+ prompts specialises par tache</td>
+                <td>Secret industriel</td>
+            </tr>
+            <tr>
+                <td><strong>Marque BAVINI</strong></td>
+                <td>Nom, logo, identite visuelle</td>
+                <td>Depot INPI (a effectuer)</td>
+            </tr>
+            <tr>
+                <td><strong>Base de code</strong></td>
+                <td>+100 000 lignes de code TypeScript/React</td>
+                <td>Droit d'auteur automatique</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>Aides et Subventions Visees</h2>
+    <div class="two-col">
+        <div>
+            <h3>BPI France</h3>
+            <ul>
+                <li><strong>Bourse French Tech</strong> : jusqu'a 30 000 EUR</li>
+                <li><strong>Aide a l'Innovation</strong> : subvention + avance remboursable</li>
+                <li><strong>Pret d'Amorcage</strong> : jusqu'a 300 000 EUR</li>
+            </ul>
+        </div>
+        <div>
+            <h3>Credits d'Impot</h3>
+            <ul>
+                <li><strong>CIR</strong> : 30% des depenses de R&D</li>
+                <li><strong>CII</strong> : 20% des depenses d'innovation</li>
+                <li><strong>JEI</strong> : Exonerations sociales et fiscales</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="highlight-box">
+        <h3>Estimation des Aides Potentielles (Annee 1)</h3>
+        <table>
+            <tr>
+                <td>Bourse French Tech</td>
+                <td>30 000 EUR</td>
+                <td>CIR (30% de 80K EUR R&D)</td>
+                <td>24 000 EUR</td>
+            </tr>
+            <tr>
+                <td>CII (20% de 40K EUR)</td>
+                <td>8 000 EUR</td>
+                <td><strong>Total estime</strong></td>
+                <td><strong>62 000 EUR</strong></td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="page-footer">
+        <span>BAVINI - Business Plan Confidentiel</span>
+        <span>Page 6</span>
+    </div>
+</div>
+
+<!-- PAGE 7: ANALYSE DE MARCHE -->
+<div class="page">
+    <div class="page-header">
+        <span class="page-header-logo">BAVINI</span>
+        <span class="page-header-title">Analyse de Marche</span>
+    </div>
+
+    <h1>3. Analyse de Marche</h1>
+
+    <h2>Dimensionnement du Marche</h2>
+    <div class="three-col">
+        <div class="stat-card" style="border-left: 4px solid var(--primary);">
+            <div class="stat-value">$89B</div>
+            <div class="stat-label">TAM 2030</div>
+            <p style="font-size: 9px; margin-top: 8px; color: var(--gray-500);">Marche mondial des outils de developpement logiciel</p>
+        </div>
+        <div class="stat-card" style="border-left: 4px solid var(--secondary);">
+            <div class="stat-value">$12B</div>
+            <div class="stat-label">SAM 2030</div>
+            <p style="font-size: 9px; margin-top: 8px; color: var(--gray-500);">Low-code/No-code + AI Dev Tools</p>
+        </div>
+        <div class="stat-card" style="border-left: 4px solid var(--success);">
+            <div class="stat-value">$450M</div>
+            <div class="stat-label">SOM</div>
+            <p style="font-size: 9px; margin-top: 8px; color: var(--gray-500);">Europe francophone + early adopters</p>
+        </div>
+    </div>
+
+    <h2>Tendances du Marche</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Tendance</th>
+                <th>Impact</th>
+                <th>Source</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Croissance AI Dev Tools</strong></td>
+                <td>+35% CAGR jusqu'en 2030</td>
+                <td>Gartner 2025</td>
+            </tr>
+            <tr>
+                <td><strong>Penurie de developpeurs</strong></td>
+                <td>3,5M postes non pourvus en Europe</td>
+                <td>EU Digital Report</td>
+            </tr>
+            <tr>
+                <td><strong>Adoption IA par developpeurs</strong></td>
+                <td>70% utiliseront l'IA pour coder d'ici 2027</td>
+                <td>Gartner</td>
+            </tr>
+            <tr>
+                <td><strong>Citizen Developers</strong></td>
+                <td>500M attendus d'ici 2030</td>
+                <td>Forrester</td>
+            </tr>
+            <tr>
+                <td><strong>Low-code/No-code</strong></td>
+                <td>65% des apps d'entreprise d'ici 2027</td>
+                <td>Gartner</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>Facteurs de Croissance</h2>
+    <div class="two-col">
+        <div>
+            <h3>Moteurs</h3>
+            <ul>
+                <li>Maturite des LLMs (GPT-4, Claude)</li>
+                <li>Democratisation du cloud computing</li>
+                <li>Pression sur les couts de developpement</li>
+                <li>Besoin d'agilite des entreprises</li>
+                <li>Transformation digitale acceleree</li>
+            </ul>
+        </div>
+        <div>
+            <h3>Opportunites France</h3>
+            <ul>
+                <li>Aucun acteur natif dominant</li>
+                <li>Ecosysteme French Tech dynamique</li>
+                <li>Aides publiques importantes (BPI, CIR)</li>
+                <li>Marche francophone de 300M+ personnes</li>
+                <li>Souverainete numerique europeenne</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="page-footer">
+        <span>BAVINI - Business Plan Confidentiel</span>
+        <span>Page 7</span>
+    </div>
+</div>
+
+<!-- PAGE 8: PERSONAS CLIENTS -->
+<div class="page">
+    <div class="page-header">
+        <span class="page-header-logo">BAVINI</span>
+        <span class="page-header-title">Analyse de Marche</span>
+    </div>
+
+    <h2>Segments de Clientele Cibles</h2>
+
+    <div class="three-col">
+        <div class="stat-card">
+            <div class="stat-value" style="font-size: 20px;">Startups</div>
+            <div class="stat-label">40% du CA cible</div>
+            <p style="font-size: 9px; margin-top: 10px; text-align: left;">Equipes tech reduites, besoin de rapidite, budget limite, recherche de productivite.</p>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" style="font-size: 20px;">Freelances</div>
+            <div class="stat-label">35% du CA cible</div>
+            <p style="font-size: 9px; margin-top: 10px; text-align: left;">Developpeurs independants, agences web, consultants digitaux cherchant a accelerer leurs projets.</p>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" style="font-size: 20px;">PME/ETI</div>
+            <div class="stat-label">25% du CA cible</div>
+            <p style="font-size: 9px; margin-top: 10px; text-align: left;">Equipes IT internes, besoin d'outils standardises, budget formation, compliance.</p>
+        </div>
+    </div>
+
+    <h2>Personas Detailles</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Persona</th>
+                <th>Profil</th>
+                <th>Besoins</th>
+                <th>Plan cible</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Sophie, CTO Startup</strong></td>
+                <td>32 ans, equipe de 3 devs, levee Seed</td>
+                <td>Livrer vite, reduire les couts, scaler</td>
+                <td>Team (79EUR/user)</td>
+            </tr>
+            <tr>
+                <td><strong>Marc, Freelance</strong></td>
+                <td>28 ans, dev full-stack, 5 clients/an</td>
+                <td>Productivite, qualite, diversifier</td>
+                <td>Pro (29EUR)</td>
+            </tr>
+            <tr>
+                <td><strong>Julie, Product Manager</strong></td>
+                <td>35 ans, PME 50 salaries, non-tech</td>
+                <td>Prototyper, autonomie, communiquer</td>
+                <td>Pro (29EUR)</td>
+            </tr>
+            <tr>
+                <td><strong>Thomas, Etudiant</strong></td>
+                <td>22 ans, ecole d'ingenieur, side projects</td>
+                <td>Apprendre, creer, portfolio</td>
+                <td>Free puis Pro</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>Parcours Client Type</h2>
+    <div class="timeline">
+        <div class="timeline-item">
+            <div class="timeline-date">Decouverte</div>
+            <div class="timeline-title">Inscription gratuite</div>
+            <div class="timeline-desc">Landing page, SEO, bouche-a-oreille, reseaux sociaux</div>
+        </div>
+        <div class="timeline-item">
+            <div class="timeline-date">Activation</div>
+            <div class="timeline-title">Premier projet cree</div>
+            <div class="timeline-desc">Onboarding guide, templates, premier succes en &lt;30min</div>
+        </div>
+        <div class="timeline-item">
+            <div class="timeline-date">Conversion</div>
+            <div class="timeline-title">Passage au plan Pro</div>
+            <div class="timeline-desc">Limite Free atteinte, besoin de fonctionnalites avancees</div>
+        </div>
+        <div class="timeline-item">
+            <div class="timeline-date">Retention</div>
+            <div class="timeline-title">Usage regulier</div>
+            <div class="timeline-desc">Projets multiples, integrations, dependance a l'outil</div>
+        </div>
+    </div>
+
+    <div class="page-footer">
+        <span>BAVINI - Business Plan Confidentiel</span>
+        <span>Page 8</span>
+    </div>
+</div>
+
+<!-- PAGE 9: ANALYSE CONCURRENTIELLE -->
+<div class="page">
+    <div class="page-header">
+        <span class="page-header-logo">BAVINI</span>
+        <span class="page-header-title">Analyse Concurrentielle</span>
+    </div>
+
+    <h1>4. Analyse Concurrentielle</h1>
+
+    <h2>Paysage Concurrentiel</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Concurrent</th>
+                <th>Valorisation</th>
+                <th>Positionnement</th>
+                <th>Forces</th>
+                <th>Faiblesses</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Bolt.new</strong></td>
+                <td>~$50M</td>
+                <td>Browser IDE, React</td>
+                <td>UX, rapidite</td>
+                <td>1 seul agent, EN only</td>
+            </tr>
+            <tr>
+                <td><strong>Lovable</strong></td>
+                <td>~$20M</td>
+                <td>No-code, design-first</td>
+                <td>Design, simplicite</td>
+                <td>Limite en complexite</td>
+            </tr>
+            <tr>
+                <td><strong>Cursor</strong></td>
+                <td>~$400M</td>
+                <td>IDE desktop, VS Code</td>
+                <td>Puissance, devs</td>
+                <td>Desktop only, technique</td>
+            </tr>
+            <tr>
+                <td><strong>Replit</strong></td>
+                <td>$1.16B</td>
+                <td>Cloud IDE, education</td>
+                <td>Communaute, cloud</td>
+                <td>Generaliste, EN only</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>Matrice de Positionnement</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Critere</th>
+                <th>BAVINI</th>
+                <th>Bolt.new</th>
+                <th>Lovable</th>
+                <th>Cursor</th>
+                <th>Replit</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Multi-agents IA</td>
+                <td><span class="tag success">8 agents</span></td>
+                <td><span class="tag">1 agent</span></td>
+                <td><span class="tag">1 agent</span></td>
+                <td><span class="tag">1 agent</span></td>
+                <td><span class="tag">1 agent</span></td>
+            </tr>
+            <tr>
+                <td>100% navigateur</td>
+                <td><span class="tag success">Oui</span></td>
+                <td><span class="tag success">Oui</span></td>
+                <td><span class="tag success">Oui</span></td>
+                <td><span class="tag">Non</span></td>
+                <td><span class="tag success">Oui</span></td>
+            </tr>
+            <tr>
+                <td>Support francais</td>
+                <td><span class="tag success">Natif</span></td>
+                <td><span class="tag">Non</span></td>
+                <td><span class="tag">Non</span></td>
+                <td><span class="tag">Non</span></td>
+                <td><span class="tag">Non</span></td>
+            </tr>
+            <tr>
+                <td>OAuth Enterprise</td>
+                <td><span class="tag success">6 providers</span></td>
+                <td><span class="tag">GitHub</span></td>
+                <td><span class="tag">2 providers</span></td>
+                <td><span class="tag">Non</span></td>
+                <td><span class="tag">3 providers</span></td>
+            </tr>
+            <tr>
+                <td>Checkpoints</td>
+                <td><span class="tag success">Oui</span></td>
+                <td><span class="tag">Non</span></td>
+                <td><span class="tag">Partiel</span></td>
+                <td><span class="tag">Non</span></td>
+                <td><span class="tag">Non</span></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="page-footer">
+        <span>BAVINI - Business Plan Confidentiel</span>
+        <span>Page 9</span>
+    </div>
+</div>
+
+<!-- PAGE 10: SWOT -->
+<div class="page">
+    <div class="page-header">
+        <span class="page-header-logo">BAVINI</span>
+        <span class="page-header-title">Analyse Concurrentielle</span>
+    </div>
+
+    <h2>Analyse SWOT</h2>
+    <div class="swot-grid">
+        <div class="swot-card strengths">
+            <h4>Forces</h4>
+            <ul>
+                <li>Architecture multi-agents unique (8 agents)</li>
+                <li>100% dans le navigateur (zero install)</li>
+                <li>Support francais natif</li>
+                <li>6 integrations OAuth enterprise</li>
+                <li>Equipe technique solide</li>
+                <li>+3 500 tests automatises</li>
+            </ul>
+        </div>
+        <div class="swot-card weaknesses">
+            <h4>Faiblesses</h4>
+            <ul>
+                <li>Pas encore de clients payants</li>
+                <li>Marque inconnue</li>
+                <li>Equipe reduite (2 fondateurs)</li>
+                <li>Dependance aux APIs LLM externes</li>
+                <li>Pas de brevets</li>
+            </ul>
+        </div>
+        <div class="swot-card opportunities">
+            <h4>Opportunites</h4>
+            <ul>
+                <li>Marche en forte croissance (+35%/an)</li>
+                <li>Aucun leader francais etabli</li>
+                <li>Aides publiques (BPI, CIR, CII)</li>
+                <li>Penurie de developpeurs</li>
+                <li>Souverainete numerique EU</li>
+            </ul>
+        </div>
+        <div class="swot-card threats">
+            <h4>Menaces</h4>
+            <ul>
+                <li>Concurrents bien finances (Cursor $400M)</li>
+                <li>Evolution rapide des LLMs</li>
+                <li>Risque de commoditisation</li>
+                <li>Barriere a l'entree faible</li>
+                <li>Dependance Anthropic/OpenAI</li>
+            </ul>
+        </div>
+    </div>
+
+    <h2>Avantages Concurrentiels Durables</h2>
+    <div class="two-col">
+        <div>
+            <h3>Court terme (0-12 mois)</h3>
+            <ul>
+                <li><strong>First-mover France</strong> : capturer le marche francophone</li>
+                <li><strong>Architecture multi-agents</strong> : qualite superieure</li>
+                <li><strong>Prix competitif</strong> : 29EUR vs 20-50$ concurrents</li>
+            </ul>
+        </div>
+        <div>
+            <h3>Long terme (12-36 mois)</h3>
+            <ul>
+                <li><strong>Effet reseau</strong> : communaute, templates, marketplace</li>
+                <li><strong>Data moat</strong> : apprentissage sur donnees utilisateurs</li>
+                <li><strong>Partenariats</strong> : ecoles, agences, integrateurs</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="highlight-box">
+        <h3>Notre Positionnement Unique</h3>
+        <p><strong>"L'IDE IA francais qui combine la puissance de 8 agents specialises avec la simplicite d'utilisation d'un outil moderne, directement dans le navigateur."</strong></p>
+    </div>
+
+    <div class="page-footer">
+        <span>BAVINI - Business Plan Confidentiel</span>
+        <span>Page 10</span>
+    </div>
+</div>
+
+<!-- PAGE 11: PRODUIT -->
+<div class="page">
+    <div class="page-header">
+        <span class="page-header-logo">BAVINI</span>
+        <span class="page-header-title">Produit et Technologie</span>
+    </div>
+
+    <h1>5. Produit et Technologie</h1>
+
+    <h2>Architecture Multi-Agents</h2>
+    <p>Notre differentiation technologique cle : 8 agents IA specialises travaillant en parallele, contre 1 agent generique chez les concurrents.</p>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Agent</th>
+                <th>Role</th>
+                <th>Specialisation</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr><td><strong>Orchestrator</strong></td><td>Planification</td><td>Decompose les taches, distribue aux agents</td></tr>
+            <tr><td><strong>Coder</strong></td><td>Developpement</td><td>Generation de code propre et optimise</td></tr>
+            <tr><td><strong>Builder</strong></td><td>Construction</td><td>Build, dependencies, configuration</td></tr>
+            <tr><td><strong>Tester</strong></td><td>Tests</td><td>Tests automatises, validation qualite</td></tr>
+            <tr><td><strong>Deployer</strong></td><td>Deploiement</td><td>Git, CI/CD, mise en production</td></tr>
+            <tr><td><strong>Reviewer</strong></td><td>Qualite</td><td>Revue de code, best practices</td></tr>
+            <tr><td><strong>Fixer</strong></td><td>Correction</td><td>Debug, resolution de bugs, hotfix</td></tr>
+            <tr><td><strong>Explorer</strong></td><td>Analyse</td><td>Exploration codebase, documentation</td></tr>
+        </tbody>
+    </table>
+
+    <h2>Stack Technique</h2>
+    <div class="two-col">
+        <div>
+            <h3>Frontend</h3>
+            <ul>
+                <li><strong>React 18</strong> + TypeScript</li>
+                <li><strong>Remix</strong> (Framework full-stack)</li>
+                <li><strong>UnoCSS</strong> (Styling atomique)</li>
+                <li><strong>CodeMirror 6</strong> (Editeur)</li>
+                <li><strong>XTerm.js</strong> (Terminal)</li>
+            </ul>
+        </div>
+        <div>
+            <h3>Backend & Infra</h3>
+            <ul>
+                <li><strong>WebContainers</strong> (Runtime navigateur)</li>
+                <li><strong>Cloudflare Workers</strong> (Edge computing)</li>
+                <li><strong>Anthropic Claude</strong> (LLM principal)</li>
+                <li><strong>OAuth 2.0 + PKCE</strong> (Auth securisee)</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="page-footer">
+        <span>BAVINI - Business Plan Confidentiel</span>
+        <span>Page 11</span>
+    </div>
+</div>
+
+<!-- PAGE 12: PRODUIT (suite) -->
+<div class="page">
+    <div class="page-header">
+        <span class="page-header-logo">BAVINI</span>
+        <span class="page-header-title">Produit et Technologie</span>
+    </div>
+
+    <h2>Fonctionnalites Cles</h2>
+    <div class="three-col">
+        <div class="stat-card">
+            <div class="stat-value" style="font-size: 18px;">Chat IA</div>
+            <p style="font-size: 9px; margin-top: 8px;">Interface conversationnelle pour decrire ce que vous voulez creer</p>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" style="font-size: 18px;">Editeur Pro</div>
+            <p style="font-size: 9px; margin-top: 8px;">Editeur de code avec syntax highlighting, autocompletion, lint</p>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" style="font-size: 18px;">Preview Live</div>
+            <p style="font-size: 9px; margin-top: 8px;">Apercu en temps reel, responsive, tous les devices</p>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" style="font-size: 18px;">Terminal</div>
+            <p style="font-size: 9px; margin-top: 8px;">Terminal integre pour commandes npm, git, etc.</p>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" style="font-size: 18px;">Checkpoints</div>
+            <p style="font-size: 9px; margin-top: 8px;">Time-travel : revenez a n'importe quel etat du projet</p>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" style="font-size: 18px;">Deploy 1-clic</div>
+            <p style="font-size: 9px; margin-top: 8px;">Deploiement Netlify, Vercel, Cloudflare en un clic</p>
+        </div>
+    </div>
+
+    <h2>Roadmap Produit</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Phase</th>
+                <th>Periode</th>
+                <th>Fonctionnalites</th>
+                <th>Objectif</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>MVP+</strong></td>
+                <td>Q1 2026</td>
+                <td>Beta publique, pricing, onboarding</td>
+                <td>Premiers clients payants</td>
+            </tr>
+            <tr>
+                <td><strong>Growth</strong></td>
+                <td>Q2-Q3 2026</td>
+                <td>Templates marketplace, collaboration, API publique</td>
+                <td>Product-market fit</td>
+            </tr>
+            <tr>
+                <td><strong>Scale</strong></td>
+                <td>Q4 2026</td>
+                <td>Enterprise features, SSO, audit logs, SLA</td>
+                <td>Clients enterprise</td>
+            </tr>
+            <tr>
+                <td><strong>Expand</strong></td>
+                <td>2027</td>
+                <td>Multi-langue, mobile preview, plugins</td>
+                <td>Expansion europeenne</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>Indicateurs Qualite</h2>
+    <div class="stat-grid">
+        <div class="stat-card">
+            <div class="stat-value">3 500+</div>
+            <div class="stat-label">Tests automatises</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">140+</div>
+            <div class="stat-label">Outils integres</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">95%</div>
+            <div class="stat-label">Couverture tests</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">0</div>
+            <div class="stat-label">Installation requise</div>
+        </div>
+    </div>
+
+    <div class="page-footer">
+        <span>BAVINI - Business Plan Confidentiel</span>
+        <span>Page 12</span>
+    </div>
+</div>
+
+<!-- PAGE 13: STRATEGIE COMMERCIALE -->
+<div class="page">
+    <div class="page-header">
+        <span class="page-header-logo">BAVINI</span>
+        <span class="page-header-title">Strategie Commerciale</span>
+    </div>
+
+    <h1>6. Strategie Commerciale et Marketing</h1>
+
+    <h2>Modele de Pricing</h2>
+    <div class="three-col">
+        <div class="stat-card">
+            <div class="stat-value" style="font-size: 24px;">Free</div>
+            <div class="stat-label">0 EUR/mois</div>
+            <p style="font-size: 9px; margin-top: 10px; text-align: left;">
+                - 5 projets<br>
+                - 100 messages IA/jour<br>
+                - Templates basiques<br>
+                - Communaute Discord
+            </p>
+        </div>
+        <div class="stat-card" style="border: 2px solid var(--primary);">
+            <div class="stat-value" style="font-size: 24px; color: var(--primary);">Pro</div>
+            <div class="stat-label">29 EUR/mois</div>
+            <p style="font-size: 9px; margin-top: 10px; text-align: left;">
+                - Projets illimites<br>
+                - Messages IA illimites<br>
+                - Tous les templates<br>
+                - Support prioritaire<br>
+                - OAuth integrations
+            </p>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" style="font-size: 24px;">Team</div>
+            <div class="stat-label">79 EUR/user/mois</div>
+            <p style="font-size: 9px; margin-top: 10px; text-align: left;">
+                - Tout Pro +<br>
+                - Collaboration temps reel<br>
+                - Admin dashboard<br>
+                - SSO (SAML)<br>
+                - SLA 99.9%
+            </p>
+        </div>
+    </div>
+
+    <h2>Strategie Go-to-Market</h2>
+    <div class="two-col">
+        <div>
+            <h3>Phase 1 : France (Q1-Q2 2026)</h3>
+            <ul>
+                <li>Lancement beta publique</li>
+                <li>Content marketing (blog, YouTube)</li>
+                <li>Presence French Tech, meetups</li>
+                <li>Partenariats ecoles (42, Epitech)</li>
+                <li>Product Hunt launch</li>
+            </ul>
+        </div>
+        <div>
+            <h3>Phase 2 : Europe (Q3 2026+)</h3>
+            <ul>
+                <li>Localisation (DE, ES, IT)</li>
+                <li>Partenariats agences web</li>
+                <li>Presence salons tech europeens</li>
+                <li>Programme revendeurs</li>
+                <li>Enterprise sales</li>
+            </ul>
+        </div>
+    </div>
+
+    <h2>Canaux d'Acquisition</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Canal</th>
+                <th>Budget Y1</th>
+                <th>CAC estime</th>
+                <th>Part du mix</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr><td><strong>SEO / Content</strong></td><td>15 000 EUR</td><td>25 EUR</td><td>35%</td></tr>
+            <tr><td><strong>Social Ads</strong></td><td>25 000 EUR</td><td>40 EUR</td><td>25%</td></tr>
+            <tr><td><strong>Referral</strong></td><td>10 000 EUR</td><td>20 EUR</td><td>20%</td></tr>
+            <tr><td><strong>Events / PR</strong></td><td>15 000 EUR</td><td>60 EUR</td><td>10%</td></tr>
+            <tr><td><strong>Partnerships</strong></td><td>10 000 EUR</td><td>35 EUR</td><td>10%</td></tr>
+        </tbody>
+    </table>
+
+    <div class="page-footer">
+        <span>BAVINI - Business Plan Confidentiel</span>
+        <span>Page 13</span>
+    </div>
+</div>
+
+<!-- PAGE 14: STRATEGIE (suite) -->
+<div class="page">
+    <div class="page-header">
+        <span class="page-header-logo">BAVINI</span>
+        <span class="page-header-title">Strategie Commerciale</span>
+    </div>
+
+    <h2>Metriques Cles (Unit Economics)</h2>
+    <div class="stat-grid">
+        <div class="stat-card">
+            <div class="stat-value">870 EUR</div>
+            <div class="stat-label">LTV (Valeur Vie Client)</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">45 EUR</div>
+            <div class="stat-label">CAC (Cout d'Acquisition Client)</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">19.3x</div>
+            <div class="stat-label">Ratio LTV/CAC</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">&lt;3%</div>
+            <div class="stat-label">Churn (Taux d'attrition) mensuel cible</div>
+        </div>
+    </div>
+
+    <h3>Hypotheses de calcul LTV</h3>
+    <p style="font-size: 10px; color: var(--gray-500); margin-bottom: 10px;"><em>Note : Le calcul LTV utilise un churn conservateur de 3.5% (vs cible &lt;3%) pour des projections prudentes.</em></p>
+    <table>
+        <tr>
+            <td>ARPU moyen</td>
+            <td>45 EUR/mois</td>
+            <td>Duree de vie client</td>
+            <td>29 mois (churn 3.5%)</td>
+        </tr>
+        <tr>
+            <td>Marge brute</td>
+            <td>75%</td>
+            <td><strong>LTV</strong></td>
+            <td><strong>≈ 870 EUR (avec ajustements)</strong></td>
+        </tr>
+    </table>
+
+    <h2>Strategie de Retention</h2>
+    <div class="two-col">
+        <div>
+            <h3>Tactiques</h3>
+            <ul>
+                <li><strong>Onboarding personnalise</strong> : guide interactif</li>
+                <li><strong>Templates evolues</strong> : nouveautes regulieres</li>
+                <li><strong>Communaute</strong> : Discord, entraide, showcases</li>
+                <li><strong>Feature releases</strong> : nouveautes mensuelles</li>
+            </ul>
+        </div>
+        <div>
+            <h3>Indicateurs surveilles</h3>
+            <ul>
+                <li><strong>DAU/MAU</strong> : engagement quotidien</li>
+                <li><strong>Time-to-value</strong> : &lt;30 min premier projet</li>
+                <li><strong>NPS</strong> : Net Promoter Score &gt;50</li>
+                <li><strong>Feature adoption</strong> : usage des nouvelles features</li>
+            </ul>
+        </div>
+    </div>
+
+    <h2>Partenariats Strategiques</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Type</th>
+                <th>Partenaires cibles</th>
+                <th>Valeur</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Education</strong></td>
+                <td>42, Epitech, Le Wagon, OpenClassrooms</td>
+                <td>Pipeline etudiants, credibilite</td>
+            </tr>
+            <tr>
+                <td><strong>Agences</strong></td>
+                <td>Agences web, ESN, freelances</td>
+                <td>Volume, cas d'usage pro</td>
+            </tr>
+            <tr>
+                <td><strong>Tech</strong></td>
+                <td>Netlify, Vercel, Supabase</td>
+                <td>Integrations, co-marketing</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="page-footer">
+        <span>BAVINI - Business Plan Confidentiel</span>
+        <span>Page 14</span>
+    </div>
+</div>
+
+<!-- PAGE 15: PLAN OPERATIONNEL -->
+<div class="page">
+    <div class="page-header">
+        <span class="page-header-logo">BAVINI</span>
+        <span class="page-header-title">Plan Operationnel</span>
+    </div>
+
+    <h1>7. Plan Operationnel</h1>
+
+    <h2>Organisation Cible (Fin Y1)</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Poste</th>
+                <th>Personne</th>
+                <th>Responsabilites</th>
+                <th>Date</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>CEO</strong></td>
+                <td>Robespierre Ganro</td>
+                <td>Vision, business dev, levees, partnerships</td>
+                <td>Fondateur</td>
+            </tr>
+            <tr>
+                <td><strong>CTO</strong></td>
+                <td>Mathis Noel</td>
+                <td>Tech lead, architecture, R&D</td>
+                <td>Fondateur</td>
+            </tr>
+            <tr>
+                <td><strong>Dev Senior</strong></td>
+                <td>A recruter</td>
+                <td>Frontend/Backend, features</td>
+                <td>Q2 2026</td>
+            </tr>
+            <tr>
+                <td><strong>Growth Manager</strong></td>
+                <td>A recruter</td>
+                <td>Marketing, acquisition, content</td>
+                <td>Q3 2026</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>Infrastructure et Couts</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Poste</th>
+                <th>Fournisseur</th>
+                <th>Cout mensuel</th>
+                <th>Cout annuel</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Hosting / CDN</strong></td>
+                <td>Cloudflare Workers</td>
+                <td>235 EUR</td>
+                <td>2 820 EUR</td>
+            </tr>
+            <tr>
+                <td><strong>API IA (Claude)</strong></td>
+                <td>Anthropic</td>
+                <td>3 840 EUR</td>
+                <td>46 100 EUR</td>
+            </tr>
+            <tr>
+                <td><strong>Database</strong></td>
+                <td>Supabase</td>
+                <td>130 EUR</td>
+                <td>1 575 EUR</td>
+            </tr>
+            <tr>
+                <td><strong>Monitoring</strong></td>
+                <td>Sentry, LogRocket</td>
+                <td>140 EUR</td>
+                <td>1 700 EUR</td>
+            </tr>
+            <tr>
+                <td><strong>Outils (GitHub, etc.)</strong></td>
+                <td>Divers</td>
+                <td>215 EUR</td>
+                <td>2 600 EUR</td>
+            </tr>
+            <tr>
+                <td><strong>Total Infrastructure</strong></td>
+                <td></td>
+                <td><strong>4 560 EUR</strong></td>
+                <td><strong>54 795 EUR</strong></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>Processus Cles</h2>
+    <div class="two-col">
+        <div>
+            <h3>Developpement</h3>
+            <ul>
+                <li>Sprints de 2 semaines</li>
+                <li>Code review obligatoire</li>
+                <li>CI/CD automatise</li>
+                <li>Tests avant merge</li>
+            </ul>
+        </div>
+        <div>
+            <h3>Support Client</h3>
+            <ul>
+                <li>Discord communaute (gratuit)</li>
+                <li>Email support (Pro)</li>
+                <li>Chat prioritaire (Team)</li>
+                <li>SLA contractuel (Enterprise)</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="page-footer">
+        <span>BAVINI - Business Plan Confidentiel</span>
+        <span>Page 15</span>
+    </div>
+</div>
+
+<!-- PAGE 16: PROJECTIONS FINANCIERES -->
+<div class="page">
+    <div class="page-header">
+        <span class="page-header-logo">BAVINI</span>
+        <span class="page-header-title">Projections Financieres</span>
+    </div>
+
+    <h1>8. Projections Financieres</h1>
+
+    <h2>Compte de Resultat Previsionnel (3 ans)</h2>
+    <table>
+        <thead>
+            <tr>
+                <th></th>
+                <th>Annee 1</th>
+                <th>Annee 2</th>
+                <th>Annee 3</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr style="background: var(--gray-50);">
+                <td><strong>Revenus (MRR cumule + Aides)</strong></td>
+                <td><strong>154 560 EUR</strong></td>
+                <td><strong>1 800 000 EUR</strong></td>
+                <td><strong>7 200 000 EUR</strong></td>
+            </tr>
+            <tr>
+                <td>Utilisateurs Free</td>
+                <td>5 000</td>
+                <td>25 000</td>
+                <td>100 000</td>
+            </tr>
+            <tr>
+                <td>Utilisateurs payants</td>
+                <td>620</td>
+                <td>3 500</td>
+                <td>15 000</td>
+            </tr>
+            <tr>
+                <td>Taux conversion</td>
+                <td>12.4%</td>
+                <td>14%</td>
+                <td>15%</td>
+            </tr>
+            <tr>
+                <td>ARPU</td>
+                <td>45 EUR</td>
+                <td>43 EUR</td>
+                <td>40 EUR</td>
+            </tr>
+            <tr style="background: var(--gray-50);">
+                <td><strong>Couts directs (25%)</strong></td>
+                <td><strong>38 640 EUR</strong></td>
+                <td><strong>450 000 EUR</strong></td>
+                <td><strong>1 800 000 EUR</strong></td>
+            </tr>
+            <tr style="background: rgba(16, 185, 129, 0.1);">
+                <td><strong>Marge brute (75%)</strong></td>
+                <td><strong>115 920 EUR</strong></td>
+                <td><strong>1 350 000 EUR</strong></td>
+                <td><strong>5 400 000 EUR</strong></td>
+            </tr>
+            <tr>
+                <td>Salaires (charges comprises)</td>
+                <td>176 175 EUR</td>
+                <td>450 000 EUR</td>
+                <td>1 500 000 EUR</td>
+            </tr>
+            <tr>
+                <td>Marketing</td>
+                <td>75 000 EUR</td>
+                <td>350 000 EUR</td>
+                <td>800 000 EUR</td>
+            </tr>
+            <tr>
+                <td>Infrastructure</td>
+                <td>54 795 EUR</td>
+                <td>150 000 EUR</td>
+                <td>400 000 EUR</td>
+            </tr>
+            <tr>
+                <td>Autres (legal, admin)</td>
+                <td>24 150 EUR</td>
+                <td>80 000 EUR</td>
+                <td>200 000 EUR</td>
+            </tr>
+            <tr style="background: var(--gray-50);">
+                <td><strong>Total charges</strong></td>
+                <td><strong>330 120 EUR</strong></td>
+                <td><strong>1 030 000 EUR</strong></td>
+                <td><strong>2 900 000 EUR</strong></td>
+            </tr>
+            <tr style="background: rgba(139, 92, 246, 0.1);">
+                <td><strong>Resultat net</strong></td>
+                <td><strong>-175 560 EUR</strong></td>
+                <td><strong>320 000 EUR</strong></td>
+                <td><strong>2 500 000 EUR</strong></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="page-footer">
+        <span>BAVINI - Business Plan Confidentiel</span>
+        <span>Page 16</span>
+    </div>
+</div>
+
+<!-- PAGE 17: PROJECTIONS FINANCIERES (detail mensuel Y1) -->
+<div class="page">
+    <div class="page-header">
+        <span class="page-header-logo">BAVINI</span>
+        <span class="page-header-title">Projections Financieres</span>
+    </div>
+
+    <h2>Detail Mensuel Annee 1</h2>
+    <table style="font-size: 8px;">
+        <thead>
+            <tr>
+                <th>Mois</th>
+                <th>M1</th>
+                <th>M2</th>
+                <th>M3</th>
+                <th>M4</th>
+                <th>M5</th>
+                <th>M6</th>
+                <th>M7</th>
+                <th>M8</th>
+                <th>M9</th>
+                <th>M10</th>
+                <th>M11</th>
+                <th>M12</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Users Free</td>
+                <td>200</td>
+                <td>450</td>
+                <td>800</td>
+                <td>1200</td>
+                <td>1700</td>
+                <td>2300</td>
+                <td>2900</td>
+                <td>3500</td>
+                <td>4000</td>
+                <td>4400</td>
+                <td>4700</td>
+                <td>5000</td>
+            </tr>
+            <tr>
+                <td>Users Pro</td>
+                <td>10</td>
+                <td>30</td>
+                <td>60</td>
+                <td>100</td>
+                <td>160</td>
+                <td>230</td>
+                <td>310</td>
+                <td>390</td>
+                <td>470</td>
+                <td>530</td>
+                <td>580</td>
+                <td>620</td>
+            </tr>
+            <tr style="background: var(--gray-50);">
+                <td><strong>MRR (Revenu Mensuel Recurrent)</strong></td>
+                <td>390</td>
+                <td>1.1K</td>
+                <td>2.2K</td>
+                <td>3.7K</td>
+                <td>5.9K</td>
+                <td>8.4K</td>
+                <td>11.2K</td>
+                <td>14.1K</td>
+                <td>16.9K</td>
+                <td>18.9K</td>
+                <td>20.3K</td>
+                <td>21.5K</td>
+            </tr>
+            <tr>
+                <td>Charges</td>
+                <td>17K</td>
+                <td>14K</td>
+                <td>16K</td>
+                <td>26K</td>
+                <td>25K</td>
+                <td>30K</td>
+                <td>32K</td>
+                <td>33K</td>
+                <td>34K</td>
+                <td>34K</td>
+                <td>34K</td>
+                <td>34K</td>
+            </tr>
+            <tr style="background: rgba(139, 92, 246, 0.1);">
+                <td><strong>Cash flow</strong></td>
+                <td>-17K</td>
+                <td>-13K</td>
+                <td>-14K</td>
+                <td>-8K</td>
+                <td>-19K</td>
+                <td>-7K</td>
+                <td>-21K</td>
+                <td>-19K</td>
+                <td>-17K</td>
+                <td>-16K</td>
+                <td>-13K</td>
+                <td>-12K</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>Evolution de la Tresorerie</h2>
+    <div class="highlight-box">
+        <p><strong>Tresorerie initiale</strong> : 300 000 EUR (levee pre-seed)</p>
+        <p><strong>Point mort (break-even)</strong> : Mois 18</p>
+        <p><strong>Tresorerie fin Y1</strong> : 124 440 EUR</p>
+        <p><strong>Runway sans revenus</strong> : 12 mois</p>
+    </div>
+
+    <h2>Scenarios</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Scenario</th>
+                <th>ARR (Revenu Annuel Recurrent) Y1</th>
+                <th>ARR Y3</th>
+                <th>Hypotheses</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Pessimiste</strong></td>
+                <td>200 000 EUR</td>
+                <td>3 000 000 EUR</td>
+                <td>Conversion 8%, croissance lente</td>
+            </tr>
+            <tr style="background: var(--gray-50);">
+                <td><strong>Realiste</strong></td>
+                <td>258 000 EUR</td>
+                <td>7 200 000 EUR</td>
+                <td>Conversion 12-15%, croissance soutenue</td>
+            </tr>
+            <tr>
+                <td><strong>Optimiste</strong></td>
+                <td>500 000 EUR</td>
+                <td>15 000 000 EUR</td>
+                <td>Viralite, partenariats majeurs</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="page-footer">
+        <span>BAVINI - Business Plan Confidentiel</span>
+        <span>Page 17</span>
+    </div>
+</div>
+
+<!-- PAGE 18: PLAN DE FINANCEMENT -->
+<div class="page">
+    <div class="page-header">
+        <span class="page-header-logo">BAVINI</span>
+        <span class="page-header-title">Plan de Financement</span>
+    </div>
+
+    <h1>9. Plan de Financement</h1>
+
+    <h2>Levee Pre-Seed : 300 000 EUR</h2>
+    <div class="stat-grid">
+        <div class="stat-card">
+            <div class="stat-value">300K EUR</div>
+            <div class="stat-label">Montant leve</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">950K EUR</div>
+            <div class="stat-label">Valuation pre-money</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">~24%</div>
+            <div class="stat-label">Dilution</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">12 mois</div>
+            <div class="stat-label">Runway</div>
+        </div>
+    </div>
+
+    <h2>Repartition des Fonds</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Poste</th>
+                <th>%</th>
+                <th>Montant</th>
+                <th>Details</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Produit & Tech</strong></td>
+                <td>40%</td>
+                <td>120 000 EUR</td>
+                <td>API IA, infra cloud, outils dev</td>
+            </tr>
+            <tr>
+                <td><strong>Marketing & Growth</strong></td>
+                <td>30%</td>
+                <td>90 000 EUR</td>
+                <td>Acquisition, content, events</td>
+            </tr>
+            <tr>
+                <td><strong>Recrutement</strong></td>
+                <td>20%</td>
+                <td>60 000 EUR</td>
+                <td>1 dev senior (6 mois salaire)</td>
+            </tr>
+            <tr>
+                <td><strong>Operations & Legal</strong></td>
+                <td>10%</td>
+                <td>30 000 EUR</td>
+                <td>Creation SAS, comptable, juridique</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>Milestones de la Levee</h2>
+    <div class="timeline">
+        <div class="timeline-item">
+            <div class="timeline-date">M3</div>
+            <div class="timeline-title">100 utilisateurs payants</div>
+            <div class="timeline-desc">Validation product-market fit initial</div>
+        </div>
+        <div class="timeline-item">
+            <div class="timeline-date">M6</div>
+            <div class="timeline-title">8.4K EUR MRR</div>
+            <div class="timeline-desc">Traction commerciale demontree</div>
+        </div>
+        <div class="timeline-item">
+            <div class="timeline-date">M9</div>
+            <div class="timeline-title">16.9K EUR MRR + Equipe 4 personnes</div>
+            <div class="timeline-desc">Capacite d'execution prouvee</div>
+        </div>
+        <div class="timeline-item">
+            <div class="timeline-date">M12</div>
+            <div class="timeline-title">21.5K EUR MRR + Preparation Seed</div>
+            <div class="timeline-desc">Pret pour levee Serie Seed (1,5M EUR)</div>
+        </div>
+    </div>
+
+    <div class="page-footer">
+        <span>BAVINI - Business Plan Confidentiel</span>
+        <span>Page 18</span>
+    </div>
+</div>
+
+<!-- PAGE 19: SOURCES DE FINANCEMENT -->
+<div class="page">
+    <div class="page-header">
+        <span class="page-header-logo">BAVINI</span>
+        <span class="page-header-title">Plan de Financement</span>
+    </div>
+
+    <h2>Sources de Financement Ciblees</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Source</th>
+                <th>Montant vise</th>
+                <th>Type</th>
+                <th>Statut</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Business Angels</strong></td>
+                <td>150 000 - 200 000 EUR</td>
+                <td>Equity</td>
+                <td>A prospecter</td>
+            </tr>
+            <tr>
+                <td><strong>BPI France - Bourse French Tech</strong></td>
+                <td>30 000 EUR</td>
+                <td>Subvention</td>
+                <td>A demander</td>
+            </tr>
+            <tr>
+                <td><strong>Pret bancaire (garanti BPI)</strong></td>
+                <td>50 000 - 100 000 EUR</td>
+                <td>Dette</td>
+                <td>A demander</td>
+            </tr>
+            <tr>
+                <td><strong>CIR / CII</strong></td>
+                <td>30 000 EUR (Y1)</td>
+                <td>Credit d'impot</td>
+                <td>Automatique</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>Strategie par Type d'Investisseur</h2>
+    <div class="two-col">
+        <div>
+            <h3>Business Angels</h3>
+            <ul>
+                <li>Profil recherche : tech, SaaS, AI</li>
+                <li>Ticket : 25-50K EUR individuel</li>
+                <li>Valeur ajoutee : reseau, expertise</li>
+                <li>Reseaux : France Angels, Angel Square</li>
+            </ul>
+        </div>
+        <div>
+            <h3>Banques</h3>
+            <ul>
+                <li>Pret garanti BPI (70-90%)</li>
+                <li>Compte pro + carte business</li>
+                <li>Focus : plan de tresorerie solide</li>
+                <li>Cibles : BNP, SG, CM, LCL</li>
+            </ul>
+        </div>
+    </div>
+
+    <h2>Calendrier de Financement</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Phase</th>
+                <th>Periode</th>
+                <th>Objectif</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Pre-Seed</strong></td>
+                <td>Q1 2026</td>
+                <td>300 000 EUR (actuel)</td>
+            </tr>
+            <tr>
+                <td><strong>Seed</strong></td>
+                <td>Q4 2026 / Q1 2027</td>
+                <td>1 000 000 - 2 000 000 EUR</td>
+            </tr>
+            <tr>
+                <td><strong>Serie A</strong></td>
+                <td>2028</td>
+                <td>5 000 000 - 10 000 000 EUR</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="page-footer">
+        <span>BAVINI - Business Plan Confidentiel</span>
+        <span>Page 19</span>
+    </div>
+</div>
+
+<!-- PAGE 20: ANALYSE DES RISQUES -->
+<div class="page">
+    <div class="page-header">
+        <span class="page-header-logo">BAVINI</span>
+        <span class="page-header-title">Analyse des Risques</span>
+    </div>
+
+    <h1>10. Analyse des Risques</h1>
+
+    <h2>Matrice des Risques</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Risque</th>
+                <th>Probabilite</th>
+                <th>Impact</th>
+                <th>Mitigation</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Dependance API IA</strong></td>
+                <td><span class="tag">Moyenne</span></td>
+                <td><span class="tag" style="background: rgba(239, 68, 68, 0.15); color: var(--danger);">Eleve</span></td>
+                <td>Multi-provider (Claude + GPT), caching, fallbacks</td>
+            </tr>
+            <tr>
+                <td><strong>Concurrence forte</strong></td>
+                <td><span class="tag" style="background: rgba(239, 68, 68, 0.15); color: var(--danger);">Elevee</span></td>
+                <td><span class="tag">Moyen</span></td>
+                <td>Differenciation FR, niche, rapidite execution</td>
+            </tr>
+            <tr>
+                <td><strong>Recrutement difficile</strong></td>
+                <td><span class="tag">Moyenne</span></td>
+                <td><span class="tag">Moyen</span></td>
+                <td>BSPCE, remote-first, reseau ecoles</td>
+            </tr>
+            <tr>
+                <td><strong>Churn eleve</strong></td>
+                <td><span class="tag">Moyenne</span></td>
+                <td><span class="tag" style="background: rgba(239, 68, 68, 0.15); color: var(--danger);">Eleve</span></td>
+                <td>Onboarding, features stickiness, support</td>
+            </tr>
+            <tr>
+                <td><strong>Problemes techniques</strong></td>
+                <td><span class="tag" style="background: rgba(16, 185, 129, 0.15); color: var(--success);">Faible</span></td>
+                <td><span class="tag">Moyen</span></td>
+                <td>Tests automatises, monitoring, CI/CD</td>
+            </tr>
+            <tr>
+                <td><strong>Reglementation IA</strong></td>
+                <td><span class="tag">Moyenne</span></td>
+                <td><span class="tag">Moyen</span></td>
+                <td>Veille juridique, conformite RGPD, AI Act</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>Plans de Contingence</h2>
+    <div class="two-col">
+        <div>
+            <h3>Si croissance lente</h3>
+            <ul>
+                <li>Pivoter vers B2B/Enterprise</li>
+                <li>Reduire burn rate</li>
+                <li>Focus sur un segment</li>
+                <li>Recherche de subventions</li>
+            </ul>
+        </div>
+        <div>
+            <h3>Si levee difficile</h3>
+            <ul>
+                <li>Bootstrap + revenus clients</li>
+                <li>Prets BPI / bancaires</li>
+                <li>Revenue-based financing</li>
+                <li>Accelerateurs (Y Combinator, eFounders)</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="highlight-box">
+        <h3>Facteurs Cles de Succes</h3>
+        <ul>
+            <li><strong>Execution rapide</strong> : Livrer des features de qualite regulierement</li>
+            <li><strong>Product-market fit</strong> : Ecoute client, iteration constante</li>
+            <li><strong>Equipe</strong> : Recruter les bons profils au bon moment</li>
+            <li><strong>Cash management</strong> : Surveiller le runway, anticiper les besoins</li>
+        </ul>
+    </div>
+
+    <div class="page-footer">
+        <span>BAVINI - Business Plan Confidentiel</span>
+        <span>Page 20</span>
+    </div>
+</div>
+
+<!-- PAGE 21: ANNEXES -->
+<div class="page">
+    <div class="page-header">
+        <span class="page-header-logo">BAVINI</span>
+        <span class="page-header-title">Annexes</span>
+    </div>
+
+    <h1>11. Annexes</h1>
+
+    <h2>A. Glossaire</h2>
+    <table>
+        <tbody>
+            <tr><td><strong>ARR</strong></td><td>Annual Recurring Revenue - Revenus recurrents annuels</td></tr>
+            <tr><td><strong>MRR</strong></td><td>Monthly Recurring Revenue - Revenus recurrents mensuels</td></tr>
+            <tr><td><strong>CAC</strong></td><td>Customer Acquisition Cost - Cout d'acquisition client</td></tr>
+            <tr><td><strong>LTV</strong></td><td>Lifetime Value - Valeur vie client</td></tr>
+            <tr><td><strong>ARPU</strong></td><td>Average Revenue Per User - Revenu moyen par utilisateur</td></tr>
+            <tr><td><strong>Churn</strong></td><td>Taux d'attrition - pourcentage de clients perdus</td></tr>
+            <tr><td><strong>SaaS</strong></td><td>Software as a Service - Logiciel en tant que service</td></tr>
+            <tr><td><strong>LLM</strong></td><td>Large Language Model - Grand modele de langage</td></tr>
+            <tr><td><strong>IDE</strong></td><td>Integrated Development Environment</td></tr>
+        </tbody>
+    </table>
+
+    <h2>B. References et Sources</h2>
+    <ul>
+        <li>Gartner - "Forecast: Enterprise Software, Worldwide" (2025)</li>
+        <li>Forrester - "The State of Low-Code Development" (2025)</li>
+        <li>EU Digital Skills Report (2025)</li>
+        <li>Crunchbase - Donnees de financement startups AI Dev Tools</li>
+        <li>SaaS Metrics Benchmarks - OpenView Partners</li>
+    </ul>
+
+    <h2>C. Contact</h2>
+    <div class="highlight-box">
+        <p><strong>BAVINI</strong></p>
+        <p>Robespierre Ganro - CEO</p>
+        <p>Mathis Noel - CTO</p>
+        <p style="margin-top: 15px;">
+            Email : bavini.dev@gmail.com<br>
+            Site : www.bavini.dev
+        </p>
+    </div>
+
+    <div style="text-align: center; margin-top: 40px; padding: 30px; background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(6, 182, 212, 0.1)); border-radius: 12px;">
+        <p style="font-size: 14px; color: var(--gray-600); margin-bottom: 10px;">Merci pour votre attention</p>
+        <p style="font-family: 'Space Grotesk', sans-serif; font-size: 28px; font-weight: 700; color: var(--primary);">BAVINI</p>
+        <p style="font-size: 12px; color: var(--gray-500);">L'IDE IA qui democratise le developpement web</p>
+    </div>
+
+    <div class="page-footer">
+        <span>BAVINI - Business Plan Confidentiel</span>
+        <span>Page 21</span>
+    </div>
+</div>
+
+</body>
+</html>

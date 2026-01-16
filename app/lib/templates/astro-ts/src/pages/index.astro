@@ -1,0 +1,49 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Counter from '../components/Counter';
+---
+
+<Layout title="Astro + TypeScript">
+  <main class="container">
+    <h1>Bienvenue sur Astro</h1>
+    <p>Site statique avec TypeScript et Islands Architecture</p>
+
+    <section>
+      <h2>Composant React Interactif</h2>
+      <Counter client:load initialCount={0} />
+    </section>
+
+    <section>
+      <h2>Fonctionnalites</h2>
+      <ul>
+        <li>Astro 4 avec Islands</li>
+        <li>TypeScript strict</li>
+        <li>React pour les composants interactifs</li>
+        <li>Tests avec Vitest</li>
+      </ul>
+    </section>
+  </main>
+</Layout>
+
+<style>
+  h1 {
+    color: #ff5d01;
+    margin-bottom: 1rem;
+  }
+
+  section {
+    margin-top: 2rem;
+  }
+
+  h2 {
+    margin-bottom: 0.5rem;
+  }
+
+  ul {
+    padding-left: 1.5rem;
+  }
+
+  li {
+    margin-bottom: 0.5rem;
+  }
+</style>

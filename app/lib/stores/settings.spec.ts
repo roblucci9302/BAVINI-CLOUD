@@ -1,0 +1,85 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+// mock workbenchStore to avoid indexedDB dependency
+vi.mock('./workbench', () => ({
+  workbenchStore: {
+    toggleTerminal: vi.fn(),
+  },
+}));
+
+// import after mocking
+import { shortcutsStore, settingsStore, type Shortcut } from './settings';
+
+describe('settings store', () => {
+  describe('shortcutsStore', () => {
+    it('should have toggleTerminal shortcut by default', () => {
+      const shortcuts = shortcutsStore.get();
+
+      expect(shortcuts.toggleTerminal).toBeDefined();
+      expect(shortcuts.toggleTerminal.key).toBe('j');
+      expect(shortcuts.toggleTerminal.ctrlOrMetaKey).toBe(true);
+    });
+
+    it('should have action function for toggleTerminal', () => {
+      const shortcuts = shortcutsStore.get();
+
+      expect(typeof shortcuts.toggleTerminal.action).toBe('function');
+    });
+  });
+
+  describe('settingsStore', () => {
+    it('should contain shortcuts from shortcutsStore', () => {
+      const settings = settingsStore.get();
+
+      expect(settings.shortcuts).toBeDefined();
+      expect(settings.shortcuts.toggleTerminal).toBeDefined();
+    });
+
+    it('should sync with shortcutsStore updates', () => {
+      const newShortcut: Shortcut = {
+        key: 'k',
+        ctrlOrMetaKey: true,
+        action: vi.fn(),
+      };
+
+      shortcutsStore.setKey('toggleTerminal', newShortcut);
+
+      const settings = settingsStore.get();
+
+      expect(settings.shortcuts.toggleTerminal.key).toBe('k');
+    });
+  });
+
+  describe('Shortcut interface', () => {
+    it('should support optional modifier keys', () => {
+      const shortcut: Shortcut = {
+        key: 'a',
+        action: vi.fn(),
+      };
+
+      expect(shortcut.ctrlKey).toBeUndefined();
+      expect(shortcut.shiftKey).toBeUndefined();
+      expect(shortcut.altKey).toBeUndefined();
+      expect(shortcut.metaKey).toBeUndefined();
+      expect(shortcut.ctrlOrMetaKey).toBeUndefined();
+    });
+
+    it('should support all modifier keys', () => {
+      const shortcut: Shortcut = {
+        key: 's',
+        ctrlKey: true,
+        shiftKey: true,
+        altKey: true,
+        metaKey: true,
+        ctrlOrMetaKey: false,
+        action: vi.fn(),
+      };
+
+      expect(shortcut.ctrlKey).toBe(true);
+      expect(shortcut.shiftKey).toBe(true);
+      expect(shortcut.altKey).toBe(true);
+      expect(shortcut.metaKey).toBe(true);
+      expect(shortcut.ctrlOrMetaKey).toBe(false);
+    });
+  });
+});

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Fond bouclier -->
+  <path d="M4 2C4 0.9 4.9 0 6 0H26C27.1 0 28 0.9 28 2V20C28 22 16 30 16 30C16 30 4 22 4 20V2Z" fill="#2F4F4F"/>
+  <!-- Symbole central -->
+  <circle cx="16" cy="14" r="3" fill="#F5F5DC"/>
+  <!-- Têtes -->
+  <ellipse cx="16" cy="6" rx="2.5" ry="3" fill="#F5F5DC"/>
+  <ellipse cx="16" cy="22" rx="2.5" ry="3" fill="#F5F5DC"/>
+  <ellipse cx="8" cy="14" rx="3" ry="2.5" fill="#F5F5DC"/>
+  <ellipse cx="24" cy="14" rx="3" ry="2.5" fill="#F5F5DC"/>
+  <!-- Connexions -->
+  <rect x="14.5" y="8" width="3" height="4" fill="#F5F5DC"/>
+  <rect x="14.5" y="16" width="3" height="4" fill="#F5F5DC"/>
+  <rect x="10" y="12.5" width="4" height="3" fill="#F5F5DC"/>
+  <rect x="18" y="12.5" width="4" height="3" fill="#F5F5DC"/>
+</svg>

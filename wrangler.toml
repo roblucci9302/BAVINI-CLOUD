@@ -1,0 +1,94 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "bavini"
+compatibility_flags = ["nodejs_compat"]
+compatibility_date = "2024-07-01"
+pages_build_output_dir = "./build/client"
+
+# ============================================================================
+# KV NAMESPACES (Dynamic Templates Storage)
+# ============================================================================
+#
+# ⚠️  SETUP REQUIRED - Follow these steps to enable KV storage:
+#
+# 1. Create the production namespace:
+#    pnpm wrangler kv:namespace create "TEMPLATES_KV"
+#    Copy the "id" from the output
+#
+# 2. Create the preview namespace:
+#    pnpm wrangler kv:namespace create "TEMPLATES_KV" --preview
+#    Copy the "preview_id" from the output
+#
+# 3. Uncomment the section below and replace the placeholder IDs
+#
+# ============================================================================
+
+# UNCOMMENT AND CONFIGURE AFTER CREATING NAMESPACES:
+# [[kv_namespaces]]
+# binding = "TEMPLATES_KV"
+# id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"           # <-- Replace with your production KV ID
+# preview_id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"   # <-- Replace with your preview KV ID
+
+# ============================================================================
+# R2 BUCKETS (Template Files Storage)
+# ============================================================================
+# Create with: pnpm wrangler r2 bucket create templates-storage
+
+[[r2_buckets]]
+binding = "TEMPLATES_R2"
+bucket_name = "templates-storage"
+
+# ============================================================================
+# ENVIRONMENT VARIABLES
+# ============================================================================
+
+[vars]
+ENVIRONMENT = "development"
+TEMPLATE_CACHE_TTL = "300"            # 5 minutes
+MAX_TEMPLATE_SIZE = "1048576"         # 1MB
+TEMPLATE_ENGINE = "handlebars"
+
+# ============================================================================
+# SECRETS (set via wrangler secret put)
+# ============================================================================
+# OAuth Provider Secrets
+# These must be set via `wrangler secret put <SECRET_NAME>` or in the Cloudflare dashboard
+# DO NOT commit actual values - these are placeholders
+#
+# Required for OAuth authentication:
+# - GITHUB_CLIENT_ID: GitHub OAuth App Client ID
+# - GITHUB_CLIENT_SECRET: GitHub OAuth App Client Secret
+# - NETLIFY_CLIENT_ID: Netlify OAuth App Client ID
+# - NETLIFY_CLIENT_SECRET: Netlify OAuth App Client Secret
+# - SUPABASE_CLIENT_ID: Supabase OAuth Client ID
+# - SUPABASE_CLIENT_SECRET: Supabase OAuth Client Secret
+#
+# Required for Admin API:
+# - ADMIN_API_KEY: API key for admin endpoints
+#
+# Set secrets with:
+#   wrangler secret put GITHUB_CLIENT_ID
+#   wrangler secret put GITHUB_CLIENT_SECRET
+#   wrangler secret put ADMIN_API_KEY
+#   etc.
+
+# ============================================================================
+# PRODUCTION ENVIRONMENT
+# ============================================================================
+
+[env.production]
+name = "bavini-prod"
+
+[env.production.vars]
+ENVIRONMENT = "production"
+TEMPLATE_CACHE_TTL = "600"            # 10 minutes
+
+# ============================================================================
+# PREVIEW ENVIRONMENT (for PR previews and testing)
+# ============================================================================
+
+[env.preview]
+name = "bavini-preview"
+
+[env.preview.vars]
+ENVIRONMENT = "preview"
+TEMPLATE_CACHE_TTL = "60"             # 1 minute

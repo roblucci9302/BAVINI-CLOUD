@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Démo Styles Messages IA - BAVINI</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #e4e4e7;
+      padding: 40px 20px;
+      min-height: 100vh;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 40px;
+      font-weight: 500;
+      color: #a1a1aa;
+      font-size: 1.5rem;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+      gap: 30px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .option {
+      background: #16162a;
+      border-radius: 16px;
+      padding: 24px;
+      border: 1px solid #2a2a4a;
+    }
+
+    .option-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #8b5cf6;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .chat-container {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .user-msg {
+      background: #2d2d4a;
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 0.9rem;
+      align-self: flex-end;
+      max-width: 80%;
+    }
+
+    /* ========== STYLE ACTUEL ========== */
+    .current .ai-msg {
+      background: #27273f;
+      padding: 24px;
+      border-radius: 12px;
+      line-height: 1.6;
+    }
+
+    .current .ai-msg h3 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #3f3f5a;
+      text-transform: uppercase;
+    }
+
+    .current .ai-msg p {
+      margin-bottom: 12px;
+      font-size: 0.95rem;
+    }
+
+    .current .ai-msg ul {
+      margin-left: 20px;
+      margin-bottom: 12px;
+    }
+
+    .current .ai-msg li {
+      margin-bottom: 8px;
+    }
+
+    /* ========== OPTION 1: COMPACT ========== */
+    .option1 .ai-msg {
+      background: #27273f;
+      padding: 14px 16px;
+      border-radius: 10px;
+      line-height: 1.45;
+    }
+
+    .option1 .ai-msg h3 {
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #a1a1aa;
+    }
+
+    .option1 .ai-msg p {
+      margin-bottom: 8px;
+      font-size: 0.875rem;
+    }
+
+    .option1 .ai-msg ul {
+      margin-left: 16px;
+      margin-bottom: 8px;
+    }
+
+    .option1 .ai-msg li {
+      margin-bottom: 4px;
+      font-size: 0.875rem;
+    }
+
+    /* ========== OPTION 2: MINIMALISTE ========== */
+    .option2 .ai-msg {
+      background: transparent;
+      padding: 12px 0;
+      line-height: 1.5;
+    }
+
+    .option2 .ai-msg h3 {
+      font-size: 0.85rem;
+      font-weight: 500;
+      margin-bottom: 8px;
+      color: #71717a;
+      letter-spacing: 0.3px;
+    }
+
+    .option2 .ai-msg p {
+      margin-bottom: 8px;
+      font-size: 0.9rem;
+      color: #d4d4d8;
+    }
+
+    .option2 .ai-msg ul {
+      margin-left: 16px;
+      margin-bottom: 8px;
+    }
+
+    .option2 .ai-msg li {
+      margin-bottom: 4px;
+      font-size: 0.9rem;
+      color: #d4d4d8;
+    }
+
+    /* ========== OPTION 3: BORDURE ACCENT ========== */
+    .option3 .ai-msg {
+      background: rgba(139, 92, 246, 0.05);
+      padding: 14px 18px;
+      border-radius: 0 10px 10px 0;
+      line-height: 1.5;
+      border-left: 3px solid #8b5cf6;
+    }
+
+    .option3 .ai-msg h3 {
+      font-size: 0.875rem;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #c4b5fd;
+    }
+
+    .option3 .ai-msg p {
+      margin-bottom: 8px;
+      font-size: 0.875rem;
+      color: #e4e4e7;
+    }
+
+    .option3 .ai-msg ul {
+      margin-left: 16px;
+      margin-bottom: 8px;
+    }
+
+    .option3 .ai-msg li {
+      margin-bottom: 4px;
+      font-size: 0.875rem;
+    }
+
+    /* ========== OPTION 4: TEXTE LÉGER ========== */
+    .option4 .ai-msg {
+      background: #1f1f35;
+      padding: 16px 18px;
+      border-radius: 12px;
+      line-height: 1.55;
+    }
+
+    .option4 .ai-msg h3 {
+      font-size: 0.8rem;
+      font-weight: 400;
+      margin-bottom: 10px;
+      color: #8b5cf6;
+      text-transform: lowercase;
+    }
+
+    .option4 .ai-msg p {
+      margin-bottom: 10px;
+      font-size: 0.875rem;
+      color: #a1a1aa;
+      font-weight: 300;
+    }
+
+    .option4 .ai-msg ul {
+      margin-left: 16px;
+      margin-bottom: 10px;
+    }
+
+    .option4 .ai-msg li {
+      margin-bottom: 5px;
+      font-size: 0.875rem;
+      color: #a1a1aa;
+      font-weight: 300;
+    }
+
+    /* ========== OPTION 5: CARD MODERNE ========== */
+    .option5 .ai-msg {
+      background: linear-gradient(135deg, #1f1f38 0%, #1a1a30 100%);
+      padding: 16px 18px;
+      border-radius: 16px;
+      line-height: 1.5;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(139, 92, 246, 0.1);
+    }
+
+    .option5 .ai-msg-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .option5 .ai-icon {
+      width: 20px;
+      height: 20px;
+      background: linear-gradient(135deg, #8b5cf6, #6366f1);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+    }
+
+    .option5 .ai-msg h3 {
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: #a1a1aa;
+    }
+
+    .option5 .ai-msg p {
+      margin-bottom: 8px;
+      font-size: 0.875rem;
+    }
+
+    .option5 .ai-msg ul {
+      margin-left: 16px;
+      margin-bottom: 8px;
+    }
+
+    .option5 .ai-msg li {
+      margin-bottom: 4px;
+      font-size: 0.875rem;
+    }
+
+    /* ========== OPTION 6: BULLE CHAT ========== */
+    .option6 .ai-msg {
+      background: #27273f;
+      padding: 12px 16px;
+      border-radius: 18px 18px 18px 4px;
+      line-height: 1.5;
+      max-width: 90%;
+    }
+
+    .option6 .ai-msg h3 {
+      display: none;
+    }
+
+    .option6 .ai-msg p {
+      margin-bottom: 6px;
+      font-size: 0.875rem;
+    }
+
+    .option6 .ai-msg p:last-child {
+      margin-bottom: 0;
+    }
+
+    .option6 .ai-msg ul {
+      margin-left: 16px;
+      margin-bottom: 6px;
+    }
+
+    .option6 .ai-msg li {
+      margin-bottom: 3px;
+      font-size: 0.875rem;
+    }
+
+    .comparison {
+      margin-top: 50px;
+      padding-top: 30px;
+      border-top: 1px solid #2a2a4a;
+    }
+
+    .comparison h2 {
+      text-align: center;
+      font-size: 1.1rem;
+      font-weight: 500;
+      color: #a1a1aa;
+      margin-bottom: 30px;
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+
+    .summary-item {
+      background: #1f1f35;
+      padding: 16px;
+      border-radius: 10px;
+      text-align: center;
+    }
+
+    .summary-item strong {
+      display: block;
+      color: #8b5cf6;
+      font-size: 0.8rem;
+      margin-bottom: 8px;
+    }
+
+    .summary-item span {
+      font-size: 0.85rem;
+      color: #a1a1aa;
+    }
+  </style>
+</head>
+<body>
+  <h1>Comparaison des styles pour les messages IA</h1>
+
+  <div class="grid">
+    <!-- Style actuel -->
+    <div class="option current">
+      <div class="option-title">Style Actuel</div>
+      <div class="chat-container">
+        <div class="user-msg">Comment créer un bouton en React ?</div>
+        <div class="ai-msg">
+          <h3>CRÉATION D'UN BOUTON REACT</h3>
+          <p>Voici comment créer un bouton réutilisable en React avec TypeScript :</p>
+          <ul>
+            <li>Créer un composant fonctionnel</li>
+            <li>Définir les props avec une interface</li>
+            <li>Ajouter les styles avec CSS modules</li>
+          </ul>
+          <p>Je vais vous montrer un exemple complet ci-dessous.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Option 1: Compact -->
+    <div class="option option1">
+      <div class="option-title">Option 1: Compact</div>
+      <div class="chat-container">
+        <div class="user-msg">Comment créer un bouton en React ?</div>
+        <div class="ai-msg">
+          <h3>Création d'un bouton React</h3>
+          <p>Voici comment créer un bouton réutilisable en React avec TypeScript :</p>
+          <ul>
+            <li>Créer un composant fonctionnel</li>
+            <li>Définir les props avec une interface</li>
+            <li>Ajouter les styles avec CSS modules</li>
+          </ul>
+          <p>Je vais vous montrer un exemple complet ci-dessous.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Option 2: Minimaliste -->
+    <div class="option option2">
+      <div class="option-title">Option 2: Minimaliste</div>
+      <div class="chat-container">
+        <div class="user-msg">Comment créer un bouton en React ?</div>
+        <div class="ai-msg">
+          <h3>création d'un bouton react</h3>
+          <p>Voici comment créer un bouton réutilisable en React avec TypeScript :</p>
+          <ul>
+            <li>Créer un composant fonctionnel</li>
+            <li>Définir les props avec une interface</li>
+            <li>Ajouter les styles avec CSS modules</li>
+          </ul>
+          <p>Je vais vous montrer un exemple complet ci-dessous.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Option 3: Bordure accent -->
+    <div class="option option3">
+      <div class="option-title">Option 3: Bordure Accent</div>
+      <div class="chat-container">
+        <div class="user-msg">Comment créer un bouton en React ?</div>
+        <div class="ai-msg">
+          <h3>Création d'un bouton React</h3>
+          <p>Voici comment créer un bouton réutilisable en React avec TypeScript :</p>
+          <ul>
+            <li>Créer un composant fonctionnel</li>
+            <li>Définir les props avec une interface</li>
+            <li>Ajouter les styles avec CSS modules</li>
+          </ul>
+          <p>Je vais vous montrer un exemple complet ci-dessous.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Option 4: Texte léger -->
+    <div class="option option4">
+      <div class="option-title">Option 4: Texte Léger</div>
+      <div class="chat-container">
+        <div class="user-msg">Comment créer un bouton en React ?</div>
+        <div class="ai-msg">
+          <h3>création d'un bouton react</h3>
+          <p>Voici comment créer un bouton réutilisable en React avec TypeScript :</p>
+          <ul>
+            <li>Créer un composant fonctionnel</li>
+            <li>Définir les props avec une interface</li>
+            <li>Ajouter les styles avec CSS modules</li>
+          </ul>
+          <p>Je vais vous montrer un exemple complet ci-dessous.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Option 5: Card moderne -->
+    <div class="option option5">
+      <div class="option-title">Option 5: Card Moderne</div>
+      <div class="chat-container">
+        <div class="user-msg">Comment créer un bouton en React ?</div>
+        <div class="ai-msg">
+          <div class="ai-msg-header">
+            <div class="ai-icon">✦</div>
+            <h3>Assistant</h3>
+          </div>
+          <p>Voici comment créer un bouton réutilisable en React avec TypeScript :</p>
+          <ul>
+            <li>Créer un composant fonctionnel</li>
+            <li>Définir les props avec une interface</li>
+            <li>Ajouter les styles avec CSS modules</li>
+          </ul>
+          <p>Je vais vous montrer un exemple complet ci-dessous.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Option 6: Bulle chat -->
+    <div class="option option6">
+      <div class="option-title">Option 6: Bulle Chat</div>
+      <div class="chat-container">
+        <div class="user-msg">Comment créer un bouton en React ?</div>
+        <div class="ai-msg">
+          <h3>Création d'un bouton React</h3>
+          <p>Voici comment créer un bouton réutilisable en React avec TypeScript :</p>
+          <ul>
+            <li>Créer un composant fonctionnel</li>
+            <li>Définir les props avec une interface</li>
+            <li>Ajouter les styles avec CSS modules</li>
+          </ul>
+          <p>Je vais vous montrer un exemple complet ci-dessous.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="comparison">
+    <h2>Résumé des options</h2>
+    <div class="summary">
+      <div class="summary-item">
+        <strong>Option 1</strong>
+        <span>Compact - Moins d'espace, même structure</span>
+      </div>
+      <div class="summary-item">
+        <strong>Option 2</strong>
+        <span>Minimaliste - Pas de fond, très épuré</span>
+      </div>
+      <div class="summary-item">
+        <strong>Option 3</strong>
+        <span>Bordure - Accent coloré discret</span>
+      </div>
+      <div class="summary-item">
+        <strong>Option 4</strong>
+        <span>Léger - Texte plus doux, moins imposant</span>
+      </div>
+      <div class="summary-item">
+        <strong>Option 5</strong>
+        <span>Card - Moderne avec icône IA</span>
+      </div>
+      <div class="summary-item">
+        <strong>Option 6</strong>
+        <span>Bulle - Style messagerie classique</span>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

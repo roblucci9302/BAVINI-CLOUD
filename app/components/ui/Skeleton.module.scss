@@ -1,0 +1,67 @@
+/* Skeleton Loading Animation Styles */
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.skeleton {
+  display: inline-block;
+  background: linear-gradient(
+    90deg,
+    var(--bolt-elements-bg-depth-2) 0%,
+    var(--bolt-elements-bg-depth-3) 20%,
+    var(--bolt-elements-bg-depth-2) 40%,
+    var(--bolt-elements-bg-depth-2) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+
+  /* Respect reduced motion preference */
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+    background: var(--bolt-elements-bg-depth-3);
+  }
+}
+
+/* Variants */
+.text {
+  border-radius: 4px;
+  width: 100%;
+}
+
+.rectangular {
+  border-radius: 8px;
+}
+
+.circular {
+  border-radius: 50%;
+}
+
+.button {
+  border-radius: 6px;
+  height: 36px;
+}
+
+/* Group for multiple lines */
+.skeletonGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+/* Dark mode adjustments */
+:global([data-theme='dark']) .skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bolt-elements-bg-depth-2) 0%,
+    var(--bolt-elements-bg-depth-3) 20%,
+    var(--bolt-elements-bg-depth-2) 40%,
+    var(--bolt-elements-bg-depth-2) 100%
+  );
+}

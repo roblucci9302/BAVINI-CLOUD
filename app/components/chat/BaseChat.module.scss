@@ -1,0 +1,117 @@
+.BaseChat {
+  &[data-chat-visible='false'] {
+    .Chat {
+      --at-apply: bolt-ease-cubic-bezier;
+      transition-property: transform, opacity;
+      transition-duration: 0.3s;
+      transform: translateX(-50%);
+      opacity: 0;
+    }
+  }
+}
+
+.Chat {
+  opacity: 1;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform, opacity;
+  /* max-width change is instant to avoid layout instability */
+}
+
+/* Quand le workbench est ouvert, le chat se resserre */
+/* Note: flex-grow handles the width, no max-width needed */
+.chatWithWorkbench {
+  /* Layout handled by flex */
+}
+
+/* BAVINI Welcome Gradient - Premium Dark with subtle accents */
+.welcomeGradient {
+  /* Dark mode: premium dark with subtle gradient accents */
+  background: #0a0a0b;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Subtle gradient overlay for dark mode - sky blue accents */
+:global([data-theme='dark']) .welcomeGradient::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 20% 0%, rgba(14, 165, 233, 0.10) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 100%, rgba(56, 189, 248, 0.08) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+:global([data-theme='light']) .welcomeGradient {
+  background: linear-gradient(
+    180deg,
+    #1E3A5F 0%,
+    #2563EB 25%,
+    #3B82F6 50%,
+    #2563EB 75%,
+    #1E40AF 100%
+  );
+  background-size: 100% 155%;
+  animation: subtleShift 8s ease-in-out infinite;
+  will-change: background-position;
+}
+
+/* Darker blue accent overlay for light mode */
+:global([data-theme='light']) .welcomeGradient::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 20% 0%, rgba(30, 64, 175, 0.4) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 100%, rgba(37, 99, 235, 0.3) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 50%, rgba(59, 130, 246, 0.15) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+@keyframes subtleShift {
+  0%, 100% { background-position: 0% 0%; }
+  50% { background-position: 0% 55%; }
+}
+
+/* BAVINI Welcome Input Container - Premium Glass Effect */
+.welcomeInput {
+  border-radius: 14px !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+:global([data-theme='light']) .welcomeInput {
+  background: rgba(255, 255, 255, 0.92) !important;
+  border: 1px solid rgba(255, 255, 255, 0.6) !important;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.15),
+    0 0 0 1px rgba(255, 255, 255, 0.2) inset !important;
+}
+
+:global([data-theme='light']) .welcomeInput:focus-within {
+  border-color: rgba(255, 255, 255, 0.8) !important;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.2),
+    0 0 20px rgba(56, 189, 248, 0.3),
+    0 0 0 1px rgba(255, 255, 255, 0.3) inset !important;
+}
+
+:global([data-theme='dark']) .welcomeInput {
+  background: rgba(17, 17, 19, 0.9) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.03) inset !important;
+}
+
+:global([data-theme='dark']) .welcomeInput:focus-within {
+  border-color: rgba(14, 165, 233, 0.4) !important;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    0 0 20px rgba(14, 165, 233, 0.15),
+    0 0 0 1px rgba(255, 255, 255, 0.03) inset !important;
+}

@@ -1,0 +1,249 @@
+@import './variables.scss';
+@import './z-index.scss';
+@import './animations.scss';
+@import './components/terminal.scss';
+@import './components/resize-handle.scss';
+@import './components/code.scss';
+@import './components/editor.scss';
+@import './components/toast.scss';
+
+html,
+body {
+  height: 100%;
+  width: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Clean Premium Dark Theme Base - Applied to dark mode */
+:root[data-theme='dark'] body {
+  background: var(--bolt-bg-primary, #050506);
+}
+
+/* ============================================
+   SCROLLBAR: Clean Premium Dark Style - Overlay
+   ============================================ */
+
+/* Make scrollbars overlay to not take layout space */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.10) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.10);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Overlay scrollbars on webkit browsers */
+.overflow-y-auto,
+.overflow-x-auto,
+.overflow-auto {
+  overflow: overlay;
+}
+
+/* Accessibility: Focus visible styles */
+:focus-visible {
+  outline: 2px solid var(--bolt-elements-borderColorActive);
+  outline-offset: 2px;
+}
+
+/* Remove default focus for mouse users, keep for keyboard */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Reset button styles - ensure transparent background by default */
+button {
+  background-color: transparent;
+  border: none;
+}
+
+/* Skip link styles */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  padding: 0.75rem 1.5rem;
+  background-color: var(--bolt-elements-bg-depth-1);
+  color: var(--bolt-elements-textPrimary);
+  border: 2px solid var(--bolt-elements-borderColorActive);
+  border-radius: 0.5rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: top 0.2s ease;
+
+  &:focus {
+    top: 1rem;
+  }
+}
+
+/* ============================================
+   GLASSMORPHISM: Enhanced glass effect utilities
+   ============================================ */
+
+.glass {
+  background: var(--bolt-glass-background);
+  backdrop-filter: blur(var(--bolt-glass-blur));
+  -webkit-backdrop-filter: blur(var(--bolt-glass-blur));
+  border: 1px solid var(--bolt-glass-border);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.glass:hover {
+  border-color: var(--bolt-glass-border-hover, var(--bolt-glass-border));
+}
+
+.glass-elevated {
+  background: var(--bolt-glass-background-elevated);
+  backdrop-filter: blur(var(--bolt-glass-blur-strong));
+  -webkit-backdrop-filter: blur(var(--bolt-glass-blur-strong));
+  border: 1px solid var(--bolt-glass-border);
+  box-shadow: var(--bolt-glass-shadow);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.glass-elevated:hover {
+  border-color: var(--bolt-glass-border-hover, var(--bolt-glass-border));
+}
+
+.glass-card {
+  background: var(--bolt-glass-background);
+  backdrop-filter: blur(var(--bolt-glass-blur));
+  -webkit-backdrop-filter: blur(var(--bolt-glass-blur));
+  border: 1px solid var(--bolt-glass-border);
+  box-shadow: var(--bolt-glass-shadow);
+  border-radius: 14px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.glass-card:hover {
+  border-color: var(--bolt-glass-border-hover, var(--bolt-glass-border));
+}
+
+.glass-subtle {
+  background: var(--bolt-glass-background-subtle, var(--bolt-glass-background));
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.glass-intense {
+  background: var(--bolt-glass-background-elevated);
+  backdrop-filter: blur(var(--bolt-glass-blur-intense, 32px));
+  -webkit-backdrop-filter: blur(var(--bolt-glass-blur-intense, 32px));
+  border: 1px solid var(--bolt-glass-border);
+  box-shadow: var(--bolt-glass-shadow-lg, var(--bolt-glass-shadow));
+}
+
+/* ============================================
+   PREMIUM EFFECTS: Glow & Accent utilities
+   ============================================ */
+
+.accent-glow {
+  box-shadow: var(--bolt-accent-glow);
+}
+
+.accent-glow-strong {
+  box-shadow: var(--bolt-accent-glow-strong);
+}
+
+.accent-glow-subtle {
+  box-shadow: var(--bolt-accent-glow-subtle);
+}
+
+/* Focus ring with glow effect */
+.focus-glow:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bolt-bg-primary, #0a0a0b),
+              0 0 0 4px theme('colors.accent.500'),
+              var(--bolt-accent-glow-subtle);
+}
+
+/* ============================================
+   ANIMATED BACKGROUND: Gradient orbs
+   ============================================ */
+
+.background-effects {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.gradient-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  opacity: 0.35;
+  animation: float-orb 25s ease-in-out infinite;
+  will-change: transform;
+}
+
+.gradient-orb-1 {
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(14, 165, 233, 0.12) 0%, transparent 70%);
+  top: -200px;
+  left: -100px;
+  animation-delay: 0s;
+}
+
+.gradient-orb-2 {
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.08) 0%, transparent 70%);
+  bottom: -150px;
+  right: -100px;
+  animation-delay: -12s;
+}
+
+.gradient-orb-3 {
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.06) 0%, transparent 70%);
+  top: 40%;
+  left: 35%;
+  animation-delay: -6s;
+}
+
+@keyframes float-orb {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  25% { transform: translate(30px, -30px) scale(1.03); }
+  50% { transform: translate(-20px, 20px) scale(0.97); }
+  75% { transform: translate(20px, 10px) scale(1.01); }
+}
+
+/* Noise texture overlay for premium feel */
+.noise-overlay {
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  opacity: 0.02;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
+
+/* Respect reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .gradient-orb {
+    animation: none;
+  }
+}

@@ -1,0 +1,6 @@
+# Robots.txt pour SEO optimal
+User-agent: *
+Allow: /
+
+# Sitemap généré automatiquement par @astrojs/sitemap
+Sitemap: https://example.com/sitemap-index.xml
