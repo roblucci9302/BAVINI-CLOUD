@@ -164,13 +164,10 @@ export class BrowserActionRunner {
     logger.info(`Writing file: ${action.filePath}`);
 
     // Write to browser files store
+    // Build is NOT triggered here - it will be triggered when:
+    // 1. Artifact closes (all files written)
+    // 2. User manually edits a file (debounced)
     await browserFilesStore.writeFile(action.filePath, action.content);
-
-    // Trigger build after file write
-    if (this.#buildTrigger) {
-      logger.debug('Triggering build after file write');
-      await this.#buildTrigger();
-    }
   }
 
   async #runShellAction(action: ActionState) {

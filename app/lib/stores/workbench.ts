@@ -232,9 +232,13 @@ export class WorkbenchStore {
     this.#previewsStore.setMode('browser');
 
     // Connect browser files store to build service
+    // Note: We don't trigger builds on every file change to avoid intermediate errors
+    // Builds are triggered when:
+    // 1. Artifact closes (all files written)
+    // 2. User saves a file manually (via saveFile)
     browserFilesStore.onFilesChange(async (files) => {
       logger.debug(`Files changed, ${files.size} files total`);
-      await this.#triggerBrowserBuild();
+      // Build will be triggered by artifact close or manual save, not here
     });
 
     // Subscribe to files changes to update editor and stable atom
@@ -663,6 +667,8 @@ export class WorkbenchStore {
 
     if (this.#runtimeType === 'browser') {
       await browserFilesStore.saveFile(filePath, document.value);
+      // Trigger a debounced build after manual file save
+      this.#triggerBrowserBuild();
     } else {
       await this.#webContainerFilesStore?.saveFile(filePath, document.value);
     }
