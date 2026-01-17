@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { atom } from 'nanostores';
 
 // mock workbenchStore to avoid indexedDB dependency
 vi.mock('./workbench', () => ({
@@ -7,8 +8,13 @@ vi.mock('./workbench', () => ({
   },
 }));
 
+// mock runtime module to avoid WebContainer dependency
+vi.mock('~/lib/runtime', () => ({
+  runtimeTypeStore: atom('webcontainer'),
+}));
+
 // import after mocking
-import { shortcutsStore, settingsStore, type Shortcut } from './settings';
+import { shortcutsStore, settingsStore, buildSettingsStore, setBuildEngine, getBuildEngine, type Shortcut } from './settings';
 
 describe('settings store', () => {
   describe('shortcutsStore', () => {
@@ -80,6 +86,38 @@ describe('settings store', () => {
       expect(shortcut.altKey).toBe(true);
       expect(shortcut.metaKey).toBe(true);
       expect(shortcut.ctrlOrMetaKey).toBe(false);
+    });
+  });
+
+  describe('buildSettingsStore', () => {
+    it('should default to webcontainer engine', () => {
+      const buildSettings = buildSettingsStore.get();
+
+      expect(buildSettings.engine).toBe('webcontainer');
+    });
+
+    it('should update engine via setBuildEngine', () => {
+      setBuildEngine('browser');
+
+      expect(buildSettingsStore.get().engine).toBe('browser');
+
+      // Reset to default
+      setBuildEngine('webcontainer');
+    });
+
+    it('should return current engine via getBuildEngine', () => {
+      expect(getBuildEngine()).toBe('webcontainer');
+    });
+
+    it('should sync with settingsStore', () => {
+      setBuildEngine('browser');
+
+      const settings = settingsStore.get();
+
+      expect(settings.build.engine).toBe('browser');
+
+      // Reset to default
+      setBuildEngine('webcontainer');
     });
   });
 });

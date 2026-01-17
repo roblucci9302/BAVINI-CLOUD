@@ -5,7 +5,7 @@ import { useStore } from '@nanostores/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as RadixDialog from '@radix-ui/react-dialog';
 import { settingsModalOpen, activeSettingsTab, closeSettingsModal } from '~/lib/stores/connectors';
-import { interfaceSettingsStore } from '~/lib/stores/settings';
+import { interfaceSettingsStore, buildSettingsStore, setBuildEngine, type BuildEngineType } from '~/lib/stores/settings';
 import { classNames } from '~/utils/classNames';
 import { dialogBackdropVariants, dialogVariants } from '~/components/ui/Dialog';
 import { IconButton } from '~/components/ui/IconButton';
@@ -158,6 +158,7 @@ export const SettingsModal = memo(() => {
 // Interface settings panel
 const InterfacePanel = memo(() => {
   const interfaceSettings = useStore(interfaceSettingsStore);
+  const buildSettings = useStore(buildSettingsStore);
 
   const handleToggleAgentBadge = useCallback(() => {
     interfaceSettingsStore.set({
@@ -165,6 +166,13 @@ const InterfacePanel = memo(() => {
       showAgentStatusBadge: !interfaceSettings.showAgentStatusBadge,
     });
   }, [interfaceSettings]);
+
+  const handleToggleBuildEngine = useCallback(() => {
+    const newEngine: BuildEngineType = buildSettings.engine === 'webcontainer' ? 'browser' : 'webcontainer';
+    setBuildEngine(newEngine);
+  }, [buildSettings.engine]);
+
+  const isBrowserEngine = buildSettings.engine === 'browser';
 
   return (
     <div className="space-y-6">
@@ -199,6 +207,36 @@ const InterfacePanel = memo(() => {
               className={classNames(
                 'absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform shadow',
                 interfaceSettings.showAgentStatusBadge ? 'translate-x-5' : 'translate-x-0',
+              )}
+            />
+          </button>
+        </div>
+
+        {/* Build Engine Toggle */}
+        <div className="flex items-center justify-between p-4 bg-bolt-elements-background-depth-3 rounded-lg">
+          <div className="flex items-center gap-3">
+            <span className="i-ph:lightning text-xl text-bolt-elements-textSecondary" />
+            <div>
+              <p className="text-sm font-medium text-bolt-elements-textPrimary">Moteur de build propriétaire</p>
+              <p className="text-xs text-bolt-elements-textSecondary mt-0.5">
+                Utilise esbuild-wasm au lieu de WebContainer (StackBlitz)
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleToggleBuildEngine}
+            className={classNames(
+              'relative w-11 h-6 rounded-full transition-colors',
+              isBrowserEngine ? 'bg-accent-500' : 'bg-bolt-elements-background-depth-4',
+            )}
+            role="switch"
+            aria-checked={isBrowserEngine}
+            aria-label="Activer le moteur de build propriétaire"
+          >
+            <span
+              className={classNames(
+                'absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform shadow',
+                isBrowserEngine ? 'translate-x-5' : 'translate-x-0',
               )}
             />
           </button>

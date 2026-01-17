@@ -11,6 +11,8 @@ import { unreachable } from '~/utils/unreachable';
 
 const logger = createScopedLogger('FilesStore');
 
+export type FilesStoreMode = 'webcontainer' | 'browser';
+
 const utf8TextDecoder = new TextDecoder('utf8', { fatal: true });
 
 export interface File {

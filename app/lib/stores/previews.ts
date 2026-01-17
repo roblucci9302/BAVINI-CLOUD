@@ -11,21 +11,50 @@ export interface PreviewInfo {
   baseUrl: string;
 }
 
+/**
+ * Preview info from browser build adapter (uses URL instead of port)
+ */
+export interface BrowserPreviewInfo {
+  url: string;
+  ready: boolean;
+  updatedAt: number;
+}
+
 /** Store global pour les erreurs de preview */
 export const previewErrorStore = atom<string | null>(null);
 
+/** Mode de preview: webcontainer (port-based) ou browser (URL-based) */
+export type PreviewMode = 'webcontainer' | 'browser';
+
 export class PreviewsStore {
   #availablePreviews = new Map<number, PreviewInfo>();
-  #webcontainer: Promise<WebContainer>;
+  #webcontainer: Promise<WebContainer> | null;
   #initialized = false;
+  #mode: PreviewMode = 'webcontainer';
+  #browserPreviewUrl: string | null = null;
 
   previews = atom<PreviewInfo[]>([]);
 
-  constructor(webcontainerPromise: Promise<WebContainer>) {
+  constructor(webcontainerPromise: Promise<WebContainer> | null = null) {
     this.#webcontainer = webcontainerPromise;
 
     // NOTE: #init() is NOT called here to enable lazy boot.
     // Call init() explicitly when the workbench is shown.
+  }
+
+  /**
+   * Set the preview mode (webcontainer or browser)
+   */
+  setMode(mode: PreviewMode): void {
+    this.#mode = mode;
+    logger.info(`Preview mode set to: ${mode}`);
+  }
+
+  /**
+   * Get current preview mode
+   */
+  getMode(): PreviewMode {
+    return this.#mode;
   }
 
   /**
@@ -38,10 +67,78 @@ export class PreviewsStore {
     }
 
     this.#initialized = true;
-    this.#init();
+
+    // In browser mode, we don't need WebContainer initialization
+    if (this.#mode === 'browser' || !this.#webcontainer) {
+      logger.info('PreviewsStore initialized in browser mode');
+      return;
+    }
+
+    this.#initWebContainer();
   }
 
-  async #init() {
+  /**
+   * Add or update a browser-mode preview (URL-based)
+   * Called from BrowserBuildAdapter when preview is ready
+   */
+  setBrowserPreview(info: BrowserPreviewInfo): void {
+    logger.info(`Browser preview ready: ${info.url}`);
+
+    this.#browserPreviewUrl = info.url;
+
+    // Convert to PreviewInfo format for compatibility
+    // Use port 0 as a special marker for browser-mode previews
+    const previewInfo: PreviewInfo = {
+      port: 0,
+      ready: info.ready,
+      baseUrl: info.url,
+    };
+
+    // Update or add the browser preview
+    const currentPreviews = this.previews.get();
+    const existingIndex = currentPreviews.findIndex((p) => p.port === 0);
+
+    let newPreviews: PreviewInfo[];
+
+    if (existingIndex >= 0) {
+      // Update existing browser preview
+      newPreviews = currentPreviews.map((p, i) => (i === existingIndex ? previewInfo : p));
+    } else {
+      // Add new browser preview
+      newPreviews = [...currentPreviews, previewInfo];
+    }
+
+    logger.info(`Previews updated: ${newPreviews.length} preview(s), browser preview ready: ${info.ready}`);
+    this.previews.set(newPreviews);
+  }
+
+  /**
+   * Clear browser-mode preview
+   */
+  clearBrowserPreview(): void {
+    if (this.#browserPreviewUrl) {
+      logger.info('Clearing browser preview');
+      this.#browserPreviewUrl = null;
+
+      const currentPreviews = this.previews.get();
+      const newPreviews = currentPreviews.filter((p) => p.port !== 0);
+      this.previews.set(newPreviews);
+    }
+  }
+
+  /**
+   * Get current browser preview URL
+   */
+  getBrowserPreviewUrl(): string | null {
+    return this.#browserPreviewUrl;
+  }
+
+  async #initWebContainer() {
+    if (!this.#webcontainer) {
+      logger.warn('No WebContainer promise provided, skipping initialization');
+      return;
+    }
+
     try {
       const webcontainer = await this.#webcontainer;
       logger.info('WebContainer ready, listening for port events');

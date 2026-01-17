@@ -156,6 +156,9 @@ importers:
       diff:
         specifier: '>=8.0.3'
         version: 8.0.3
+      esbuild-wasm:
+        specifier: ^0.27.2
+        version: 0.27.2
       framer-motion:
         specifier: ^11.2.12
         version: 11.18.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -2859,6 +2862,11 @@ packages:
     engines: {node: '>=14.0.0'}
     peerDependencies:
       esbuild: '>=0.25.0'
+
+  esbuild-wasm@0.27.2:
+    resolution: {integrity: sha512-eUTnl8eh+v8UZIZh4MrMOKDAc8Lm7+NqP3pyuTORGFY1s/o9WoiJgKnwXy+te2J3hX7iRbFSHEyig7GsPeeJyw==}
+    engines: {node: '>=18'}
+    hasBin: true
 
   esbuild@0.27.2:
     resolution: {integrity: sha512-HyNQImnsOC7X9PMNaCIeAm4ISCQXs5a5YasTXVliKv4uuBo1dKrG0A+uQS8M5eXjVMnLg3WgXaKvprHlFJQffw==}
@@ -8577,6 +8585,8 @@ snapshots:
       esbuild: 0.27.2
       local-pkg: 1.1.2
       resolve.exports: 2.0.3
+
+  esbuild-wasm@0.27.2: {}
 
   esbuild@0.27.2:
     optionalDependencies:

@@ -1,5 +1,6 @@
 import { map } from 'nanostores';
 import { workbenchStore } from './workbench';
+import { runtimeTypeStore, type RuntimeType } from '~/lib/runtime';
 
 export interface Shortcut {
   key: string;
@@ -15,17 +16,33 @@ export interface Shortcuts {
   toggleTerminal: Shortcut;
 }
 
+/**
+ * Build engine type for the runtime.
+ * - 'webcontainer': Uses StackBlitz WebContainer (current behavior)
+ * - 'browser': Uses esbuild-wasm in browser (future)
+ */
+export type BuildEngineType = RuntimeType;
+
 export interface InterfaceSettings {
   showAgentStatusBadge: boolean;
+}
+
+export interface BuildSettings {
+  /** Build engine to use: 'webcontainer' or 'browser' */
+  engine: BuildEngineType;
 }
 
 export interface Settings {
   shortcuts: Shortcuts;
   interface: InterfaceSettings;
+  build: BuildSettings;
 }
 
 // Default interface settings - loaded synchronously, localStorage deferred
 const DEFAULT_INTERFACE_SETTINGS: InterfaceSettings = { showAgentStatusBadge: true };
+
+// Default build settings - testing browser mode (esbuild-wasm)
+const DEFAULT_BUILD_SETTINGS: BuildSettings = { engine: 'browser' };
 
 // Deferred loading from localStorage (non-blocking)
 let settingsLoaded = false;
@@ -73,6 +90,9 @@ export const shortcutsStore = map<Shortcuts>({
 // Initialize with defaults - localStorage loaded lazily
 export const interfaceSettingsStore = map<InterfaceSettings>(DEFAULT_INTERFACE_SETTINGS);
 
+// Build settings store - synced with runtimeTypeStore
+export const buildSettingsStore = map<BuildSettings>(DEFAULT_BUILD_SETTINGS);
+
 // Load from localStorage on first idle frame (non-blocking)
 if (typeof window !== 'undefined') {
   if (typeof requestIdleCallback !== 'undefined') {
@@ -87,9 +107,23 @@ interfaceSettingsStore.subscribe((settings) => {
   saveInterfaceSettings(settings);
 });
 
+// Sync buildSettingsStore with runtimeTypeStore (bidirectional)
+buildSettingsStore.subscribe((settings) => {
+  if (runtimeTypeStore.get() !== settings.engine) {
+    runtimeTypeStore.set(settings.engine);
+  }
+});
+
+runtimeTypeStore.subscribe((type) => {
+  if (buildSettingsStore.get().engine !== type) {
+    buildSettingsStore.set({ engine: type });
+  }
+});
+
 export const settingsStore = map<Settings>({
   shortcuts: shortcutsStore.get(),
   interface: interfaceSettingsStore.get(),
+  build: buildSettingsStore.get(),
 });
 
 shortcutsStore.subscribe((shortcuts) => {
@@ -106,6 +140,13 @@ interfaceSettingsStore.subscribe((interfaceSettings) => {
   });
 });
 
+buildSettingsStore.subscribe((buildSettings) => {
+  settingsStore.set({
+    ...settingsStore.get(),
+    build: buildSettings,
+  });
+});
+
 // Helper to toggle agent status badge
 export function toggleAgentStatusBadge(): void {
   const current = interfaceSettingsStore.get();
@@ -113,4 +154,21 @@ export function toggleAgentStatusBadge(): void {
     ...current,
     showAgentStatusBadge: !current.showAgentStatusBadge,
   });
+}
+
+/**
+ * Set the build engine to use.
+ * This will automatically sync with runtimeTypeStore.
+ *
+ * @param engine - 'webcontainer' or 'browser'
+ */
+export function setBuildEngine(engine: BuildEngineType): void {
+  buildSettingsStore.set({ engine });
+}
+
+/**
+ * Get the current build engine.
+ */
+export function getBuildEngine(): BuildEngineType {
+  return buildSettingsStore.get().engine;
 }

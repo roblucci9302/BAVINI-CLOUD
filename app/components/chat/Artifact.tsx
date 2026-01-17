@@ -2,7 +2,7 @@
 
 import { useStore } from '@nanostores/react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { atom, computed } from 'nanostores';
+import { atom, computed, type ReadableAtom } from 'nanostores';
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { createHighlighter, type BundledLanguage, type BundledTheme, type HighlighterGeneric } from 'shiki';
 import type { ActionState } from '~/lib/runtime/action-runner';
@@ -14,6 +14,9 @@ const highlighterOptions = {
   langs: ['shell'],
   themes: ['light-plus', 'dark-plus'],
 };
+
+// Stable empty atom to prevent hook instability
+const EMPTY_ACTIONS_ATOM: ReadableAtom<ActionState[]> = atom<ActionState[]>([]);
 
 const shellHighlighter: HighlighterGeneric<BundledLanguage, BundledTheme> =
   import.meta.hot?.data.shellHighlighter ?? (await createHighlighter(highlighterOptions));
@@ -37,14 +40,21 @@ export const Artifact = memo(({ messageId }: ArtifactProps) => {
   const runner = artifact?.runner;
   const actionsStore = useMemo(() => {
     if (!runner?.actions) {
-      // Use atom for empty state - computed requires a store as first argument
-      return atom<ActionState[]>([]);
+      // Use stable empty atom to prevent hook instability
+      return EMPTY_ACTIONS_ATOM;
     }
 
     return computed(runner.actions, (actionsMap): ActionState[] => Object.values(actionsMap));
   }, [runner]);
 
   const actions = useStore(actionsStore);
+
+  // Effect must be called BEFORE early return to maintain consistent hook order
+  useEffect(() => {
+    if (actions.length && !showActions && !userToggledActions.current) {
+      setShowActions(true);
+    }
+  }, [actions, showActions]);
 
   // Don't render if artifact doesn't exist yet
   if (!artifact) {
@@ -55,12 +65,6 @@ export const Artifact = memo(({ messageId }: ArtifactProps) => {
     userToggledActions.current = true;
     setShowActions(!showActions);
   };
-
-  useEffect(() => {
-    if (actions.length && !showActions && !userToggledActions.current) {
-      setShowActions(true);
-    }
-  }, [actions, showActions]);
 
   return (
     <div className="artifact border border-bolt-elements-borderColor flex flex-col overflow-hidden rounded-lg w-full transition-border duration-150">

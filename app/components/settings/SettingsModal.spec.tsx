@@ -44,6 +44,8 @@ vi.mock('~/lib/stores/settings', () => {
   const { map } = require('nanostores');
   return {
     interfaceSettingsStore: map({ showAgentStatusBadge: true }),
+    buildSettingsStore: map({ engine: 'webcontainer' }),
+    setBuildEngine: vi.fn(),
   };
 });
 

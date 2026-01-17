@@ -1,13 +1,20 @@
 import { atom, computed, map, type MapStore, type WritableAtom } from 'nanostores';
 import type { EditorDocument, ScrollPosition } from '~/components/editor/codemirror/types';
-import type { FileMap, FilesStore } from './files';
+import type { FileMap as WebContainerFileMap, FilesStore } from './files';
+import type { FileMap as BrowserFileMap, BrowserFilesStore } from './browser-files';
+
+// Support both file map types
+export type FileMap = WebContainerFileMap | BrowserFileMap;
 
 export type EditorDocuments = Record<string, EditorDocument>;
 
 type SelectedFile = WritableAtom<string | undefined>;
 
+// Support both file store types
+type AnyFilesStore = FilesStore | BrowserFilesStore;
+
 export class EditorStore {
-  #filesStore: FilesStore;
+  #filesStore: AnyFilesStore;
 
   selectedFile: SelectedFile = import.meta.hot?.data.selectedFile ?? atom<string | undefined>();
   documents: MapStore<EditorDocuments> = import.meta.hot?.data.documents ?? map({});
@@ -20,7 +27,7 @@ export class EditorStore {
     return documents[selectedFile];
   });
 
-  constructor(filesStore: FilesStore) {
+  constructor(filesStore: AnyFilesStore) {
     this.#filesStore = filesStore;
 
     if (import.meta.hot) {

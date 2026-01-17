@@ -15,27 +15,50 @@ import { Slider, type SliderOptions } from '~/components/ui/Slider';
 import { workbenchStore, type WorkbenchViewType } from '~/lib/stores/workbench';
 import { chatId } from '~/lib/persistence/useChatHistory';
 
+// Define the type for workbench state
+interface WorkbenchStateValue {
+  hasPreview: boolean;
+  showWorkbench: boolean;
+  selectedFile: string | undefined;
+  currentDocument: import('~/components/editor/codemirror/types').EditorDocument | undefined;
+  unsavedFiles: Set<string>;
+  files: import('~/lib/stores/files').FileMap;
+  selectedView: WorkbenchViewType;
+}
+
 // Combined computed store to reduce re-renders (single subscription instead of 7)
-const workbenchState = computed(
-  [
-    workbenchStore.previews,
-    workbenchStore.showWorkbench,
-    workbenchStore.selectedFile,
-    workbenchStore.currentDocument,
-    workbenchStore.unsavedFiles,
-    workbenchStore.files,
-    workbenchStore.currentView,
-  ],
-  (previews, showWorkbench, selectedFile, currentDocument, unsavedFiles, files, currentView) => ({
-    hasPreview: previews.length > 0,
-    showWorkbench,
-    selectedFile,
-    currentDocument,
-    unsavedFiles,
-    files,
-    selectedView: currentView,
-  }),
-);
+// Preserved across HMR to prevent hook instability
+function createWorkbenchState() {
+  return computed(
+    [
+      workbenchStore.previews,
+      workbenchStore.showWorkbench,
+      workbenchStore.selectedFile,
+      workbenchStore.currentDocument,
+      workbenchStore.unsavedFiles,
+      workbenchStore.files,
+      workbenchStore.currentView,
+    ],
+    (previews, showWorkbench, selectedFile, currentDocument, unsavedFiles, files, currentView): WorkbenchStateValue => ({
+      hasPreview: previews.length > 0,
+      showWorkbench,
+      selectedFile,
+      currentDocument,
+      unsavedFiles,
+      files,
+      selectedView: currentView,
+    }),
+  );
+}
+
+type WorkbenchStateStore = ReturnType<typeof createWorkbenchState>;
+
+const workbenchState: WorkbenchStateStore =
+  (import.meta.hot?.data.workbenchState as WorkbenchStateStore | undefined) ?? createWorkbenchState();
+
+if (import.meta.hot) {
+  import.meta.hot.data.workbenchState = workbenchState;
+}
 import { useCheckpoints } from '~/lib/hooks/useCheckpoints';
 import { useAutoCheckpoint } from '~/lib/hooks/useAutoCheckpoint';
 import type { FileMap } from '~/lib/stores/files';
