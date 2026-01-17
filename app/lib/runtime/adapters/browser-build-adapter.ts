@@ -50,6 +50,12 @@ const moduleCache = new Map<string, string>();
 const ESM_SH_BASE = 'https://esm.sh';
 
 /**
+ * Global flag to track esbuild initialization (esbuild-wasm can only be initialized once)
+ * Preserved across HMR and instance recreation
+ */
+let globalEsbuildInitialized: boolean = (globalThis as any).__esbuildInitialized ?? false;
+
+/**
  * BrowserBuildAdapter - Runtime sans WebContainer
  */
 export class BrowserBuildAdapter extends BaseRuntimeAdapter {
@@ -75,8 +81,12 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
    * Initialize esbuild-wasm
    */
   async init(): Promise<void> {
-    if (this._esbuildInitialized) {
-      logger.debug('esbuild already initialized');
+    // Check global flag first (esbuild-wasm can only be initialized once globally)
+    if (globalEsbuildInitialized) {
+      logger.debug('esbuild already initialized globally, reusing');
+      this._esbuildInitialized = true;
+      this._status = 'ready';
+      this.emitStatusChange('ready');
       return;
     }
 
@@ -90,7 +100,11 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
         wasmURL: ESBUILD_WASM_URL,
       });
 
+      // Set both instance and global flags
       this._esbuildInitialized = true;
+      globalEsbuildInitialized = true;
+      (globalThis as any).__esbuildInitialized = true;
+
       this._status = 'ready';
       this.emitStatusChange('ready');
 
