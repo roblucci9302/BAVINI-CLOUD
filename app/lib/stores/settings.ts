@@ -39,7 +39,7 @@ export interface Settings {
 }
 
 // Default interface settings - loaded synchronously, localStorage deferred
-const DEFAULT_INTERFACE_SETTINGS: InterfaceSettings = { showAgentStatusBadge: true };
+const DEFAULT_INTERFACE_SETTINGS: InterfaceSettings = { showAgentStatusBadge: false };
 
 // Default build settings - testing browser mode (esbuild-wasm)
 const DEFAULT_BUILD_SETTINGS: BuildSettings = { engine: 'browser' };

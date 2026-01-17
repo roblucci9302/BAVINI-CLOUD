@@ -20,6 +20,10 @@ interface MarkdownProps {
 export const Markdown = memo(({ children, html = false, limitedMarkdown = false }: MarkdownProps) => {
   logger.trace('Render');
 
+  // Memoize plugins to prevent unnecessary re-parsing
+  const memoizedRemarkPlugins = useMemo(() => remarkPlugins(limitedMarkdown), [limitedMarkdown]);
+  const memoizedRehypePlugins = useMemo(() => rehypePlugins(html), [html]);
+
   const components = useMemo(() => {
     return {
       div: ({ className, children, node, ...props }) => {
@@ -72,8 +76,8 @@ export const Markdown = memo(({ children, html = false, limitedMarkdown = false 
       allowedElements={allowedHTMLElements}
       className={styles.MarkdownContent}
       components={components}
-      remarkPlugins={remarkPlugins(limitedMarkdown)}
-      rehypePlugins={rehypePlugins(html)}
+      remarkPlugins={memoizedRemarkPlugins}
+      rehypePlugins={memoizedRehypePlugins}
     >
       {children}
     </ReactMarkdown>

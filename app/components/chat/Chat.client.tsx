@@ -571,7 +571,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
       mapped.push({
         id: 'streaming',
         role: 'assistant' as const,
-        content: streamingContent + (multiAgentEnabled && currentAgent ? `\n\n_[${currentAgent}]_` : ''),
+        content: streamingContent,
       });
     }
 
@@ -786,7 +786,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
 
         // Utiliser des arrays au lieu de string concatenation (plus performant)
         const contentChunks: string[] = [];
-        const parsedChunks: string[] = [];
+        let parsedContent = ''; // Accumulator for parsed content
         let lineBuffer = ''; // Buffer for incomplete JSON lines
 
         if (reader) {
@@ -823,10 +823,9 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
                     contentChunks.push(parsed.content);
 
                     const fullContent = contentChunks.join('');
-
                     const newParsed = messageParser.parse(messageIdRef.current, fullContent);
-                    parsedChunks.push(newParsed);
-                    scheduleStreamingUpdate(parsedChunks.join(''));
+                    parsedContent += newParsed;
+                    scheduleStreamingUpdate(parsedContent);
                   } else if (parsed.type === 'agent_status') {
                     console.log(`[Chat] Received agent_status: ${parsed.agent} -> ${parsed.status}`);
                     setCurrentAgent(parsed.agent);
@@ -868,10 +867,9 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
                       contentChunks.push(content);
 
                       const fullContent = contentChunks.join('');
-
                       const newParsed = messageParser.parse(messageIdRef.current, fullContent);
-                      parsedChunks.push(newParsed);
-                      scheduleStreamingUpdate(parsedChunks.join(''));
+                      parsedContent += newParsed;
+                      scheduleStreamingUpdate(parsedContent);
                     } catch {
                       // JSON parse failed - likely malformed, skip this chunk
                       logger.warn('Failed to parse AI SDK line:', line.substring(0, 100));
@@ -892,10 +890,9 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
                   contentChunks.push(parsed.content);
 
                   const fullContent = contentChunks.join('');
-
                   const newParsed = messageParser.parse(messageIdRef.current, fullContent);
-                  parsedChunks.push(newParsed);
-                  scheduleStreamingUpdate(parsedChunks.join(''));
+                  parsedContent += newParsed;
+                  scheduleStreamingUpdate(parsedContent);
                 }
               } catch {
                 logger.warn('Incomplete JSON at stream end:', lineBuffer.substring(0, 100));
@@ -913,10 +910,9 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
                     contentChunks.push(content);
 
                     const fullContent = contentChunks.join('');
-
                     const newParsed = messageParser.parse(messageIdRef.current, fullContent);
-                    parsedChunks.push(newParsed);
-                    scheduleStreamingUpdate(parsedChunks.join(''));
+                    parsedContent += newParsed;
+                    scheduleStreamingUpdate(parsedContent);
                   } catch {
                     logger.warn('Incomplete AI SDK line at stream end:', lineBuffer.substring(0, 100));
                   }
