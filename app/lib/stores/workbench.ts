@@ -433,10 +433,12 @@ export class WorkbenchStore {
 
       logger.info(`Triggering browser build with ${files.size} files, entry: ${entryPoint}`);
 
-      // Debug: log all files being built
+      // Debug: log all files being built (INFO level to ensure visibility)
       for (const [path, content] of files) {
-        const preview = content.length > 200 ? content.substring(0, 200) + '...' : content;
-        logger.debug(`File: ${path} (${content.length} chars)\n${preview}`);
+        if (path.endsWith('.tsx') || path.endsWith('.jsx')) {
+          const preview = content.length > 500 ? content.substring(0, 500) + '...' : content;
+          logger.info(`📄 ${path} (${content.length} chars):\n${preview}`);
+        }
       }
 
       const result = await service.syncAndBuild(files, entryPoint);
