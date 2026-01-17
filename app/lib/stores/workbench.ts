@@ -433,6 +433,12 @@ export class WorkbenchStore {
 
       logger.info(`Triggering browser build with ${files.size} files, entry: ${entryPoint}`);
 
+      // Debug: log all files being built
+      for (const [path, content] of files) {
+        const preview = content.length > 200 ? content.substring(0, 200) + '...' : content;
+        logger.debug(`File: ${path} (${content.length} chars)\n${preview}`);
+      }
+
       const result = await service.syncAndBuild(files, entryPoint);
 
       if (result && result.errors.length === 0) {
@@ -833,7 +839,9 @@ export class WorkbenchStore {
 
     // Trigger a build when artifact is closed (all files have been written)
     if (state.closed && this.#runtimeType === 'browser') {
-      logger.info('Artifact closed, triggering final build');
+      const files = browserFilesStore.getAllFiles();
+      logger.info(`Artifact closed with ${files.size} files:`, Array.from(files.keys()));
+      logger.info('Triggering final build');
       this.triggerBrowserBuildPublic();
     }
   }
