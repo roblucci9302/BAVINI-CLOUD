@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Device Frame Redesign - Propositions</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #0a0a0b 0%, #1a1a2e 100%);
+      color: #fff;
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 28px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      background: linear-gradient(135deg, #8b5cf6, #ec4899);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #888;
+      font-size: 14px;
+      margin-bottom: 40px;
+    }
+
+    .options-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 40px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .option-card {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 24px;
+      padding: 30px;
+      text-decoration: none;
+      color: inherit;
+      transition: all 0.3s ease;
+    }
+
+    .option-card:hover {
+      background: rgba(255,255,255,0.04);
+      border-color: rgba(255,255,255,0.1);
+    }
+
+    .option-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .option-header h2 {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .option-a .option-header h2 { color: #8b5cf6; }
+    .option-b .option-header h2 { color: #0ea5e9; }
+    .option-c .option-header h2 { color: #22c55e; }
+    .option-d .option-header h2 { color: #f59e0b; }
+
+    .badge {
+      font-size: 9px;
+      padding: 3px 8px;
+      border-radius: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .badge.recommended { background: rgba(139, 92, 246, 0.2); color: #8b5cf6; }
+    .badge.modern { background: rgba(14, 165, 233, 0.2); color: #0ea5e9; }
+    .badge.glass { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+    .badge.minimal { background: rgba(245, 158, 11, 0.2); color: #f59e0b; }
+
+    .option-desc {
+      color: #888;
+      font-size: 13px;
+      line-height: 1.5;
+      margin-bottom: 24px;
+    }
+
+    .devices-preview {
+      display: flex;
+      justify-content: center;
+      align-items: flex-end;
+      gap: 24px;
+      padding: 30px;
+      background: #0f0f11;
+      border-radius: 16px;
+      min-height: 400px;
+    }
+
+    /* ============================================
+       OPTION A - Sleek Titanium
+       ============================================ */
+    .option-a .tablet-frame {
+      width: 280px;
+      height: 380px;
+      background: linear-gradient(145deg, #2a2a2e, #1c1c20);
+      border-radius: 28px;
+      padding: 12px;
+      border: 3px solid #3a3a40;
+      box-shadow:
+        0 20px 40px rgba(0,0,0,0.4),
+        inset 0 1px 0 rgba(255,255,255,0.08),
+        inset 0 -1px 0 rgba(0,0,0,0.2);
+    }
+
+    .option-a .tablet-screen {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(180deg, #1e3a5f, #0d1b2a);
+      border-radius: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: rgba(255,255,255,0.6);
+    }
+
+    .option-a .mobile-frame {
+      width: 200px;
+      height: 420px;
+      background: linear-gradient(145deg, #2a2a2e, #1c1c20);
+      border-radius: 36px;
+      padding: 12px;
+      border: 3px solid #3a3a40;
+      box-shadow:
+        0 20px 40px rgba(0,0,0,0.4),
+        inset 0 1px 0 rgba(255,255,255,0.08),
+        inset 0 -1px 0 rgba(0,0,0,0.2);
+      position: relative;
+    }
+
+    .option-a .mobile-screen {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(180deg, #1e3a5f, #0d1b2a);
+      border-radius: 26px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: rgba(255,255,255,0.6);
+    }
+
+    .option-a .dynamic-island {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 80px;
+      height: 24px;
+      background: #000;
+      border-radius: 16px;
+    }
+
+    .option-a .home-indicator {
+      position: absolute;
+      bottom: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 90px;
+      height: 4px;
+      background: rgba(255,255,255,0.3);
+      border-radius: 2px;
+    }
+
+    /* ============================================
+       OPTION B - Floating Shadow
+       ============================================ */
+    .option-b .tablet-frame {
+      width: 300px;
+      height: 400px;
+      background: #18181b;
+      border-radius: 24px;
+      padding: 8px;
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.1),
+        0 30px 60px -10px rgba(0,0,0,0.6),
+        0 50px 100px -20px rgba(0,0,0,0.4);
+    }
+
+    .option-b .tablet-screen {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(180deg, #1e3a5f, #0d1b2a);
+      border-radius: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: rgba(255,255,255,0.6);
+    }
+
+    .option-b .mobile-frame {
+      width: 220px;
+      height: 460px;
+      background: #18181b;
+      border-radius: 40px;
+      padding: 10px;
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.1),
+        0 30px 60px -10px rgba(0,0,0,0.6),
+        0 50px 100px -20px rgba(0,0,0,0.4);
+      position: relative;
+    }
+
+    .option-b .mobile-screen {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(180deg, #1e3a5f, #0d1b2a);
+      border-radius: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: rgba(255,255,255,0.6);
+    }
+
+    .option-b .dynamic-island {
+      position: absolute;
+      top: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 90px;
+      height: 26px;
+      background: #000;
+      border-radius: 18px;
+    }
+
+    .option-b .home-indicator {
+      position: absolute;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100px;
+      height: 4px;
+      background: rgba(255,255,255,0.25);
+      border-radius: 2px;
+    }
+
+    /* ============================================
+       OPTION C - Glass Morphism
+       ============================================ */
+    .option-c .tablet-frame {
+      width: 290px;
+      height: 390px;
+      background: linear-gradient(145deg,
+        rgba(255,255,255,0.08) 0%,
+        rgba(255,255,255,0.02) 100%);
+      border-radius: 28px;
+      padding: 10px;
+      border: 1px solid rgba(255,255,255,0.12);
+      box-shadow:
+        0 25px 50px rgba(0,0,0,0.4),
+        inset 0 1px 1px rgba(255,255,255,0.1);
+      backdrop-filter: blur(10px);
+    }
+
+    .option-c .tablet-screen {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(180deg, #1e3a5f, #0d1b2a);
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: rgba(255,255,255,0.6);
+      box-shadow: inset 0 0 20px rgba(0,0,0,0.3);
+    }
+
+    .option-c .mobile-frame {
+      width: 210px;
+      height: 440px;
+      background: linear-gradient(145deg,
+        rgba(255,255,255,0.08) 0%,
+        rgba(255,255,255,0.02) 100%);
+      border-radius: 38px;
+      padding: 10px;
+      border: 1px solid rgba(255,255,255,0.12);
+      box-shadow:
+        0 25px 50px rgba(0,0,0,0.4),
+        inset 0 1px 1px rgba(255,255,255,0.1);
+      backdrop-filter: blur(10px);
+      position: relative;
+    }
+
+    .option-c .mobile-screen {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(180deg, #1e3a5f, #0d1b2a);
+      border-radius: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: rgba(255,255,255,0.6);
+      box-shadow: inset 0 0 20px rgba(0,0,0,0.3);
+    }
+
+    .option-c .dynamic-island {
+      position: absolute;
+      top: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 85px;
+      height: 25px;
+      background: rgba(0,0,0,0.9);
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .option-c .home-indicator {
+      position: absolute;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 95px;
+      height: 4px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 2px;
+    }
+
+    /* ============================================
+       OPTION D - Ultra Minimal
+       ============================================ */
+    .option-d .tablet-frame {
+      width: 300px;
+      height: 400px;
+      background: transparent;
+      border-radius: 20px;
+      padding: 0;
+      border: 2px solid rgba(255,255,255,0.15);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+
+    .option-d .tablet-screen {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(180deg, #1e3a5f, #0d1b2a);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: rgba(255,255,255,0.6);
+    }
+
+    .option-d .mobile-frame {
+      width: 220px;
+      height: 460px;
+      background: transparent;
+      border-radius: 36px;
+      padding: 0;
+      border: 2px solid rgba(255,255,255,0.15);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .option-d .mobile-screen {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(180deg, #1e3a5f, #0d1b2a);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: rgba(255,255,255,0.6);
+    }
+
+    .option-d .notch-bar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 36px;
+      background: rgba(0,0,0,0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .option-d .notch {
+      width: 80px;
+      height: 22px;
+      background: #000;
+      border-radius: 0 0 14px 14px;
+    }
+
+    .option-d .home-indicator {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100px;
+      height: 4px;
+      background: rgba(255,255,255,0.3);
+      border-radius: 2px;
+    }
+
+    .features {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 20px;
+    }
+
+    .feature {
+      background: rgba(255,255,255,0.05);
+      padding: 5px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      color: #999;
+    }
+
+    .option-a .feature { border: 1px solid rgba(139, 92, 246, 0.2); }
+    .option-b .feature { border: 1px solid rgba(14, 165, 233, 0.2); }
+    .option-c .feature { border: 1px solid rgba(34, 197, 94, 0.2); }
+    .option-d .feature { border: 1px solid rgba(245, 158, 11, 0.2); }
+
+    .link-demo {
+      display: inline-block;
+      margin-top: 16px;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 12px;
+      text-decoration: none;
+      transition: all 0.2s ease;
+    }
+
+    .option-a .link-demo { background: rgba(139, 92, 246, 0.15); color: #8b5cf6; }
+    .option-b .link-demo { background: rgba(14, 165, 233, 0.15); color: #0ea5e9; }
+    .option-c .link-demo { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
+    .option-d .link-demo { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+
+    .link-demo:hover {
+      transform: translateY(-2px);
+    }
+  </style>
+</head>
+<body>
+  <h1>Device Frame Redesign</h1>
+  <p class="subtitle">Propositions pour des frames tablet et mobile plus esthétiques et lisibles</p>
+
+  <div class="options-grid">
+    <!-- Option A -->
+    <div class="option-card option-a">
+      <div class="option-header">
+        <h2>Option A - Sleek Titanium</h2>
+        <span class="badge recommended">Recommandé</span>
+      </div>
+      <p class="option-desc">
+        Design inspiré du titanium des derniers iPhones/iPads. Bordures subtiles avec dégradé métallique,
+        ombres internes pour la profondeur. Dynamic Island et home indicator réalistes.
+      </p>
+      <div class="devices-preview">
+        <div class="tablet-frame">
+          <div class="tablet-screen">Tablet Preview</div>
+        </div>
+        <div class="mobile-frame">
+          <div class="mobile-screen">Mobile Preview</div>
+          <div class="dynamic-island"></div>
+          <div class="home-indicator"></div>
+        </div>
+      </div>
+      <div class="features">
+        <span class="feature">Dégradé métallique</span>
+        <span class="feature">Ombres 3D</span>
+        <span class="feature">Dynamic Island</span>
+        <span class="feature">Bordures subtiles</span>
+      </div>
+      <a href="option-a-titanium.html" class="link-demo">Voir la démo interactive →</a>
+    </div>
+
+    <!-- Option B -->
+    <div class="option-card option-b">
+      <div class="option-header">
+        <h2>Option B - Floating Shadow</h2>
+        <span class="badge modern">Moderne</span>
+      </div>
+      <p class="option-desc">
+        Design épuré avec effet de lévitation prononcé. Cadre minimaliste noir avec des ombres
+        profondes qui donnent l'impression que l'appareil flotte au-dessus de la surface.
+      </p>
+      <div class="devices-preview">
+        <div class="tablet-frame">
+          <div class="tablet-screen">Tablet Preview</div>
+        </div>
+        <div class="mobile-frame">
+          <div class="mobile-screen">Mobile Preview</div>
+          <div class="dynamic-island"></div>
+          <div class="home-indicator"></div>
+        </div>
+      </div>
+      <div class="features">
+        <span class="feature">Ombre profonde</span>
+        <span class="feature">Effet lévitation</span>
+        <span class="feature">Cadre fin</span>
+        <span class="feature">Plus grand</span>
+      </div>
+      <a href="option-b-floating.html" class="link-demo">Voir la démo interactive →</a>
+    </div>
+
+    <!-- Option C -->
+    <div class="option-card option-c">
+      <div class="option-header">
+        <h2>Option C - Glass Morphism</h2>
+        <span class="badge glass">Glass</span>
+      </div>
+      <p class="option-desc">
+        Effet verre dépoli moderne avec transparence et blur. Les bordures sont semi-transparentes
+        avec un reflet subtil en haut. Donne un aspect premium et moderne.
+      </p>
+      <div class="devices-preview">
+        <div class="tablet-frame">
+          <div class="tablet-screen">Tablet Preview</div>
+        </div>
+        <div class="mobile-frame">
+          <div class="mobile-screen">Mobile Preview</div>
+          <div class="dynamic-island"></div>
+          <div class="home-indicator"></div>
+        </div>
+      </div>
+      <div class="features">
+        <span class="feature">Glassmorphism</span>
+        <span class="feature">Backdrop blur</span>
+        <span class="feature">Reflets</span>
+        <span class="feature">Transparence</span>
+      </div>
+      <a href="option-c-glass.html" class="link-demo">Voir la démo interactive →</a>
+    </div>
+
+    <!-- Option D -->
+    <div class="option-card option-d">
+      <div class="option-header">
+        <h2>Option D - Ultra Minimal</h2>
+        <span class="badge minimal">Minimal</span>
+      </div>
+      <p class="option-desc">
+        Le plus épuré possible. Pas de cadre visible, juste une bordure fine et les coins arrondis.
+        Maximise l'espace d'écran visible. Parfait pour se concentrer sur le contenu.
+      </p>
+      <div class="devices-preview">
+        <div class="tablet-frame">
+          <div class="tablet-screen">Tablet Preview</div>
+        </div>
+        <div class="mobile-frame">
+          <div class="mobile-screen">Mobile Preview</div>
+          <div class="notch-bar"><div class="notch"></div></div>
+          <div class="home-indicator"></div>
+        </div>
+      </div>
+      <div class="features">
+        <span class="feature">Ultra minimal</span>
+        <span class="feature">Max visibilité</span>
+        <span class="feature">Bordure fine</span>
+        <span class="feature">Clean</span>
+      </div>
+      <a href="option-d-minimal.html" class="link-demo">Voir la démo interactive →</a>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Option B - Floating Shadow</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0b;
+      color: #fff;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      padding: 20px 30px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .back-link {
+      color: #0ea5e9;
+      text-decoration: none;
+      font-size: 14px;
+    }
+
+    h1 {
+      font-size: 18px;
+      font-weight: 600;
+      color: #0ea5e9;
+    }
+
+    .controls {
+      display: flex;
+      gap: 8px;
+      background: rgba(255,255,255,0.05);
+      padding: 6px;
+      border-radius: 12px;
+    }
+
+    .control-btn {
+      padding: 8px 16px;
+      border: none;
+      background: transparent;
+      color: #888;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s ease;
+    }
+
+    .control-btn.active {
+      background: #0ea5e9;
+      color: #fff;
+    }
+
+    .control-btn:hover:not(.active) {
+      color: #fff;
+      background: rgba(255,255,255,0.1);
+    }
+
+    .preview-area {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0f0f11;
+    }
+
+    :root {
+      --easing: cubic-bezier(0.22, 1, 0.36, 1);
+      --duration: 0.4s;
+    }
+
+    .device-container {
+      transition: all var(--duration) var(--easing);
+    }
+
+    .device-shell {
+      position: relative;
+      overflow: hidden;
+      transition:
+        width var(--duration) var(--easing),
+        height var(--duration) var(--easing),
+        border-radius var(--duration) var(--easing),
+        padding var(--duration) var(--easing),
+        background var(--duration) var(--easing),
+        box-shadow var(--duration) var(--easing);
+    }
+
+    .device-screen {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(180deg, #1e3a5f, #0d1b2a);
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      color: rgba(255,255,255,0.5);
+      transition: border-radius var(--duration) var(--easing);
+    }
+
+    .dynamic-island {
+      position: absolute;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #000;
+      border-radius: 20px;
+      pointer-events: none;
+      transition:
+        width var(--duration) var(--easing),
+        height var(--duration) var(--easing),
+        opacity var(--duration) var(--easing);
+    }
+
+    .home-indicator {
+      position: absolute;
+      bottom: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      height: 5px;
+      background: rgba(255,255,255,0.25);
+      border-radius: 3px;
+      pointer-events: none;
+      transition:
+        width var(--duration) var(--easing),
+        opacity var(--duration) var(--easing);
+    }
+
+    /* DESKTOP */
+    .device-container.desktop .device-shell {
+      width: 900px;
+      height: 560px;
+      background: #18181b;
+      border-radius: 12px;
+      padding: 0;
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.1),
+        0 4px 24px rgba(0,0,0,0.3);
+    }
+
+    .device-container.desktop .device-screen {
+      border-radius: 8px;
+    }
+
+    .device-container.desktop .dynamic-island,
+    .device-container.desktop .home-indicator {
+      width: 0;
+      height: 0;
+      opacity: 0;
+    }
+
+    /* TABLET */
+    .device-container.tablet .device-shell {
+      width: 500px;
+      height: 660px;
+      background: #18181b;
+      border-radius: 28px;
+      padding: 10px;
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.08),
+        0 40px 80px -15px rgba(0,0,0,0.7),
+        0 60px 120px -25px rgba(0,0,0,0.5);
+    }
+
+    .device-container.tablet .device-screen {
+      border-radius: 20px;
+    }
+
+    .device-container.tablet .dynamic-island,
+    .device-container.tablet .home-indicator {
+      width: 0;
+      height: 0;
+      opacity: 0;
+    }
+
+    /* MOBILE */
+    .device-container.mobile .device-shell {
+      width: 360px;
+      height: 760px;
+      background: #18181b;
+      border-radius: 48px;
+      padding: 12px;
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.08),
+        0 40px 80px -15px rgba(0,0,0,0.7),
+        0 60px 120px -25px rgba(0,0,0,0.5);
+    }
+
+    .device-container.mobile .device-screen {
+      border-radius: 38px;
+    }
+
+    .device-container.mobile .dynamic-island {
+      width: 110px;
+      height: 32px;
+      opacity: 1;
+    }
+
+    .device-container.mobile .home-indicator {
+      width: 120px;
+      opacity: 1;
+    }
+
+    /* LANDSCAPE */
+    .device-container.tablet.landscape .device-shell {
+      width: 660px;
+      height: 500px;
+    }
+
+    .device-container.mobile.landscape .device-shell {
+      width: 760px;
+      height: 360px;
+    }
+
+    .device-container.mobile.landscape .dynamic-island {
+      top: 50%;
+      left: 16px;
+      transform: translateY(-50%);
+      width: 32px;
+      height: 110px;
+    }
+
+    .device-container.mobile.landscape .home-indicator {
+      bottom: 50%;
+      right: 12px;
+      left: auto;
+      transform: translateY(50%);
+      width: 5px;
+      height: 120px;
+    }
+
+    .rotate-btn {
+      margin-left: 16px;
+      padding: 8px;
+      background: rgba(255,255,255,0.05);
+      border: none;
+      border-radius: 8px;
+      color: #888;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .rotate-btn:hover {
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+    }
+
+    .rotate-btn svg {
+      width: 18px;
+      height: 18px;
+      transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .rotate-btn.landscape svg {
+      transform: rotate(90deg);
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <a href="index.html" class="back-link">← Retour</a>
+    <h1>Option B - Floating Shadow</h1>
+    <div style="display: flex; align-items: center;">
+      <div class="controls">
+        <button class="control-btn active" data-device="desktop">Desktop</button>
+        <button class="control-btn" data-device="tablet">Tablet</button>
+        <button class="control-btn" data-device="mobile">Mobile</button>
+      </div>
+      <button class="rotate-btn" id="rotateBtn" title="Rotation">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 12a9 9 0 11-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
+          <path d="M21 3v5h-5"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="preview-area">
+    <div class="device-container desktop" id="deviceContainer">
+      <div class="device-shell">
+        <div class="device-screen">Preview Content</div>
+        <div class="dynamic-island"></div>
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const container = document.getElementById('deviceContainer');
+    const buttons = document.querySelectorAll('.control-btn');
+    const rotateBtn = document.getElementById('rotateBtn');
+    let currentDevice = 'desktop';
+    let isLandscape = false;
+
+    buttons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        buttons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentDevice = btn.dataset.device;
+        updateDevice();
+      });
+    });
+
+    rotateBtn.addEventListener('click', () => {
+      if (currentDevice !== 'desktop') {
+        isLandscape = !isLandscape;
+        rotateBtn.classList.toggle('landscape', isLandscape);
+        updateDevice();
+      }
+    });
+
+    function updateDevice() {
+      container.className = `device-container ${currentDevice}${isLandscape && currentDevice !== 'desktop' ? ' landscape' : ''}`;
+    }
+  </script>
+</body>
+</html>
