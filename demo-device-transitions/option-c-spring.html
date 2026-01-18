@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Option C: Spring Animation (Premium)</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0b;
+      color: #fff;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      padding: 20px;
+      text-align: center;
+      border-bottom: 1px solid #222;
+    }
+
+    h1 {
+      font-size: 18px;
+      font-weight: 500;
+      color: #f59e0b;
+    }
+
+    .description {
+      font-size: 13px;
+      color: #888;
+      margin-top: 8px;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      padding: 16px;
+      background: #111;
+      border-bottom: 1px solid #222;
+    }
+
+    .device-selector {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      position: relative;
+      background: #1a1a1e;
+      padding: 4px;
+      border-radius: 14px;
+    }
+
+    /* Animated background glow */
+    .selector-glow {
+      position: absolute;
+      height: calc(100% - 8px);
+      width: 40px;
+      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+      border-radius: 10px;
+      transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+      box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
+      z-index: 0;
+    }
+
+    .selector-glow[data-position="0"] { transform: translateX(0); }
+    .selector-glow[data-position="1"] { transform: translateX(44px); }
+    .selector-glow[data-position="2"] { transform: translateX(88px); }
+
+    .device-btn {
+      position: relative;
+      z-index: 1;
+      width: 40px;
+      height: 36px;
+      border: none;
+      background: transparent;
+      color: #666;
+      cursor: pointer;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      transition: color 0.2s, transform 0.2s;
+    }
+
+    .device-btn:hover {
+      transform: scale(1.05);
+    }
+
+    .device-btn.active {
+      color: #fff;
+    }
+
+    .rotate-btn {
+      width: 36px;
+      height: 36px;
+      border: none;
+      background: #1a1a1e;
+      color: #888;
+      cursor: pointer;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .rotate-btn:hover {
+      color: #f59e0b;
+      background: rgba(245, 158, 11, 0.1);
+    }
+
+    .rotate-btn.rotated {
+      transform: rotate(90deg);
+    }
+
+    .preview-area {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: #0f0f11;
+      overflow: hidden;
+    }
+
+    .device-frame {
+      /* Spring animation - overshoots then settles */
+      transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .device-shell {
+      transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    /* Desktop */
+    .device-frame.desktop {
+      transform: scale(1);
+    }
+
+    .device-frame.desktop .device-shell {
+      width: 800px;
+      height: 500px;
+      background: #1a1a1e;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 0 0 1px rgba(255,255,255,0.1);
+    }
+
+    /* Tablet */
+    .device-frame.tablet {
+      transform: scale(0.9);
+    }
+
+    .device-frame.tablet .device-shell {
+      width: 420px;
+      height: 560px;
+      background: linear-gradient(145deg, #2a2a2e, #222226);
+      border-radius: 36px;
+      padding: 12px;
+      box-shadow:
+        0 25px 50px -12px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 rgba(255,255,255,0.1),
+        0 0 0 4px #1a1a1e;
+    }
+
+    .device-frame.tablet.landscape {
+      transform: scale(0.75);
+    }
+
+    .device-frame.tablet.landscape .device-shell {
+      width: 560px;
+      height: 420px;
+    }
+
+    /* Mobile */
+    .device-frame.mobile {
+      transform: scale(0.85);
+    }
+
+    .device-frame.mobile .device-shell {
+      width: 290px;
+      height: 620px;
+      background: linear-gradient(145deg, #2a2a2e, #222226);
+      border-radius: 44px;
+      padding: 12px;
+      box-shadow:
+        0 25px 50px -12px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 rgba(255,255,255,0.1),
+        0 0 0 4px #1a1a1e;
+    }
+
+    .device-frame.mobile.landscape {
+      transform: scale(0.7);
+    }
+
+    .device-frame.mobile.landscape .device-shell {
+      width: 620px;
+      height: 290px;
+    }
+
+    .screen {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .device-frame.desktop .screen {
+      border-radius: 8px;
+    }
+
+    .device-frame.tablet .screen,
+    .device-frame.mobile .screen {
+      border-radius: 28px;
+    }
+
+    /* Animated gradient */
+    .screen::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 50%);
+      animation: shimmer 3s ease-in-out infinite;
+    }
+
+    @keyframes shimmer {
+      0%, 100% { transform: translate(0, 0); }
+      50% { transform: translate(25%, 25%); }
+    }
+
+    .screen-content {
+      text-align: center;
+      position: relative;
+      z-index: 1;
+    }
+
+    .screen-content h2 {
+      font-size: 22px;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+
+    .screen-content p {
+      opacity: 0.9;
+      font-size: 14px;
+    }
+
+    /* Notch for mobile */
+    .notch {
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 120px;
+      height: 28px;
+      background: #1a1a1e;
+      border-radius: 14px;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .device-frame.mobile .notch {
+      opacity: 1;
+    }
+
+    .home-indicator {
+      position: absolute;
+      bottom: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100px;
+      height: 4px;
+      background: rgba(255,255,255,0.4);
+      border-radius: 2px;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .device-frame.mobile .home-indicator {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Option C: Spring Animation (Premium)</h1>
+    <p class="description">Animation spring avec rebond subtil - Style iOS/macOS</p>
+  </div>
+
+  <div class="toolbar">
+    <div class="device-selector">
+      <div class="selector-glow" data-position="0"></div>
+      <button class="device-btn active" data-device="desktop" title="Desktop">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+          <line x1="8" y1="21" x2="16" y2="21"></line>
+          <line x1="12" y1="17" x2="12" y2="21"></line>
+        </svg>
+      </button>
+      <button class="device-btn" data-device="tablet" title="Tablet">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect>
+          <line x1="12" y1="18" x2="12.01" y2="18"></line>
+        </svg>
+      </button>
+      <button class="device-btn" data-device="mobile" title="Mobile">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+          <line x1="12" y1="18" x2="12.01" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+    <button class="rotate-btn" id="rotateBtn" title="Rotation">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 2v6h-6"></path>
+        <path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path>
+        <path d="M3 22v-6h6"></path>
+        <path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path>
+      </svg>
+    </button>
+  </div>
+
+  <div class="preview-area">
+    <div class="device-frame desktop" id="deviceFrame">
+      <div class="device-shell">
+        <div class="screen">
+          <div class="notch"></div>
+          <div class="screen-content">
+            <h2>Mon Application</h2>
+            <p>Apercu responsive</p>
+          </div>
+          <div class="home-indicator"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const deviceBtns = document.querySelectorAll('.device-btn');
+    const glow = document.querySelector('.selector-glow');
+    const deviceFrame = document.getElementById('deviceFrame');
+    const rotateBtn = document.getElementById('rotateBtn');
+    let currentDevice = 'desktop';
+    let isLandscape = false;
+
+    deviceBtns.forEach((btn, index) => {
+      btn.addEventListener('click', () => {
+        // Update glow position
+        glow.dataset.position = index;
+
+        // Update active state
+        deviceBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        // Update device frame
+        currentDevice = btn.dataset.device;
+        deviceFrame.className = 'device-frame ' + currentDevice;
+        if (isLandscape && currentDevice !== 'desktop') {
+          deviceFrame.classList.add('landscape');
+        }
+
+        // Reset rotation for desktop
+        if (currentDevice === 'desktop') {
+          isLandscape = false;
+          rotateBtn.classList.remove('rotated');
+        }
+      });
+    });
+
+    rotateBtn.addEventListener('click', () => {
+      if (currentDevice === 'desktop') return;
+
+      isLandscape = !isLandscape;
+      rotateBtn.classList.toggle('rotated', isLandscape);
+
+      if (isLandscape) {
+        deviceFrame.classList.add('landscape');
+      } else {
+        deviceFrame.classList.remove('landscape');
+      }
+    });
+  </script>
+</body>
+</html>

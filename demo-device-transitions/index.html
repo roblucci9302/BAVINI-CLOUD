@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Demos - Device Preview Transitions</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #0a0a0b 0%, #1a1a2e 100%);
+      color: #fff;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 60px 20px;
+    }
+
+    h1 {
+      font-size: 32px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      background: linear-gradient(135deg, #0ea5e9, #8b5cf6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .subtitle {
+      color: #888;
+      font-size: 16px;
+      margin-bottom: 50px;
+    }
+
+    .demos-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+      max-width: 1200px;
+      width: 100%;
+    }
+
+    .demo-card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 20px;
+      padding: 28px;
+      transition: all 0.3s ease;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .demo-card:hover {
+      background: rgba(255,255,255,0.06);
+      border-color: rgba(255,255,255,0.15);
+      transform: translateY(-4px);
+    }
+
+    .demo-card h2 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .demo-card.option-a h2 { color: #0ea5e9; }
+    .demo-card.option-b h2 { color: #22c55e; }
+    .demo-card.option-c h2 { color: #f59e0b; }
+    .demo-card.option-d h2 { color: #8b5cf6; }
+
+    .demo-card p {
+      color: #888;
+      font-size: 14px;
+      line-height: 1.6;
+      margin-bottom: 20px;
+    }
+
+    .features {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .feature {
+      background: rgba(255,255,255,0.05);
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      color: #aaa;
+    }
+
+    .demo-card.option-a .feature { border: 1px solid rgba(14, 165, 233, 0.3); }
+    .demo-card.option-b .feature { border: 1px solid rgba(34, 197, 94, 0.3); }
+    .demo-card.option-c .feature { border: 1px solid rgba(245, 158, 11, 0.3); }
+    .demo-card.option-d .feature { border: 1px solid rgba(139, 92, 246, 0.3); }
+
+    .badge {
+      font-size: 10px;
+      padding: 3px 8px;
+      border-radius: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .badge.recommended {
+      background: rgba(34, 197, 94, 0.2);
+      color: #22c55e;
+    }
+
+    .badge.premium {
+      background: rgba(245, 158, 11, 0.2);
+      color: #f59e0b;
+    }
+
+    .badge.simple {
+      background: rgba(139, 92, 246, 0.2);
+      color: #8b5cf6;
+    }
+
+    .instructions {
+      margin-top: 50px;
+      text-align: center;
+      color: #666;
+      font-size: 13px;
+    }
+
+    .instructions code {
+      background: rgba(255,255,255,0.1);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+  <h1>Device Preview Transitions</h1>
+  <p class="subtitle">Choisissez le style d'animation pour le passage Desktop / Tablet / Mobile</p>
+
+  <div class="demos-grid">
+    <a href="option-a-pill-slider.html" class="demo-card option-a">
+      <h2>
+        Option A
+        <span class="badge recommended">Recommande</span>
+      </h2>
+      <p>Pill Slider + Scale Smooth. Un indicateur pill qui glisse entre les icones avec une animation scale fluide du cadre device.</p>
+      <div class="features">
+        <span class="feature">Pill animee</span>
+        <span class="feature">Scale 350ms</span>
+        <span class="feature">Easing naturel</span>
+      </div>
+    </a>
+
+    <a href="option-b-fade-transform.html" class="demo-card option-b">
+      <h2>Option B</h2>
+      <p>Fade + Transform. Le cadre fait un fade out, change de taille, puis fade in. Transition en 2 phases pour un effet propre.</p>
+      <div class="features">
+        <span class="feature">Fade 150ms</span>
+        <span class="feature">Transform</span>
+        <span class="feature">2 phases</span>
+      </div>
+    </a>
+
+    <a href="option-c-spring.html" class="demo-card option-c">
+      <h2>
+        Option C
+        <span class="badge premium">Premium</span>
+      </h2>
+      <p>Spring Animation. Animation avec rebond subtil style iOS/macOS. Le cadre "rebondit" legerement a la fin pour un effet premium.</p>
+      <div class="features">
+        <span class="feature">Spring CSS</span>
+        <span class="feature">Rebond</span>
+        <span class="feature">Glow effect</span>
+      </div>
+    </a>
+
+    <a href="option-d-morph-easing.html" class="demo-card option-d">
+      <h2>
+        Option D
+        <span class="badge simple">Simple</span>
+      </h2>
+      <p>Morph Direct. Pas de fade, juste un morphing continu avec un easing personnalise. Simple mais efficace.</p>
+      <div class="features">
+        <span class="feature">Morph direct</span>
+        <span class="feature">Cubic-bezier</span>
+        <span class="feature">Minimal</span>
+      </div>
+    </a>
+  </div>
+
+  <p class="instructions">
+    Cliquez sur une carte pour voir la demo. <br>
+    Testez le passage entre Desktop, Tablet et Mobile + la rotation.
+  </p>
+</body>
+</html>
