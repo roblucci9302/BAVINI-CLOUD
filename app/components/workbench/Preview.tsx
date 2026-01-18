@@ -132,6 +132,12 @@ export const Preview = memo(() => {
     }
   }, []);
 
+  const openInNewTab = useCallback(() => {
+    if (iframeUrl) {
+      window.open(iframeUrl, '_blank', 'noopener,noreferrer');
+    }
+  }, [iframeUrl]);
+
   useEffect(() => {
     if (!activePreview) {
       logger.info('No active preview, clearing URL');
@@ -209,6 +215,12 @@ export const Preview = memo(() => {
           icon="i-ph:arrows-out"
           title="Plein écran"
           onClick={enterFullscreen}
+          disabled={!iframeUrl || !activePreview?.ready}
+        />
+        <IconButton
+          icon="i-ph:arrow-square-out"
+          title="Ouvrir dans un nouvel onglet"
+          onClick={openInNewTab}
           disabled={!iframeUrl || !activePreview?.ready}
         />
         <div className="flex items-center gap-2.5 flex-grow bg-[var(--bolt-bg-base,#050506)] border border-bolt-elements-borderColor text-bolt-elements-textSecondary rounded-[16px] px-3.5 h-[34px] text-[13px] font-mono transition-all duration-200 focus-within:border-[#0ea5e9] focus-within:text-bolt-elements-textPrimary focus-within:shadow-[0_0_0_2px_rgba(14,165,233,0.15)]">
