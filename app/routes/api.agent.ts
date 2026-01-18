@@ -47,6 +47,60 @@ const logger = createScopedLogger('api.agent');
 /** Global timeout for agent requests (10 minutes) */
 const GLOBAL_TIMEOUT_MS = 600_000;
 
+/**
+ * Per-stage timeouts for each agent type.
+ * Allows fine-grained control over how long each agent can run.
+ * Prevents runaway LLM calls while allowing appropriate time for each task.
+ */
+const STAGE_TIMEOUTS: Record<string, number> = {
+  orchestrator: 30_000,   // 30s for analysis and routing
+  coder: 180_000,         // 3min for code generation (complex)
+  builder: 120_000,       // 2min for build commands
+  tester: 60_000,         // 1min for test verification
+  reviewer: 60_000,       // 1min for code review
+  fixer: 120_000,         // 2min for auto-fixes
+  explorer: 60_000,       // 1min for code exploration
+  deployer: 90_000,       // 1.5min for git operations
+  default: 60_000,        // 1min fallback
+};
+
+/**
+ * Execute an agent function with a stage-specific timeout.
+ * Throws an error if the agent takes too long, allowing graceful recovery.
+ *
+ * @param agentName - Name of the agent (used to look up timeout)
+ * @param fn - Async function to execute
+ * @returns Result of the function
+ * @throws Error if timeout is exceeded
+ */
+async function runAgentWithTimeout<T>(
+  agentName: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const timeout = STAGE_TIMEOUTS[agentName] ?? STAGE_TIMEOUTS.default;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+  }, timeout);
+
+  try {
+    // Race between the function and the timeout
+    const result = await Promise.race([
+      fn(),
+      new Promise<never>((_, reject) => {
+        controller.signal.addEventListener('abort', () => {
+          reject(new Error(`Agent ${agentName} timed out after ${timeout / 1000}s`));
+        });
+      }),
+    ]);
+
+    return result;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 /*
  * ============================================================================
  * ACTION
@@ -184,26 +238,30 @@ async function executeDelegation(
     .filter((m) => m.role !== 'system' && m.content && m.content.trim() !== '')
     .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
 
-  // Call LLM with agent's prompt
+  // Call LLM with agent's prompt and stage-specific timeout
   logger.info(`Calling LLM for agent ${decision.targetAgent} with ${agentMessages.length} messages`);
 
   const model = getAnthropicModel(getAPIKey(context.cloudflare.env));
-  const agentResult = await _streamText({
-    model,
-    system: agentPrompt,
-    maxOutputTokens: 32768, // Increased from 16K to 32K for complex code generation
-    messages: agentMessages,
-  });
 
   // Stream the agent's response and collect for error detection
   let totalChunks = 0;
   let fullAgentOutput = '';
 
-  for await (const chunk of agentResult.textStream) {
-    totalChunks++;
-    fullAgentOutput += chunk;
-    sendText(controller, encoder, chunk);
-  }
+  // Wrap LLM call with stage timeout
+  await runAgentWithTimeout(decision.targetAgent, async () => {
+    const agentResult = await _streamText({
+      model,
+      system: agentPrompt,
+      maxOutputTokens: 32768, // Increased from 16K to 32K for complex code generation
+      messages: agentMessages,
+    });
+
+    for await (const chunk of agentResult.textStream) {
+      totalChunks++;
+      fullAgentOutput += chunk;
+      sendText(controller, encoder, chunk);
+    }
+  });
 
   logger.info(`LLM stream completed with ${totalChunks} chunks`);
   sendAgentStatus(controller, encoder, decision.targetAgent, 'completed');

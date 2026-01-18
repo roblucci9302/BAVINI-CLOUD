@@ -107,16 +107,48 @@ interfaceSettingsStore.subscribe((settings) => {
   saveInterfaceSettings(settings);
 });
 
-// Sync buildSettingsStore with runtimeTypeStore (bidirectional)
+/**
+ * Sync flag to prevent infinite loop between buildSettingsStore and runtimeTypeStore.
+ * When one store updates the other, this flag prevents re-entrant updates.
+ */
+let isSyncingBuildRuntime = false;
+
+// Sync buildSettingsStore with runtimeTypeStore (bidirectional, protected against infinite loops)
 buildSettingsStore.subscribe((settings) => {
+  // Skip if we're already syncing (prevents re-entrancy)
+  if (isSyncingBuildRuntime) {
+    return;
+  }
+
+  // Check if sync is needed
   if (runtimeTypeStore.get() !== settings.engine) {
-    runtimeTypeStore.set(settings.engine);
+    isSyncingBuildRuntime = true;
+
+    try {
+      runtimeTypeStore.set(settings.engine);
+    } finally {
+      // Always reset flag, even if set() throws
+      isSyncingBuildRuntime = false;
+    }
   }
 });
 
 runtimeTypeStore.subscribe((type) => {
+  // Skip if we're already syncing (prevents re-entrancy)
+  if (isSyncingBuildRuntime) {
+    return;
+  }
+
+  // Check if sync is needed
   if (buildSettingsStore.get().engine !== type) {
-    buildSettingsStore.set({ engine: type });
+    isSyncingBuildRuntime = true;
+
+    try {
+      buildSettingsStore.set({ engine: type });
+    } finally {
+      // Always reset flag, even if set() throws
+      isSyncingBuildRuntime = false;
+    }
   }
 });
 

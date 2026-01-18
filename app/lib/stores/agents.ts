@@ -177,6 +177,88 @@ export function setCurrentAction(action: CurrentAction | null): void {
 
 /*
  * ============================================================================
+ * MEMOIZATION UTILITIES
+ * ============================================================================
+ */
+
+/**
+ * Shallow equality check for memoization.
+ * Prevents unnecessary re-renders when computed values haven't actually changed.
+ */
+function shallowEqual<T>(a: T, b: T): boolean {
+  if (a === b) {
+    return true;
+  }
+
+  if (typeof a !== 'object' || typeof b !== 'object') {
+    return false;
+  }
+
+  if (a === null || b === null) {
+    return false;
+  }
+
+  // Array comparison
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) {
+      return false;
+    }
+
+    for (let i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  // Object comparison
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+
+  if (keysA.length !== keysB.length) {
+    return false;
+  }
+
+  for (const key of keysA) {
+    if ((a as Record<string, unknown>)[key] !== (b as Record<string, unknown>)[key]) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Create a memoized computed store that only triggers updates when the value actually changes.
+ * Uses shallow equality for comparison.
+ */
+function memoizedComputed<T, R>(
+  store: { subscribe: (cb: (value: T) => void) => () => void; get: () => T },
+  transform: (value: T) => R,
+): { subscribe: (cb: (value: R) => void) => () => void; get: () => R } {
+  let lastValue: R | undefined;
+  let initialized = false;
+
+  const computedStore = computed(store, (value) => {
+    const newValue = transform(value);
+
+    // On first call or if value changed, update
+    if (!initialized || !shallowEqual(lastValue as R, newValue)) {
+      lastValue = newValue;
+      initialized = true;
+    }
+
+    // Return cached value to prevent unnecessary object creation
+    return lastValue as R;
+  });
+
+  return computedStore;
+}
+
+/*
+ * ============================================================================
  * STORES CALCULÉS
  * ============================================================================
  */
@@ -216,16 +298,19 @@ export const agentStatsStore = computed(
 /**
  * Computed stores for individual agent logs
  * These allow subscribing to a specific agent's logs without
- * re-rendering when other agents' logs change
+ * re-rendering when other agents' logs change.
+ *
+ * OPTIMIZED: Uses memoization to prevent unnecessary re-renders
+ * when the logs array reference changes but contents are the same.
  */
-export const orchestratorLogsStore = computed(agentLogsStore, (logs) => logs.orchestrator);
-export const exploreLogsStore = computed(agentLogsStore, (logs) => logs.explore);
-export const coderLogsStore = computed(agentLogsStore, (logs) => logs.coder);
-export const builderLogsStore = computed(agentLogsStore, (logs) => logs.builder);
-export const testerLogsStore = computed(agentLogsStore, (logs) => logs.tester);
-export const deployerLogsStore = computed(agentLogsStore, (logs) => logs.deployer);
-export const reviewerLogsStore = computed(agentLogsStore, (logs) => logs.reviewer);
-export const fixerLogsStore = computed(agentLogsStore, (logs) => logs.fixer);
+export const orchestratorLogsStore = memoizedComputed(agentLogsStore, (logs) => logs.orchestrator);
+export const exploreLogsStore = memoizedComputed(agentLogsStore, (logs) => logs.explore);
+export const coderLogsStore = memoizedComputed(agentLogsStore, (logs) => logs.coder);
+export const builderLogsStore = memoizedComputed(agentLogsStore, (logs) => logs.builder);
+export const testerLogsStore = memoizedComputed(agentLogsStore, (logs) => logs.tester);
+export const deployerLogsStore = memoizedComputed(agentLogsStore, (logs) => logs.deployer);
+export const reviewerLogsStore = memoizedComputed(agentLogsStore, (logs) => logs.reviewer);
+export const fixerLogsStore = memoizedComputed(agentLogsStore, (logs) => logs.fixer);
 
 /**
  * Factory function to get logs store for a specific agent

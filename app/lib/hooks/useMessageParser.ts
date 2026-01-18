@@ -6,7 +6,12 @@ import { createScopedLogger } from '~/utils/logger';
 
 const logger = createScopedLogger('useMessageParser');
 
-const messageParser = new StreamingMessageParser({
+/**
+ * Singleton du parser de messages.
+ * IMPORTANT: Une seule instance pour éviter les doublons d'artifacts/actions.
+ * Exporté pour être utilisé dans Chat.client.tsx pour le streaming.
+ */
+export const sharedMessageParser = new StreamingMessageParser({
   callbacks: {
     onArtifactOpen: (data) => {
       logger.debug('Artifact detected - Opening workbench', { id: data.id, title: data.title });
@@ -20,14 +25,14 @@ const messageParser = new StreamingMessageParser({
       workbenchStore.updateArtifact(data, { closed: true });
     },
     onActionOpen: (data) => {
-      logger.debug('⚡ Action started', { type: data.action.type, actionId: data.actionId });
+      logger.debug('Action started', { type: data.action.type, actionId: data.actionId });
 
       if (data.action.type !== 'shell') {
         workbenchStore.addAction(data);
       }
     },
     onActionClose: (data) => {
-      logger.debug('✅ Action completed', { type: data.action.type, actionId: data.actionId });
+      logger.debug('Action completed', { type: data.action.type, actionId: data.actionId });
 
       if (data.action.type === 'shell') {
         workbenchStore.addAction(data);
@@ -38,16 +43,20 @@ const messageParser = new StreamingMessageParser({
   },
 });
 
+// Alias pour compatibilité interne
+const messageParser = sharedMessageParser;
+
 /**
  * Optimized message parser hook.
  *
  * Improvements over original:
  * - Batching: collects all updates and performs ONE setState call instead of N calls
  * - Skips unchanged messages: tracks previous content to avoid redundant parsing
- * - Maintains same interface for backward compatibility
+ * - Uses message IDs as keys (not indices) to prevent issues with reordering
  */
 export function useMessageParser() {
-  const [parsedMessages, setParsedMessages] = useState<{ [key: number]: string }>({});
+  // CHANGED: Use message ID as key instead of index to prevent lookup issues
+  const [parsedMessages, setParsedMessages] = useState<{ [key: string]: string }>({});
 
   // Track previous content to skip unchanged messages
   const prevContentRef = useRef<Map<string, string>>(new Map());
@@ -66,7 +75,7 @@ export function useMessageParser() {
     }
 
     // Collect all updates in a single object (batching)
-    const updates: { [key: number]: string } = {};
+    const updates: { [key: string]: string } = {};
     let hasUpdates = false;
 
     for (const [index, message] of messages.entries()) {
@@ -74,7 +83,7 @@ export function useMessageParser() {
         continue;
       }
 
-      // Use message.id if available, otherwise fallback to index-based id
+      // Use message.id as key - fallback to index only if id is missing
       const messageId = message.id ?? `msg-${index}`;
       const content = typeof message.content === 'string' ? message.content : '';
       const prevContent = prevContentRef.current.get(messageId);
@@ -85,7 +94,7 @@ export function useMessageParser() {
         const cached = accumulatedRef.current.get(messageId);
 
         if (cached !== undefined) {
-          updates[index] = cached;
+          updates[messageId] = cached;
           hasUpdates = true;
         }
 
@@ -101,7 +110,7 @@ export function useMessageParser() {
       accumulatedRef.current.set(messageId, accumulated);
       prevContentRef.current.set(messageId, content);
 
-      updates[index] = accumulated;
+      updates[messageId] = accumulated;
       hasUpdates = true;
     }
 

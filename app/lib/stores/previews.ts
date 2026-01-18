@@ -23,6 +23,21 @@ export interface BrowserPreviewInfo {
 /** Store global pour les erreurs de preview */
 export const previewErrorStore = atom<string | null>(null);
 
+/**
+ * Clear the preview error store.
+ * Call this when a build succeeds to remove stale error messages.
+ */
+export function clearPreviewError(): void {
+  previewErrorStore.set(null);
+}
+
+/**
+ * Set a preview error message.
+ */
+export function setPreviewError(message: string): void {
+  previewErrorStore.set(message);
+}
+
 /** Mode de preview: webcontainer (port-based) ou browser (URL-based) */
 export type PreviewMode = 'webcontainer' | 'browser';
 

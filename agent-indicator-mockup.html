@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BAVINI - Fusion Option 3 + 4</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg-base: #0a0a0f;
+      --bg-panel: #12121a;
+      --bg-card: #1a1a24;
+      --border-subtle: rgba(255, 255, 255, 0.06);
+      --border-default: rgba(255, 255, 255, 0.1);
+      --text-primary: rgba(255, 255, 255, 0.92);
+      --text-secondary: rgba(255, 255, 255, 0.6);
+      --text-muted: rgba(255, 255, 255, 0.4);
+
+      /* Agent colors */
+      --coder: #22c55e;
+      --coder-bg: rgba(34, 197, 94, 0.08);
+      --coder-border: rgba(34, 197, 94, 0.25);
+
+      --explorer: #0ea5e9;
+      --explorer-bg: rgba(14, 165, 233, 0.08);
+      --explorer-border: rgba(14, 165, 233, 0.25);
+
+      --builder: #f97316;
+      --builder-bg: rgba(249, 115, 22, 0.08);
+      --builder-border: rgba(249, 115, 22, 0.25);
+
+      --tester: #eab308;
+      --tester-bg: rgba(234, 179, 8, 0.08);
+      --tester-border: rgba(234, 179, 8, 0.25);
+
+      --orchestrator: #a855f7;
+      --orchestrator-bg: rgba(168, 85, 247, 0.08);
+      --orchestrator-border: rgba(168, 85, 247, 0.25);
+
+      --fixer: #ef4444;
+      --fixer-bg: rgba(239, 68, 68, 0.08);
+      --fixer-border: rgba(239, 68, 68, 0.25);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif;
+      background: var(--bg-base);
+      color: var(--text-primary);
+      padding: 40px 20px;
+      min-height: 100vh;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 1.6rem;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: var(--text-primary);
+    }
+
+    .subtitle {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      margin-bottom: 50px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+      gap: 24px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .option {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+
+    .option.recommended {
+      border-color: var(--coder-border);
+      box-shadow: 0 0 30px rgba(34, 197, 94, 0.1);
+    }
+
+    .option-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .option-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .option-badge {
+      font-size: 0.7rem;
+      padding: 4px 10px;
+      background: var(--coder-bg);
+      color: var(--coder);
+      border-radius: 20px;
+      font-weight: 500;
+    }
+
+    .chat-preview {
+      padding: 24px;
+      background: var(--bg-base);
+    }
+
+    .message {
+      margin-bottom: 20px;
+    }
+
+    .message-text {
+      font-size: 0.9rem;
+      line-height: 1.6;
+      color: var(--text-secondary);
+    }
+
+    .indicator-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .description {
+      padding: 16px 20px;
+      border-top: 1px solid var(--border-subtle);
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* ========== FUSION A: Pill coloré minimal ========== */
+    .fusion-a {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+
+    .fusion-a .spinner {
+      width: 10px;
+      height: 10px;
+      border: 1.5px solid currentColor;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      opacity: 0.7;
+    }
+
+    .fusion-a.coder {
+      background: var(--coder-bg);
+      border: 1px solid var(--coder-border);
+      color: var(--coder);
+    }
+
+    .fusion-a.explorer {
+      background: var(--explorer-bg);
+      border: 1px solid var(--explorer-border);
+      color: var(--explorer);
+    }
+
+    .fusion-a.builder {
+      background: var(--builder-bg);
+      border: 1px solid var(--builder-border);
+      color: var(--builder);
+    }
+
+    .fusion-a.tester {
+      background: var(--tester-bg);
+      border: 1px solid var(--tester-border);
+      color: var(--tester);
+    }
+
+    .fusion-a.orchestrator {
+      background: var(--orchestrator-bg);
+      border: 1px solid var(--orchestrator-border);
+      color: var(--orchestrator);
+    }
+
+    .fusion-a.fixer {
+      background: var(--fixer-bg);
+      border: 1px solid var(--fixer-border);
+      color: var(--fixer);
+    }
+
+    /* ========== FUSION B: Pill + dot coloré ========== */
+    .fusion-b {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      background: transparent;
+      border: 1px solid var(--border-default);
+      border-radius: 20px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .fusion-b .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    .fusion-b.coder .dot { background: var(--coder); }
+    .fusion-b.explorer .dot { background: var(--explorer); }
+    .fusion-b.builder .dot { background: var(--builder); }
+    .fusion-b.tester .dot { background: var(--tester); }
+    .fusion-b.orchestrator .dot { background: var(--orchestrator); }
+    .fusion-b.fixer .dot { background: var(--fixer); }
+
+    /* ========== FUSION C: Compact avec bordure colorée ========== */
+    .fusion-c {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px 3px 6px;
+      background: var(--bg-card);
+      border-radius: 14px;
+      font-size: 0.72rem;
+      color: var(--text-secondary);
+      border: 1px solid transparent;
+    }
+
+    .fusion-c .bar {
+      width: 3px;
+      height: 12px;
+      border-radius: 2px;
+    }
+
+    .fusion-c.coder { border-color: var(--coder-border); }
+    .fusion-c.coder .bar { background: var(--coder); }
+
+    .fusion-c.explorer { border-color: var(--explorer-border); }
+    .fusion-c.explorer .bar { background: var(--explorer); }
+
+    .fusion-c.builder { border-color: var(--builder-border); }
+    .fusion-c.builder .bar { background: var(--builder); }
+
+    .fusion-c.tester { border-color: var(--tester-border); }
+    .fusion-c.tester .bar { background: var(--tester); }
+
+    .fusion-c.orchestrator { border-color: var(--orchestrator-border); }
+    .fusion-c.orchestrator .bar { background: var(--orchestrator); }
+
+    .fusion-c.fixer { border-color: var(--fixer-border); }
+    .fusion-c.fixer .bar { background: var(--fixer); }
+
+    /* ========== FUSION D: Ultra minimal spinner coloré ========== */
+    .fusion-d {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 0.7rem;
+      font-weight: 500;
+      background: transparent;
+    }
+
+    .fusion-d .ring {
+      width: 8px;
+      height: 8px;
+      border: 1.5px solid;
+      border-top-color: transparent !important;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    .fusion-d.coder { color: var(--coder); }
+    .fusion-d.coder .ring { border-color: var(--coder); }
+
+    .fusion-d.explorer { color: var(--explorer); }
+    .fusion-d.explorer .ring { border-color: var(--explorer); }
+
+    .fusion-d.builder { color: var(--builder); }
+    .fusion-d.builder .ring { border-color: var(--builder); }
+
+    .fusion-d.tester { color: var(--tester); }
+    .fusion-d.tester .ring { border-color: var(--tester); }
+
+    .fusion-d.orchestrator { color: var(--orchestrator); }
+    .fusion-d.orchestrator .ring { border-color: var(--orchestrator); }
+
+    .fusion-d.fixer { color: var(--fixer); }
+    .fusion-d.fixer .ring { border-color: var(--fixer); }
+
+    /* ========== FUSION E: Chip glassmorphism coloré ========== */
+    .fusion-e {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      border-radius: 16px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      backdrop-filter: blur(8px);
+    }
+
+    .fusion-e .spinner {
+      width: 10px;
+      height: 10px;
+      border: 1.5px solid currentColor;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    .fusion-e.coder {
+      background: rgba(34, 197, 94, 0.12);
+      border: 1px solid rgba(34, 197, 94, 0.2);
+      color: #4ade80;
+    }
+
+    .fusion-e.explorer {
+      background: rgba(14, 165, 233, 0.12);
+      border: 1px solid rgba(14, 165, 233, 0.2);
+      color: #38bdf8;
+    }
+
+    .fusion-e.builder {
+      background: rgba(249, 115, 22, 0.12);
+      border: 1px solid rgba(249, 115, 22, 0.2);
+      color: #fb923c;
+    }
+
+    .fusion-e.orchestrator {
+      background: rgba(168, 85, 247, 0.12);
+      border: 1px solid rgba(168, 85, 247, 0.2);
+      color: #c084fc;
+    }
+
+    /* Animations */
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.85); }
+    }
+
+    /* Section agents preview */
+    .agents-showcase {
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    .agents-showcase-title {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+  </style>
+</head>
+<body>
+  <h1>Fusion Option 3 + 4</h1>
+  <p class="subtitle">Pill minimaliste + Couleurs par agent</p>
+
+  <div class="grid">
+
+    <!-- Fusion A -->
+    <div class="option recommended">
+      <div class="option-header">
+        <span class="option-title">Fusion A: Pill Coloré</span>
+        <span class="option-badge">Recommandé</span>
+      </div>
+      <div class="chat-preview">
+        <div class="message">
+          <p class="message-text">Je vais créer le composant Button pour vous avec les styles appropriés...</p>
+        </div>
+        <div class="indicator-row">
+          <div class="fusion-a coder">
+            <span class="spinner"></span>
+            <span>coder</span>
+          </div>
+        </div>
+        <div class="agents-showcase">
+          <div class="agents-showcase-title">Tous les agents</div>
+          <div class="indicator-row">
+            <div class="fusion-a coder"><span class="spinner"></span>coder</div>
+            <div class="fusion-a explorer"><span class="spinner"></span>explorer</div>
+            <div class="fusion-a builder"><span class="spinner"></span>builder</div>
+            <div class="fusion-a tester"><span class="spinner"></span>tester</div>
+            <div class="fusion-a orchestrator"><span class="spinner"></span>orchestrator</div>
+            <div class="fusion-a fixer"><span class="spinner"></span>fixer</div>
+          </div>
+        </div>
+      </div>
+      <div class="description">
+        Pill arrondi avec fond coloré subtil, spinner intégré et texte de la couleur de l'agent. Compact et lisible.
+      </div>
+    </div>
+
+    <!-- Fusion B -->
+    <div class="option">
+      <div class="option-header">
+        <span class="option-title">Fusion B: Dot Coloré</span>
+      </div>
+      <div class="chat-preview">
+        <div class="message">
+          <p class="message-text">Je vais créer le composant Button pour vous avec les styles appropriés...</p>
+        </div>
+        <div class="indicator-row">
+          <div class="fusion-b coder">
+            <span class="dot"></span>
+            <span>coder</span>
+          </div>
+        </div>
+        <div class="agents-showcase">
+          <div class="agents-showcase-title">Tous les agents</div>
+          <div class="indicator-row">
+            <div class="fusion-b coder"><span class="dot"></span>coder</div>
+            <div class="fusion-b explorer"><span class="dot"></span>explorer</div>
+            <div class="fusion-b builder"><span class="dot"></span>builder</div>
+            <div class="fusion-b tester"><span class="dot"></span>tester</div>
+            <div class="fusion-b orchestrator"><span class="dot"></span>orchestrator</div>
+            <div class="fusion-b fixer"><span class="dot"></span>fixer</div>
+          </div>
+        </div>
+      </div>
+      <div class="description">
+        Pill neutre avec seulement le dot qui prend la couleur de l'agent. Ultra discret, seul le dot indique l'agent.
+      </div>
+    </div>
+
+    <!-- Fusion C -->
+    <div class="option">
+      <div class="option-header">
+        <span class="option-title">Fusion C: Barre Latérale</span>
+      </div>
+      <div class="chat-preview">
+        <div class="message">
+          <p class="message-text">Je vais créer le composant Button pour vous avec les styles appropriés...</p>
+        </div>
+        <div class="indicator-row">
+          <div class="fusion-c coder">
+            <span class="bar"></span>
+            <span>coder</span>
+          </div>
+        </div>
+        <div class="agents-showcase">
+          <div class="agents-showcase-title">Tous les agents</div>
+          <div class="indicator-row">
+            <div class="fusion-c coder"><span class="bar"></span>coder</div>
+            <div class="fusion-c explorer"><span class="bar"></span>explorer</div>
+            <div class="fusion-c builder"><span class="bar"></span>builder</div>
+            <div class="fusion-c tester"><span class="bar"></span>tester</div>
+            <div class="fusion-c orchestrator"><span class="bar"></span>orchestrator</div>
+            <div class="fusion-c fixer"><span class="bar"></span>fixer</div>
+          </div>
+        </div>
+      </div>
+      <div class="description">
+        Petite barre colorée sur le côté gauche. Fond neutre, bordure colorée subtile. Style épuré.
+      </div>
+    </div>
+
+    <!-- Fusion D -->
+    <div class="option">
+      <div class="option-header">
+        <span class="option-title">Fusion D: Texte Pur</span>
+      </div>
+      <div class="chat-preview">
+        <div class="message">
+          <p class="message-text">Je vais créer le composant Button pour vous avec les styles appropriés...</p>
+        </div>
+        <div class="indicator-row">
+          <div class="fusion-d coder">
+            <span class="ring"></span>
+            <span>coder</span>
+          </div>
+        </div>
+        <div class="agents-showcase">
+          <div class="agents-showcase-title">Tous les agents</div>
+          <div class="indicator-row">
+            <div class="fusion-d coder"><span class="ring"></span>coder</div>
+            <div class="fusion-d explorer"><span class="ring"></span>explorer</div>
+            <div class="fusion-d builder"><span class="ring"></span>builder</div>
+            <div class="fusion-d tester"><span class="ring"></span>tester</div>
+            <div class="fusion-d orchestrator"><span class="ring"></span>orchestrator</div>
+            <div class="fusion-d fixer"><span class="ring"></span>fixer</div>
+          </div>
+        </div>
+      </div>
+      <div class="description">
+        Sans fond ni bordure. Juste le spinner et le texte colorés. Le plus minimaliste possible.
+      </div>
+    </div>
+
+    <!-- Fusion E -->
+    <div class="option">
+      <div class="option-header">
+        <span class="option-title">Fusion E: Glass Coloré</span>
+      </div>
+      <div class="chat-preview">
+        <div class="message">
+          <p class="message-text">Je vais créer le composant Button pour vous avec les styles appropriés...</p>
+        </div>
+        <div class="indicator-row">
+          <div class="fusion-e coder">
+            <span class="spinner"></span>
+            <span>coder</span>
+          </div>
+        </div>
+        <div class="agents-showcase">
+          <div class="agents-showcase-title">Tous les agents</div>
+          <div class="indicator-row">
+            <div class="fusion-e coder"><span class="spinner"></span>coder</div>
+            <div class="fusion-e explorer"><span class="spinner"></span>explorer</div>
+            <div class="fusion-e builder"><span class="spinner"></span>builder</div>
+            <div class="fusion-e orchestrator"><span class="spinner"></span>orchestrator</div>
+          </div>
+        </div>
+      </div>
+      <div class="description">
+        Version plus "premium" avec effet glassmorphism. Légèrement plus visible mais reste élégant.
+      </div>
+    </div>
+
+  </div>
+
+</body>
+</html>

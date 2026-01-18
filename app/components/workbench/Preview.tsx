@@ -56,6 +56,64 @@ export const Preview = memo(() => {
     };
   }, []);
 
+  /**
+   * Listen for postMessage from the preview iframe.
+   * Handles console logs, errors, and other messages from the sandboxed preview.
+   * CRITICAL: Always cleanup listener on unmount to prevent memory leaks.
+   */
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      // SECURITY: Validate origin - only accept blob: URLs or null (sandboxed)
+      // 'null' is the origin for blob: URLs and sandboxed iframes
+      if (event.origin !== 'null' && !event.origin.startsWith('blob:')) {
+        // Also allow same origin for WebContainer previews
+        if (event.origin !== window.location.origin) {
+          return;
+        }
+      }
+
+      // Validate message structure
+      if (!event.data || typeof event.data !== 'object') {
+        return;
+      }
+
+      const { type, payload } = event.data;
+
+      switch (type) {
+        case 'console':
+          // Log console messages from preview
+          if (payload?.type === 'error') {
+            logger.error('[Preview Console]', ...(payload.args || []));
+          } else if (payload?.type === 'warn') {
+            logger.warn('[Preview Console]', ...(payload.args || []));
+          } else {
+            logger.debug('[Preview Console]', ...(payload.args || []));
+          }
+          break;
+
+        case 'error':
+          // Handle runtime errors from preview
+          logger.error('[Preview Error]', payload?.message, payload?.stack);
+          break;
+
+        case 'ready':
+          // Preview is ready (optional - for custom signaling)
+          logger.info('[Preview] Ready signal received');
+          break;
+
+        default:
+          // Unknown message type - log for debugging
+          logger.debug('[Preview Message]', type, payload);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+
+    return () => {
+      window.removeEventListener('message', handleMessage);
+    };
+  }, []);
+
   const enterFullscreen = useCallback(() => {
     if (fullscreenContainerRef.current) {
       fullscreenContainerRef.current.requestFullscreen().catch((err) => {

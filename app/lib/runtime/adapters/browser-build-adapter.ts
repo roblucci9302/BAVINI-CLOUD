@@ -40,9 +40,85 @@ const ESBUILD_WASM_URL = 'https://unpkg.com/esbuild-wasm@0.27.2/esbuild.wasm';
 const ESM_SH_CDN = 'https://esm.sh';
 
 /**
- * Cache des modules résolus
+ * LRU Cache with TTL for module caching.
+ * Prevents unbounded memory growth from cached CDN responses.
  */
-const moduleCache = new Map<string, string>();
+class LRUCache<K, V> {
+  private cache = new Map<K, { value: V; lastAccess: number }>();
+  private maxSize: number;
+  private maxAge: number;
+
+  constructor(maxSize: number = 100, maxAgeMs: number = 3600000) {
+    this.maxSize = maxSize;
+    this.maxAge = maxAgeMs;
+  }
+
+  get(key: K): V | undefined {
+    const entry = this.cache.get(key);
+
+    if (!entry) {
+      return undefined;
+    }
+
+    // Check expiration
+    if (Date.now() - entry.lastAccess > this.maxAge) {
+      this.cache.delete(key);
+      return undefined;
+    }
+
+    // Update lastAccess (move to end for LRU)
+    entry.lastAccess = Date.now();
+
+    return entry.value;
+  }
+
+  set(key: K, value: V): void {
+    // Evict if at capacity
+    if (this.cache.size >= this.maxSize && !this.cache.has(key)) {
+      this.evictOldest();
+    }
+
+    this.cache.set(key, { value, lastAccess: Date.now() });
+  }
+
+  has(key: K): boolean {
+    return this.get(key) !== undefined;
+  }
+
+  private evictOldest(): void {
+    let oldest: K | null = null;
+    let oldestTime = Infinity;
+
+    for (const [key, entry] of this.cache.entries()) {
+      if (entry.lastAccess < oldestTime) {
+        oldest = key;
+        oldestTime = entry.lastAccess;
+      }
+    }
+
+    if (oldest !== null) {
+      this.cache.delete(oldest);
+    }
+  }
+
+  clear(): void {
+    this.cache.clear();
+  }
+
+  get size(): number {
+    return this.cache.size;
+  }
+}
+
+/**
+ * Cache des modules résolus avec LRU et TTL.
+ * - Max 150 modules en cache
+ * - TTL de 1 heure
+ */
+const moduleCache = new LRUCache<string, string>(
+  150,      // Max 150 modules cached
+  3600000   // 1 hour TTL
+);
 
 /**
  * Base URL for esm.sh CDN (used to resolve relative paths in CDN responses)
@@ -56,6 +132,11 @@ const ESM_SH_BASE = 'https://esm.sh';
 let globalEsbuildInitialized: boolean = (globalThis as any).__esbuildInitialized ?? false;
 
 /**
+ * Global Promise to synchronize concurrent init calls (prevents race condition)
+ */
+let globalEsbuildPromise: Promise<void> | null = (globalThis as any).__esbuildPromise ?? null;
+
+/**
  * BrowserBuildAdapter - Runtime sans WebContainer
  */
 export class BrowserBuildAdapter extends BaseRuntimeAdapter {
@@ -65,6 +146,26 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
   readonly supportsNodeServer = false;
   readonly isBrowserOnly = true;
   readonly supportedFrameworks = ['react', 'vue', 'svelte', 'vanilla', 'preact'];
+
+  /**
+   * SECURITY: Allowed file extensions for the virtual file system.
+   * Prevents execution of arbitrary file types.
+   */
+  private readonly ALLOWED_EXTENSIONS = new Set([
+    '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
+    '.json', '.css', '.scss', '.sass', '.less',
+    '.html', '.md', '.txt', '.svg', '.xml',
+    '.vue', '.svelte', '.astro',
+    '.yaml', '.yml', '.toml',
+    '.env', '.env.local', '.env.development', '.env.production',
+    '.gitignore', '.npmrc', '.prettierrc', '.eslintrc',
+  ]);
+
+  /**
+   * SECURITY: Maximum file size (5MB).
+   * Prevents memory exhaustion from large files.
+   */
+  private readonly MAX_FILE_SIZE = 5 * 1024 * 1024;
 
   private _status: RuntimeStatus = 'idle';
   private _files: Map<string, string> = new Map();
@@ -79,6 +180,7 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
 
   /**
    * Initialize esbuild-wasm
+   * Thread-safe: handles concurrent init calls via shared Promise
    */
   async init(): Promise<void> {
     // Check global flag first (esbuild-wasm can only be initialized once globally)
@@ -90,15 +192,35 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
       return;
     }
 
+    // If initialization is in progress, wait for the existing Promise
+    // This prevents race condition when multiple adapters call init() simultaneously
+    if (globalEsbuildPromise) {
+      logger.debug('esbuild initialization in progress, waiting...');
+      try {
+        await globalEsbuildPromise;
+        this._esbuildInitialized = true;
+        this._status = 'ready';
+        this.emitStatusChange('ready');
+        return;
+      } catch (error) {
+        // Previous init failed, we'll try again below
+        logger.warn('Previous esbuild init failed, retrying...');
+      }
+    }
+
     this._status = 'initializing';
     this.emitStatusChange('initializing');
 
     try {
       logger.info('Initializing esbuild-wasm...');
 
-      await esbuild.initialize({
+      // Create the Promise BEFORE calling initialize to prevent race condition
+      globalEsbuildPromise = esbuild.initialize({
         wasmURL: ESBUILD_WASM_URL,
       });
+      (globalThis as any).__esbuildPromise = globalEsbuildPromise;
+
+      await globalEsbuildPromise;
 
       // Set both instance and global flags
       this._esbuildInitialized = true;
@@ -110,6 +232,10 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
 
       logger.info('esbuild-wasm initialized successfully');
     } catch (error) {
+      // Reset the Promise on failure to allow retry
+      globalEsbuildPromise = null;
+      (globalThis as any).__esbuildPromise = null;
+
       this._status = 'error';
       this.emitStatusChange('error');
       logger.error('Failed to initialize esbuild-wasm:', error);
@@ -119,34 +245,121 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
 
   /**
    * Cleanup resources
+   * Robust: handles errors during cleanup to ensure all resources are freed
    */
   async destroy(): Promise<void> {
     logger.info('Destroying BrowserBuildAdapter...');
 
-    // Revoke blob URL
+    const errors: Error[] = [];
+
+    // Revoke blob URL with error handling
     if (this._blobUrl) {
-      URL.revokeObjectURL(this._blobUrl);
+      try {
+        URL.revokeObjectURL(this._blobUrl);
+        logger.debug('Revoked blob URL during destroy');
+      } catch (error) {
+        logger.warn('Failed to revoke blob URL:', error);
+        errors.push(error instanceof Error ? error : new Error(String(error)));
+      }
       this._blobUrl = null;
     }
 
-    // Remove iframe
+    // Remove iframe with error handling
     if (this._previewIframe) {
-      this._previewIframe.remove();
+      try {
+        this._previewIframe.remove();
+        logger.debug('Removed preview iframe');
+      } catch (error) {
+        logger.warn('Failed to remove iframe:', error);
+        errors.push(error instanceof Error ? error : new Error(String(error)));
+      }
       this._previewIframe = null;
     }
 
-    // Clear files
-    this._files.clear();
+    // Clear files (always execute even if previous steps failed)
+    try {
+      this._files.clear();
+    } catch (error) {
+      logger.warn('Failed to clear files:', error);
+    }
+
     this._preview = null;
     this._status = 'idle';
+
+    if (errors.length > 0) {
+      logger.error(`Cleanup completed with ${errors.length} error(s)`);
+    } else {
+      logger.info('BrowserBuildAdapter destroyed successfully');
+    }
 
     // Note: esbuild doesn't have a cleanup method in browser
   }
 
   /**
-   * Write multiple files
+   * SECURITY: Validate file before writing to virtual file system.
+   * Checks extension, size, and content for suspicious patterns.
+   */
+  private validateFile(path: string, content: string): void {
+    const normalizedPath = this.normalizePath(path);
+
+    // Get file extension (handle files without extension like .gitignore)
+    const lastDotIndex = normalizedPath.lastIndexOf('.');
+    const lastSlashIndex = normalizedPath.lastIndexOf('/');
+
+    let ext: string;
+
+    if (lastDotIndex > lastSlashIndex) {
+      ext = normalizedPath.substring(lastDotIndex).toLowerCase();
+    } else {
+      // File has no extension - check if it's a known dotfile
+      const fileName = normalizedPath.substring(lastSlashIndex + 1);
+
+      if (fileName.startsWith('.')) {
+        ext = fileName; // Use full filename as "extension" for dotfiles
+      } else {
+        ext = ''; // No extension
+      }
+    }
+
+    // Check if extension is allowed (skip validation for files without extension that aren't dotfiles)
+    if (ext && !this.ALLOWED_EXTENSIONS.has(ext)) {
+      logger.warn(`SECURITY: Blocked file with disallowed extension: ${path} (${ext})`);
+      throw new Error(`Type de fichier non autorisé: ${ext}`);
+    }
+
+    // Check file size
+    const sizeBytes = new TextEncoder().encode(content).length;
+
+    if (sizeBytes > this.MAX_FILE_SIZE) {
+      const sizeMB = (sizeBytes / 1024 / 1024).toFixed(2);
+      const maxMB = (this.MAX_FILE_SIZE / 1024 / 1024).toFixed(0);
+      logger.warn(`SECURITY: Blocked file exceeding size limit: ${path} (${sizeMB}MB)`);
+      throw new Error(`Fichier trop volumineux: ${sizeMB}MB (max: ${maxMB}MB)`);
+    }
+
+    // Check for suspicious content patterns
+    if (content.startsWith('#!') && !path.endsWith('.sh')) {
+      logger.warn(`SECURITY: Shebang detected in non-shell file: ${path}`);
+      // Don't block, just warn - shebangs in wrong files are suspicious but not always malicious
+    }
+
+    // Check for base64 encoded executables
+    if (content.includes('TVqQAAMAAAAE') || content.includes('f0VMRgI')) {
+      logger.error(`SECURITY: Possible embedded binary detected in: ${path}`);
+      throw new Error(`Contenu binaire détecté dans: ${path}`);
+    }
+  }
+
+  /**
+   * Write multiple files with validation
    */
   async writeFiles(files: FileMap): Promise<void> {
+    // Validate all files first before writing any
+    for (const [path, content] of files) {
+      this.validateFile(path, content);
+    }
+
+    // Write files after validation passes
     for (const [path, content] of files) {
       this._files.set(this.normalizePath(path), content);
     }
@@ -155,9 +368,10 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
   }
 
   /**
-   * Write a single file
+   * Write a single file with validation
    */
   async writeFile(path: string, content: string): Promise<void> {
+    this.validateFile(path, content);
     this._files.set(this.normalizePath(path), content);
   }
 
@@ -885,7 +1099,8 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
   }
 
   /**
-   * Resolve relative path
+   * Resolve relative path with path traversal protection.
+   * SECURITY: Prevents escaping the virtual file system root.
    */
   private resolveRelativePath(importer: string, relativePath: string): string {
     const importerDir = importer.substring(0, importer.lastIndexOf('/')) || '/';
@@ -894,13 +1109,49 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
 
     for (const part of parts) {
       if (part === '..') {
-        resolved.pop();
+        // SECURITY FIX: Never allow traversing above root
+        if (resolved.length > 0) {
+          resolved.pop();
+        } else {
+          logger.warn(`Path traversal attempt blocked: ${relativePath} from ${importer}`);
+          // Don't pop - stay at root level
+        }
       } else if (part !== '.' && part !== '') {
         resolved.push(part);
       }
     }
 
-    return '/' + resolved.join('/');
+    const finalPath = '/' + resolved.join('/');
+
+    // Additional validation: check for dangerous patterns
+    if (!this.isPathSafe(finalPath)) {
+      logger.error(`Unsafe path rejected: ${finalPath}`);
+      throw new Error(`Invalid import path: ${relativePath}`);
+    }
+
+    return finalPath;
+  }
+
+  /**
+   * Check if a resolved path is safe (no traversal attempts).
+   * SECURITY: Additional validation layer.
+   */
+  private isPathSafe(path: string): boolean {
+    // Must start with /
+    if (!path.startsWith('/')) {
+      return false;
+    }
+
+    // Must not contain dangerous patterns
+    const dangerousPatterns = [
+      /\.\./,           // Parent directory (should be resolved by now)
+      /\/\//,           // Double slash
+      /%2e/i,           // URL encoded .
+      /%2f/i,           // URL encoded /
+      /\\/,             // Backslash (Windows-style)
+    ];
+
+    return !dangerousPatterns.some((p) => p.test(path));
   }
 
   /**
@@ -1044,40 +1295,72 @@ if (container) {
 
   /**
    * Create preview with Blob URL
+   * Safe: handles errors and ensures blob URLs are properly cleaned up
    */
   private async createPreview(code: string, css: string, options: BuildOptions): Promise<void> {
-    // Revoke previous blob URL
-    if (this._blobUrl) {
-      URL.revokeObjectURL(this._blobUrl);
+    // Store old blob URL and clear reference first
+    const oldBlobUrl = this._blobUrl;
+    this._blobUrl = null;
+
+    // Revoke previous blob URL with error handling
+    if (oldBlobUrl) {
+      try {
+        URL.revokeObjectURL(oldBlobUrl);
+        logger.debug('Revoked previous blob URL');
+      } catch (e) {
+        logger.warn('Failed to revoke old blob URL:', e);
+      }
     }
 
-    // Find HTML template
-    let htmlTemplate = this._files.get('/index.html') || this._files.get('/public/index.html');
+    let newBlobUrl: string | null = null;
 
-    if (!htmlTemplate) {
-      // Generate default HTML
-      htmlTemplate = this.generateDefaultHtml(options);
+    try {
+      // Find HTML template
+      let htmlTemplate = this._files.get('/index.html') || this._files.get('/public/index.html');
+
+      if (!htmlTemplate) {
+        // Generate default HTML
+        htmlTemplate = this.generateDefaultHtml(options);
+      }
+
+      // Inject bundle into HTML
+      const html = this.injectBundle(htmlTemplate, code, css);
+
+      // Create blob URL
+      const blob = new Blob([html], { type: 'text/html' });
+      newBlobUrl = URL.createObjectURL(blob);
+
+      // Create preview object
+      const preview: PreviewInfo = {
+        url: newBlobUrl,
+        ready: true,
+        updatedAt: Date.now(),
+      };
+
+      // Only assign to instance properties AFTER all operations succeed
+      this._blobUrl = newBlobUrl;
+      this._preview = preview;
+
+      logger.info('Emitting preview ready event:', this._blobUrl);
+      logger.debug('Callbacks registered:', Object.keys(this.callbacks));
+
+      this.emitPreviewReady(this._preview);
+
+      logger.info('Preview created and callback emitted:', this._blobUrl);
+    } catch (error) {
+      // Clean up the new blob URL if it was created but something failed
+      if (newBlobUrl) {
+        try {
+          URL.revokeObjectURL(newBlobUrl);
+          logger.debug('Cleaned up blob URL after error');
+        } catch (e) {
+          logger.warn('Failed to cleanup blob URL after error:', e);
+        }
+      }
+
+      logger.error('Failed to create preview:', error);
+      throw error;
     }
-
-    // Inject bundle into HTML
-    const html = this.injectBundle(htmlTemplate, code, css);
-
-    // Create blob URL
-    const blob = new Blob([html], { type: 'text/html' });
-    this._blobUrl = URL.createObjectURL(blob);
-
-    this._preview = {
-      url: this._blobUrl,
-      ready: true,
-      updatedAt: Date.now(),
-    };
-
-    logger.info('Emitting preview ready event:', this._blobUrl);
-    logger.debug('Callbacks registered:', Object.keys(this.callbacks));
-
-    this.emitPreviewReady(this._preview);
-
-    logger.info('Preview created and callback emitted:', this._blobUrl);
   }
 
   /**
@@ -1122,25 +1405,40 @@ if (container) {
       html = html.replace('</body>', `${scriptTag}\n</body>`);
     }
 
-    // Add console capture
+    // Add console capture with secure origin
+    // SECURITY FIX: Use ancestorOrigins when available, fallback to '*' for blob: URLs
+    // The origin is passed at build time to avoid cross-origin access issues
+    const parentOrigin = typeof window !== 'undefined' ? window.location.origin : '*';
     const consoleCapture = `
 <script>
 (function() {
+  // SECURITY: Use specific origin instead of '*' when possible
+  // ancestorOrigins is the safest way to get parent origin from a blob: URL
+  const PARENT_ORIGIN = window.location.ancestorOrigins?.[0] || '${parentOrigin}';
+
   const originalConsole = { ...console };
   ['log', 'warn', 'error', 'info', 'debug'].forEach(type => {
     console[type] = (...args) => {
       originalConsole[type](...args);
-      window.parent.postMessage({
-        type: 'console',
-        payload: { type, args: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)), timestamp: Date.now() }
-      }, '*');
+      try {
+        window.parent.postMessage({
+          type: 'console',
+          payload: { type, args: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)), timestamp: Date.now() }
+        }, PARENT_ORIGIN);
+      } catch (e) {
+        // Silently fail if postMessage fails (origin mismatch)
+      }
     };
   });
   window.onerror = (msg, src, line, col, err) => {
-    window.parent.postMessage({
-      type: 'error',
-      payload: { message: msg, filename: src, lineno: line, colno: col, stack: err?.stack }
-    }, '*');
+    try {
+      window.parent.postMessage({
+        type: 'error',
+        payload: { message: msg, filename: src, lineno: line, colno: col, stack: err?.stack }
+      }, PARENT_ORIGIN);
+    } catch (e) {
+      // Silently fail if postMessage fails
+    }
   };
 })();
 </script>`;

@@ -161,31 +161,76 @@ function validateFilePath(filePath: string): { valid: boolean; reason?: string }
 
 /**
  * Valide une commande shell pour détecter les injections potentielles
+ * SECURITY: Deny by default - only whitelisted commands are allowed
  */
 function validateShellCommand(command: string): { valid: boolean; reason?: string } {
   const trimmedCommand = command.trim();
 
-  // Vérifier les patterns dangereux
+  // Empty command
+  if (!trimmedCommand) {
+    return { valid: false, reason: 'Commande vide' };
+  }
+
+  // Vérifier les patterns dangereux FIRST
   for (const pattern of DANGEROUS_COMMAND_PATTERNS) {
     if (pattern.test(trimmedCommand)) {
+      logger.error(`SECURITY: Blocked dangerous command pattern: ${pattern.source}`);
       return { valid: false, reason: `Pattern dangereux détecté: ${pattern.source}` };
+    }
+  }
+
+  // Additional dangerous patterns not in the main list
+  const additionalDangerousPatterns = [
+    /\beval\b/i,                           // eval command
+    /\bexec\b/i,                           // exec command
+    />\s*\/etc\//i,                        // Writing to /etc
+    />\s*\/usr\//i,                        // Writing to /usr
+    />\s*~\//i,                            // Writing to home directory
+    /;\s*(sudo|su|rm|chmod|chown)\b/i,    // Chained dangerous commands
+    /&&\s*(sudo|su|rm|chmod|chown)\b/i,   // Chained dangerous commands
+    /\|\|\s*(sudo|su|rm|chmod|chown)\b/i, // Chained dangerous commands
+  ];
+
+  for (const pattern of additionalDangerousPatterns) {
+    if (pattern.test(trimmedCommand)) {
+      logger.error(`SECURITY: Blocked additional dangerous pattern: ${pattern.source}`);
+      return { valid: false, reason: `Pattern de sécurité bloqué: ${pattern.source}` };
     }
   }
 
   // Extraire la commande principale (premier mot)
   const mainCommand = trimmedCommand.split(/\s+/)[0].toLowerCase();
 
+  // Handle full paths (/usr/bin/npm -> npm)
+  const commandName = mainCommand.split('/').pop() || mainCommand;
+
   // Vérifier si la commande est dans la whitelist
   const isAllowed = ALLOWED_COMMAND_PREFIXES.some(
-    (prefix) => mainCommand === prefix || mainCommand.endsWith(`/${prefix}`),
+    (prefix) => commandName === prefix || commandName.startsWith(prefix + '.'),
   );
 
   if (!isAllowed) {
-    logger.warn(`Commande non whitelistée: ${mainCommand}`);
-
-    // On log mais on autorise quand même (pour flexibilité)
+    // SECURITY FIX: Block non-whitelisted commands instead of just logging
+    logger.warn(`SECURITY: Blocked non-whitelisted command: ${commandName}`);
+    return {
+      valid: false,
+      reason: `Commande non autorisée: "${commandName}" n'est pas dans la liste blanche`,
+    };
   }
 
+  // Additional validation for specific commands
+  if (commandName === 'rm') {
+    // rm is allowed but with restrictions
+    if (/\s+-[a-z]*r[a-z]*f|\s+-[a-z]*f[a-z]*r/i.test(trimmedCommand)) {
+      // rm -rf is dangerous
+      if (/\s+\/|\s+~/.test(trimmedCommand)) {
+        logger.error(`SECURITY: Blocked rm -rf with absolute/home path`);
+        return { valid: false, reason: 'rm -rf non autorisé sur les chemins absolus/home' };
+      }
+    }
+  }
+
+  logger.debug(`Command validated: ${commandName}`);
   return { valid: true };
 }
 
@@ -454,10 +499,11 @@ export class ActionRunner {
   /**
    * Wait for the dev server to be ready by monitoring its output
    * Detects common "ready" patterns from various dev servers (Vite, Next.js, etc.)
+   *
+   * FIXED: Properly releases the stream reader when done to avoid "stream already consumed" errors
    */
   async #waitForDevServerReady(process: WebContainerProcess): Promise<void> {
     const startTime = Date.now();
-    let serverReady = false;
 
     // Patterns that indicate the server is ready
     const readyPatterns = [
@@ -480,6 +526,29 @@ export class ActionRunner {
     return new Promise((resolve) => {
       let outputBuffer = '';
       let resolved = false;
+      let reader: ReadableStreamDefaultReader<string> | null = null;
+
+      const cleanup = () => {
+        // CRITICAL: Release the reader lock so the stream can be used elsewhere
+        if (reader) {
+          try {
+            reader.releaseLock();
+          } catch {
+            // Ignore - reader might already be released
+          }
+          reader = null;
+        }
+      };
+
+      const doResolve = () => {
+        if (resolved) {
+          return;
+        }
+
+        resolved = true;
+        cleanup();
+        resolve();
+      };
 
       const checkReady = () => {
         if (resolved) {
@@ -489,9 +558,6 @@ export class ActionRunner {
         // Check if any ready pattern matches
         for (const pattern of readyPatterns) {
           if (pattern.test(outputBuffer)) {
-            serverReady = true;
-            resolved = true;
-
             const elapsed = Date.now() - startTime;
             logger.info(`Dev server ready detected in ${elapsed}ms`);
 
@@ -503,29 +569,35 @@ export class ActionRunner {
               );
             }
 
-            resolve();
-
+            doResolve();
             return;
           }
         }
 
         // Timeout check
         if (Date.now() - startTime > DEV_SERVER_READY_TIMEOUT_MS) {
-          resolved = true;
           logger.warn(`Dev server ready timeout after ${DEV_SERVER_READY_TIMEOUT_MS}ms, proceeding anyway`);
-          resolve();
-
+          doResolve();
           return;
         }
       };
 
-      /*
-       * Create a reader from the output stream to monitor it
-       * We need to tee the stream since it's already being consumed
-       */
-      const reader = process.output.getReader();
+      // Get a reader to monitor the output stream
+      try {
+        reader = process.output.getReader();
+      } catch (error) {
+        // Stream might already be locked - proceed without waiting
+        logger.warn('Could not get stream reader, proceeding immediately:', error);
+        doResolve();
+        return;
+      }
 
       const readOutput = async () => {
+        if (!reader) {
+          doResolve();
+          return;
+        }
+
         try {
           while (!resolved) {
             const { done, value } = await reader.read();
@@ -551,10 +623,7 @@ export class ActionRunner {
         }
 
         // If we haven't resolved yet, resolve now
-        if (!resolved) {
-          resolved = true;
-          resolve();
-        }
+        doResolve();
       };
 
       readOutput();
@@ -562,9 +631,8 @@ export class ActionRunner {
       // Also set a fallback timeout in case stream reading stalls
       setTimeout(() => {
         if (!resolved) {
-          resolved = true;
           logger.warn('Dev server ready fallback timeout, proceeding');
-          resolve();
+          doResolve();
         }
       }, DEV_SERVER_READY_TIMEOUT_MS + 1000);
     });

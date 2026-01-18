@@ -75,6 +75,9 @@ interface BaseChatProps {
   chatStarted?: boolean;
   isStreaming?: boolean;
 
+  /** Contenu du message en cours de streaming (séparé pour éviter les re-renders) */
+  streamingContent?: string;
+
   /** Indique qu'une session existante est en cours de chargement */
   isLoadingSession?: boolean;
   messages?: Message[];
@@ -155,6 +158,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       showChat = true,
       chatStarted = false,
       isStreaming = false,
+      streamingContent,
       isLoadingSession = false,
       enhancingPrompt = false,
       promptEnhanced = false,
@@ -341,6 +345,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                       className="flex flex-col w-full flex-1 px-4 pb-6 z-1"
                       messages={messages}
                       isStreaming={isStreaming}
+                      streamingContent={streamingContent}
                       onEditMessage={onEditMessage}
                       onDeleteMessage={onDeleteMessage}
                       onRegenerateMessage={onRegenerateMessage}

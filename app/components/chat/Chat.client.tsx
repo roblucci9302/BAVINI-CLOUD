@@ -73,7 +73,7 @@ import { createScopedLogger, renderLogger } from '~/utils/logger';
 import { BaseChat } from './BaseChat';
 import { EditMessageModal } from './EditMessageModal';
 import { multiAgentEnabledStore } from './MultiAgentToggle';
-import { StreamingMessageParser } from '~/lib/runtime/message-parser';
+import { sharedMessageParser } from '~/lib/hooks/useMessageParser';
 import { updateAgentStatus } from '~/lib/stores/agents';
 
 const toastAnimation = cssTransition({
@@ -172,6 +172,90 @@ interface FilePreview {
 const ALLOWED_FILE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
+/*
+ * ============================================================================
+ * FETCH WITH RETRY & EXPONENTIAL BACKOFF
+ * ============================================================================
+ */
+
+/**
+ * Retry configuration for fetch requests
+ */
+interface RetryConfig {
+  maxRetries?: number;
+  initialDelayMs?: number;
+  maxDelayMs?: number;
+  retryOn5xx?: boolean;
+  retryOn429?: boolean;
+}
+
+const DEFAULT_RETRY_CONFIG: Required<RetryConfig> = {
+  maxRetries: 3,
+  initialDelayMs: 1000,
+  maxDelayMs: 10000,
+  retryOn5xx: true,
+  retryOn429: true,
+};
+
+/**
+ * Fetch with automatic retry and exponential backoff.
+ * Handles server errors (5xx) and rate limiting (429).
+ *
+ * @param url - URL to fetch
+ * @param options - Fetch options
+ * @param retryConfig - Retry configuration
+ * @returns Response from the fetch
+ * @throws Error if all retries are exhausted
+ */
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit = {},
+  retryConfig: RetryConfig = {},
+): Promise<Response> {
+  const config = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < config.maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+
+      // Handle 5xx server errors with retry
+      if (config.retryOn5xx && response.status >= 500 && attempt < config.maxRetries - 1) {
+        const delay = Math.min(config.initialDelayMs * Math.pow(2, attempt), config.maxDelayMs);
+        logger.warn(`Server error ${response.status}, retrying in ${delay}ms (attempt ${attempt + 1}/${config.maxRetries})`);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+
+      // Handle 429 rate limiting with Retry-After header
+      if (config.retryOn429 && response.status === 429 && attempt < config.maxRetries - 1) {
+        const retryAfter = response.headers.get('Retry-After');
+        const delay = retryAfter
+          ? Math.min(parseInt(retryAfter, 10) * 1000, config.maxDelayMs)
+          : Math.min(config.initialDelayMs * Math.pow(2, attempt), config.maxDelayMs);
+
+        logger.warn(`Rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/${config.maxRetries})`);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+
+      // Success or non-retryable error
+      return response;
+    } catch (error) {
+      // Network errors - retry with backoff
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      if (attempt < config.maxRetries - 1) {
+        const delay = Math.min(config.initialDelayMs * Math.pow(2, attempt), config.maxDelayMs);
+        logger.warn(`Fetch error: ${lastError.message}, retrying in ${delay}ms (attempt ${attempt + 1}/${config.maxRetries})`);
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
+  }
+
+  throw lastError || new Error('Fetch failed after retries');
+}
+
 // Image compression settings
 const MAX_IMAGE_DIMENSION = 1920; // Max width/height in pixels
 const COMPRESSION_QUALITY = 0.8; // 0-1, only for JPEG/WebP
@@ -179,18 +263,65 @@ const COMPRESSION_QUALITY = 0.8; // 0-1, only for JPEG/WebP
 // Seuil pour utiliser le worker (500KB) - en dessous, main thread est plus rapide
 const WORKER_COMPRESSION_THRESHOLD = 500 * 1024;
 
-// Worker singleton pour la compression d'images
+// Worker singleton pour la compression d'images avec idle timeout
 let compressionWorker: Worker | null = null;
 let workerIdCounter = 0;
+let workerIdleTimeout: ReturnType<typeof setTimeout> | null = null;
+
+// Terminate worker after 30s of inactivity to free resources
+const WORKER_IDLE_TIMEOUT_MS = 30_000;
 
 /**
- * Obtient ou crée le worker de compression d'images
+ * Terminate the compression worker and cleanup resources.
+ * Call this on component unmount or when cleaning up.
+ */
+const terminateCompressionWorker = (): void => {
+  if (workerIdleTimeout) {
+    clearTimeout(workerIdleTimeout);
+    workerIdleTimeout = null;
+  }
+
+  if (compressionWorker) {
+    compressionWorker.terminate();
+    compressionWorker = null;
+    logger.debug('Compression worker terminated');
+  }
+};
+
+/**
+ * Schedule worker termination after idle timeout.
+ * Resets the timer on each call.
+ */
+const scheduleWorkerTermination = (): void => {
+  // Clear existing timeout
+  if (workerIdleTimeout) {
+    clearTimeout(workerIdleTimeout);
+  }
+
+  // Schedule new termination
+  workerIdleTimeout = setTimeout(() => {
+    if (compressionWorker) {
+      compressionWorker.terminate();
+      compressionWorker = null;
+      workerIdleTimeout = null;
+      logger.debug('Compression worker terminated due to inactivity');
+    }
+  }, WORKER_IDLE_TIMEOUT_MS);
+};
+
+/**
+ * Obtient ou crée le worker de compression d'images.
+ * OPTIMIZED: Schedules automatic termination after idle timeout.
  */
 const getCompressionWorker = (): Worker => {
+  // Reset idle timeout on each access
+  scheduleWorkerTermination();
+
   if (!compressionWorker) {
     compressionWorker = new Worker(new URL('../../workers/image-compression.worker.ts', import.meta.url), {
       type: 'module',
     });
+    logger.debug('Compression worker created');
   }
 
   return compressionWorker;
@@ -391,6 +522,16 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
     loadToastCss();
   }, []);
 
+  /**
+   * Cleanup compression worker on unmount.
+   * PERFORMANCE: Frees worker resources when Chat component is unmounted.
+   */
+  useEffect(() => {
+    return () => {
+      terminateCompressionWorker();
+    };
+  }, []);
+
   /*
    * ============================================================================
    * ÉTAT PARTAGÉ UNIQUE - Messages unifiés pour les deux modes
@@ -448,62 +589,58 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
   const abortControllerRef = useRef<AbortController | null>(null);
   const messageIdRef = useRef<string>('');
 
-  // Ref pour le debounce du streaming (évite les re-renders excessifs)
-  const streamingUpdateRef = useRef<number | null>(null);
+  // Refs pour le streaming optimisé avec flush garanti
+  const streamingUpdateRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingStreamingContentRef = useRef<string>('');
+  const lastUpdateTimeRef = useRef<number>(0);
+
+  // Constantes pour le streaming
+  const STREAMING_UPDATE_INTERVAL_MS = 32; // ~30fps pour un bon équilibre performance/fluidité
+  const STREAMING_FLUSH_DELAY_MS = 50; // Délai max avant flush forcé
 
   /**
-   * Mise à jour debouncée du contenu de streaming.
-   * Utilise requestAnimationFrame pour limiter à ~60fps et éviter le blocage du thread principal.
+   * Mise à jour optimisée du contenu de streaming.
+   * Utilise un timer interval au lieu de RAF pour garantir que tout le contenu est affiché.
+   * - Met à jour immédiatement si le dernier update est > STREAMING_UPDATE_INTERVAL_MS
+   * - Sinon, planifie un update garanti après STREAMING_FLUSH_DELAY_MS
    */
   const scheduleStreamingUpdate = useCallback((content: string) => {
     pendingStreamingContentRef.current = content;
+    const now = Date.now();
 
-    if (streamingUpdateRef.current === null) {
-      streamingUpdateRef.current = requestAnimationFrame(() => {
+    // Si assez de temps s'est écoulé, mettre à jour immédiatement
+    if (now - lastUpdateTimeRef.current >= STREAMING_UPDATE_INTERVAL_MS) {
+      lastUpdateTimeRef.current = now;
+      setStreamingContent(content);
+
+      // Annuler tout timer pending
+      if (streamingUpdateRef.current !== null) {
+        clearTimeout(streamingUpdateRef.current);
+        streamingUpdateRef.current = null;
+      }
+    } else if (streamingUpdateRef.current === null) {
+      // Planifier un flush garanti pour ne pas perdre de contenu
+      streamingUpdateRef.current = setTimeout(() => {
+        lastUpdateTimeRef.current = Date.now();
         setStreamingContent(pendingStreamingContentRef.current);
         streamingUpdateRef.current = null;
-      });
+      }, STREAMING_FLUSH_DELAY_MS);
     }
+    // Note: Si un timer est déjà planifié, on met juste à jour la ref
+    // Le timer utilisera la dernière valeur de pendingStreamingContentRef
   }, []);
 
-  // Cleanup du debounce au démontage
+  // Cleanup du timer au démontage
   useEffect(() => {
     return () => {
       if (streamingUpdateRef.current !== null) {
-        cancelAnimationFrame(streamingUpdateRef.current);
+        clearTimeout(streamingUpdateRef.current);
       }
     };
   }, []);
 
-  // Message parser pour le streaming des artifacts
-  const messageParser = useRef(
-    new StreamingMessageParser({
-      callbacks: {
-        onArtifactOpen: (data) => {
-          logger.info('Artifact opened:', data.id);
-          workbenchStore.showWorkbench.set(true);
-          workbenchStore.addArtifact(data);
-        },
-        onArtifactClose: (data) => {
-          logger.info('Artifact closed:', data.id);
-          workbenchStore.updateArtifact(data, { closed: true });
-        },
-        onActionOpen: (data) => {
-          if (data.action.type !== 'shell') {
-            workbenchStore.addAction(data);
-          }
-        },
-        onActionClose: (data) => {
-          if (data.action.type === 'shell') {
-            workbenchStore.addAction(data);
-          }
-
-          workbenchStore.runAction(data);
-        },
-      },
-    }),
-  ).current;
+  // Utiliser le parser partagé (singleton) pour éviter les doublons d'artifacts/actions
+  const messageParser = sharedMessageParser;
 
   // Handle input change
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -553,30 +690,42 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
   const { enhancingPrompt, promptEnhanced, enhancePrompt, resetEnhancer } = usePromptEnhancer();
   const { parsedMessages, parseMessages } = useMessageParser();
 
-  // Memoize mapped messages to prevent re-renders
+  // Cache des messages transformés pour éviter les re-créations d'objets
+  const transformedMessagesCache = useRef<Map<string, Message>>(new Map());
+
+  // Memoize les messages SANS le streaming pour éviter les re-renders en cascade
+  // Le streaming est géré séparément via streamingContent
   const displayMessages = useMemo(() => {
-    const mapped = messages.map((message, i) => {
+    const cache = transformedMessagesCache.current;
+
+    return messages.map((message, i) => {
       if (message.role === 'user') {
         return message;
       }
 
-      return {
+      // Use message.id for lookup, fallback to index-based key for backwards compat
+      const messageKey = message.id ?? `msg-${i}`;
+      const parsedContent = parsedMessages[messageKey] || '';
+
+      // Vérifier si on a déjà une version cachée avec le même contenu
+      const cacheKey = `${messageKey}:${parsedContent.length}`;
+      const cached = cache.get(cacheKey);
+
+      if (cached && cached.content === parsedContent) {
+        return cached;
+      }
+
+      // Créer un nouvel objet seulement si le contenu a changé
+      const transformed = {
         ...message,
-        content: parsedMessages[i] || '',
+        content: parsedContent,
       };
+
+      cache.set(cacheKey, transformed);
+      return transformed;
     });
-
-    // Add streaming message if active
-    if (isLoading && streamingContent) {
-      mapped.push({
-        id: 'streaming',
-        role: 'assistant' as const,
-        content: streamingContent,
-      });
-    }
-
-    return mapped;
-  }, [messages, parsedMessages, isLoading, streamingContent, multiAgentEnabled, currentAgent]);
+    // NOTE: streamingContent retiré des dépendances - géré séparément
+  }, [messages, parsedMessages]);
 
   const TEXTAREA_MAX_HEIGHT = chatStarted ? 400 : 200;
 
@@ -784,10 +933,14 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
         const reader = response.body?.getReader();
         const decoder = new TextDecoder();
 
-        // Utiliser des arrays au lieu de string concatenation (plus performant)
+        // Optimized content accumulation - O(n) instead of O(n²)
+        // We keep both the array (for final message) and a cached full string (for incremental updates)
         const contentChunks: string[] = [];
+        let cachedFullContent = ''; // Cached joined content - avoids re-joining on every chunk
         let parsedContent = ''; // Accumulator for parsed content
         let lineBuffer = ''; // Buffer for incomplete JSON lines
+        let lastParseTime = 0; // Throttle parsing for performance
+        const PARSE_THROTTLE_MS = 50; // Parse at most every 50ms
 
         if (reader) {
           while (true) {
@@ -821,11 +974,18 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
 
                   if (parsed.type === 'text') {
                     contentChunks.push(parsed.content);
+                    // O(1) append instead of O(n) join
+                    cachedFullContent += parsed.content;
 
-                    const fullContent = contentChunks.join('');
-                    const newParsed = messageParser.parse(messageIdRef.current, fullContent);
-                    parsedContent += newParsed;
-                    scheduleStreamingUpdate(parsedContent);
+                    // Throttle parsing for performance
+                    const now = Date.now();
+                    if (now - lastParseTime >= PARSE_THROTTLE_MS) {
+                      lastParseTime = now;
+                      const newParsed = messageParser.parse(messageIdRef.current, cachedFullContent);
+                      // BUGFIX: Accumuler le contenu parsé - le parser retourne seulement le delta!
+                      parsedContent += newParsed;
+                      scheduleStreamingUpdate(parsedContent);
+                    }
                   } else if (parsed.type === 'agent_status') {
                     console.log(`[Chat] Received agent_status: ${parsed.agent} -> ${parsed.status}`);
                     setCurrentAgent(parsed.agent);
@@ -865,11 +1025,18 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
                     try {
                       const content = JSON.parse(data);
                       contentChunks.push(content);
+                      // O(1) append instead of O(n) join
+                      cachedFullContent += content;
 
-                      const fullContent = contentChunks.join('');
-                      const newParsed = messageParser.parse(messageIdRef.current, fullContent);
-                      parsedContent += newParsed;
-                      scheduleStreamingUpdate(parsedContent);
+                      // Throttle parsing for performance
+                      const now = Date.now();
+                      if (now - lastParseTime >= PARSE_THROTTLE_MS) {
+                        lastParseTime = now;
+                        const newParsed = messageParser.parse(messageIdRef.current, cachedFullContent);
+                        // BUGFIX: Accumuler le contenu parsé - le parser retourne seulement le delta!
+                        parsedContent += newParsed;
+                        scheduleStreamingUpdate(parsedContent);
+                      }
                     } catch {
                       // JSON parse failed - likely malformed, skip this chunk
                       logger.warn('Failed to parse AI SDK line:', line.substring(0, 100));
@@ -888,9 +1055,11 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
 
                 if (parsed.type === 'text') {
                   contentChunks.push(parsed.content);
+                  cachedFullContent += parsed.content;
 
-                  const fullContent = contentChunks.join('');
-                  const newParsed = messageParser.parse(messageIdRef.current, fullContent);
+                  // Final parse - no throttling
+                  // BUGFIX: Accumuler le contenu parsé - le parser retourne seulement le delta!
+                  const newParsed = messageParser.parse(messageIdRef.current, cachedFullContent);
                   parsedContent += newParsed;
                   scheduleStreamingUpdate(parsedContent);
                 }
@@ -908,9 +1077,11 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
                   try {
                     const content = JSON.parse(data);
                     contentChunks.push(content);
+                    cachedFullContent += content;
 
-                    const fullContent = contentChunks.join('');
-                    const newParsed = messageParser.parse(messageIdRef.current, fullContent);
+                    // Final parse - no throttling
+                    // BUGFIX: Accumuler le contenu parsé - le parser retourne seulement le delta!
+                    const newParsed = messageParser.parse(messageIdRef.current, cachedFullContent);
                     parsedContent += newParsed;
                     scheduleStreamingUpdate(parsedContent);
                   } catch {
@@ -920,10 +1091,20 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
               }
             }
           }
+
+          // Ensure final parse is done with all content
+          // BUGFIX: Appeler parse() une seule fois et accumuler le résultat
+          if (cachedFullContent) {
+            const finalDelta = messageParser.parse(messageIdRef.current, cachedFullContent);
+            if (finalDelta) {
+              parsedContent += finalDelta;
+              scheduleStreamingUpdate(parsedContent);
+            }
+          }
         }
 
-        // Joindre les chunks pour le message final
-        const fullContent = contentChunks.join('');
+        // Use cached content for final message (already joined, O(1))
+        const fullContent = cachedFullContent;
 
         // Add assistant message to unified state
         const assistantMessage: Message = {
@@ -1175,6 +1356,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
         showChat={showChat}
         chatStarted={chatStarted}
         isStreaming={isLoading}
+        streamingContent={streamingContent}
         isLoadingSession={messagesLoading}
         enhancingPrompt={enhancingPrompt}
         promptEnhanced={promptEnhanced}

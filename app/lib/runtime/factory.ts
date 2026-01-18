@@ -37,6 +37,12 @@ let currentAdapter: RuntimeAdapter | null = null;
 let currentType: RuntimeType | null = null;
 
 /**
+ * Promise de synchronisation pour éviter les race conditions lors de l'initialisation.
+ * Quand initRuntime() est appelé pendant une init en cours, on attend la Promise existante.
+ */
+let initPromise: Promise<RuntimeAdapter> | null = null;
+
+/**
  * Crée un RuntimeAdapter basé sur le type spécifié.
  *
  * @param type - Type de runtime ('webcontainer' | 'browser')
@@ -69,6 +75,10 @@ export function getRuntimeAdapter(): RuntimeAdapter {
   // Si le type a changé, détruire l'ancien et créer un nouveau
   if (currentAdapter && currentType !== type) {
     logger.info(`Runtime type changed from ${currentType} to ${type}, recreating adapter`);
+
+    // Reset init promise when adapter changes (prevents stale Promise)
+    initPromise = null;
+
     currentAdapter.destroy().catch((error) => {
       logger.error('Failed to destroy previous adapter:', error);
     });
@@ -87,18 +97,36 @@ export function getRuntimeAdapter(): RuntimeAdapter {
 /**
  * Initialise le runtime adapter.
  * Doit être appelé avant d'utiliser le runtime.
+ * Protégé contre les race conditions - les appels concurrents attendent la même Promise.
  *
  * @returns Promise qui résout quand le runtime est prêt
  */
 export async function initRuntime(): Promise<RuntimeAdapter> {
   const adapter = getRuntimeAdapter();
 
+  // Déjà prêt, retourner immédiatement
   if (adapter.status === 'ready') {
     return adapter;
   }
 
-  await adapter.init();
-  return adapter;
+  // Si une initialisation est en cours, attendre la Promise existante
+  if (initPromise) {
+    return initPromise;
+  }
+
+  // Démarrer l'initialisation et stocker la Promise
+  initPromise = (async () => {
+    try {
+      await adapter.init();
+      return adapter;
+    } catch (error) {
+      // Reset la Promise en cas d'échec pour permettre un retry
+      initPromise = null;
+      throw error;
+    }
+  })();
+
+  return initPromise;
 }
 
 /**
@@ -126,6 +154,9 @@ export async function setRuntimeType(type: RuntimeType): Promise<void> {
  * Utile pour le cleanup lors du démontage d'un composant.
  */
 export async function destroyRuntime(): Promise<void> {
+  // Reset init promise first to prevent new inits during destroy
+  initPromise = null;
+
   if (currentAdapter) {
     await currentAdapter.destroy();
     currentAdapter = null;

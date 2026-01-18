@@ -14,7 +14,7 @@ import type { ITerminal } from '~/types/terminal';
 import { unreachable } from '~/utils/unreachable';
 import { createScopedLogger } from '~/utils/logger';
 import { EditorStore } from './editor';
-import { PreviewsStore, type BrowserPreviewInfo } from './previews';
+import { PreviewsStore, type BrowserPreviewInfo, clearPreviewError } from './previews';
 import { browserFilesStore, type FileMap } from './browser-files';
 import { chatId } from '~/lib/persistence/useChatHistory';
 
@@ -143,7 +143,19 @@ export class WorkbenchStore {
 
   // Debounce timer for build triggers (to wait for all files to be written)
   #buildDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-  #buildDebounceMs = 1000; // Wait 1000ms after last file change before building
+  #buildDebounceMs = 500; // OPTIMIZED: Reduced from 1000ms to 500ms for faster feedback
+
+  /**
+   * Track pending files that changed during debounce period.
+   * Helps with debugging and potential incremental builds in the future.
+   */
+  #pendingFiles = new Set<string>();
+
+  /**
+   * Track all subscription cleanup functions to prevent memory leaks.
+   * These are called when the mode changes or on cleanup.
+   */
+  #cleanupFunctions: Array<() => void> = [];
 
   // Stable atoms that are always available (prevents hook ordering issues)
   #previewsAtom = import.meta.hot?.data.previewsAtom ?? atom<Array<{ port: number; ready: boolean; baseUrl: string }>>([]);
@@ -214,6 +226,22 @@ export class WorkbenchStore {
   }
 
   /**
+   * Cleanup all subscriptions to prevent memory leaks.
+   * Called when switching modes or on component unmount.
+   */
+  #cleanupSubscriptions(): void {
+    for (const cleanup of this.#cleanupFunctions) {
+      try {
+        cleanup();
+      } catch (error) {
+        logger.warn('Error during subscription cleanup:', error);
+      }
+    }
+    this.#cleanupFunctions = [];
+    logger.debug(`Cleaned up ${this.#cleanupFunctions.length} subscriptions`);
+  }
+
+  /**
    * Initialize browser mode (esbuild-wasm based).
    */
   async #initBrowserMode(): Promise<void> {
@@ -236,13 +264,16 @@ export class WorkbenchStore {
     // Builds are triggered when:
     // 1. Artifact closes (all files written)
     // 2. User saves a file manually (via saveFile)
-    browserFilesStore.onFilesChange(async (files) => {
+    const filesChangeCleanup = browserFilesStore.onFilesChange(async (files) => {
       logger.debug(`Files changed, ${files.size} files total`);
       // Build will be triggered by artifact close or manual save, not here
     });
+    if (filesChangeCleanup) {
+      this.#cleanupFunctions.push(filesChangeCleanup);
+    }
 
     // Subscribe to files changes to update editor and stable atom
-    browserFilesStore.files.subscribe((files) => {
+    const filesSubscription = browserFilesStore.files.subscribe((files) => {
       // Sync to stable files atom
       this.#filesAtom.set(files);
 
@@ -258,16 +289,19 @@ export class WorkbenchStore {
         }
       }
     });
+    this.#cleanupFunctions.push(filesSubscription);
 
     // Sync editor store's selectedFile with stable atom
     if (this.#editorStore) {
-      this.#editorStore.selectedFile.subscribe((filePath) => {
+      const selectedFileCleanup = this.#editorStore.selectedFile.subscribe((filePath) => {
         this.#selectedFileAtom.set(filePath);
       });
+      this.#cleanupFunctions.push(selectedFileCleanup);
 
-      this.#editorStore.currentDocument.subscribe((doc) => {
+      const currentDocCleanup = this.#editorStore.currentDocument.subscribe((doc) => {
         this.#currentDocumentAtom.set(doc);
       });
+      this.#cleanupFunctions.push(currentDocCleanup);
     }
 
     // Initialize browser build service
@@ -290,10 +324,18 @@ export class WorkbenchStore {
           logger.info('No chatId yet, will load from checkpoint when available');
 
           // Subscribe to chatId changes to load checkpoint when it becomes available
-          // Use arrow function to capture workbenchStore reference
+          // FIX: Track subscription for cleanup and ensure unsubscribe is always called
           const store = this;
-          const unsubscribe = chatId.subscribe(async (newChatId) => {
+          let hasLoaded = false;
+
+          const chatIdUnsubscribe = chatId.subscribe(async (newChatId) => {
+            // Prevent multiple loads
+            if (hasLoaded) {
+              return;
+            }
+
             if (newChatId && browserFilesStore.getAllFiles().size === 0) {
+              hasLoaded = true;
               logger.info(`ChatId set to ${newChatId}, loading files from checkpoint`);
               await loadFilesFromCheckpointHelper(newChatId);
 
@@ -302,10 +344,12 @@ export class WorkbenchStore {
               if (loadedFiles.size > 0) {
                 await store.triggerBrowserBuildPublic();
               }
-
-              unsubscribe(); // Only need to load once
             }
           });
+
+          // Track this subscription for cleanup
+          // This ensures it's cleaned up even if the condition is never met
+          this.#cleanupFunctions.push(chatIdUnsubscribe);
         }
       }
 
@@ -344,10 +388,11 @@ export class WorkbenchStore {
     this.#webContainerFilesStore = await getWebContainerFilesStore();
     this.#webContainerFilesStore.init();
 
-    // Sync files to stable atom
-    this.#webContainerFilesStore.files.subscribe((files) => {
+    // Sync files to stable atom (track for cleanup)
+    const filesCleanup = this.#webContainerFilesStore.files.subscribe((files) => {
       this.#filesAtom.set(files);
     });
+    this.#cleanupFunctions.push(filesCleanup);
 
     this.#editorStore = new EditorStore(this.#webContainerFilesStore as any);
 
@@ -356,29 +401,33 @@ export class WorkbenchStore {
     this.#previewsStore.setMode('webcontainer');
     this.#previewsStore.init();
 
-    // Sync previews from store to stable atom
-    this.#previewsStore.previews.subscribe((previews) => {
+    // Sync previews from store to stable atom (track for cleanup)
+    const previewsCleanup = this.#previewsStore.previews.subscribe((previews) => {
       this.#previewsAtom.set(previews);
     });
+    this.#cleanupFunctions.push(previewsCleanup);
 
-    // Sync editor store's atoms with stable atoms
+    // Sync editor store's atoms with stable atoms (track for cleanup)
     if (this.#editorStore) {
-      this.#editorStore.selectedFile.subscribe((filePath) => {
+      const selectedFileCleanup = this.#editorStore.selectedFile.subscribe((filePath) => {
         this.#selectedFileAtom.set(filePath);
       });
+      this.#cleanupFunctions.push(selectedFileCleanup);
 
-      this.#editorStore.currentDocument.subscribe((doc) => {
+      const currentDocCleanup = this.#editorStore.currentDocument.subscribe((doc) => {
         this.#currentDocumentAtom.set(doc);
       });
+      this.#cleanupFunctions.push(currentDocCleanup);
     }
 
     this.#terminalStore = await getTerminalStore();
 
-    // Sync terminal visibility
+    // Sync terminal visibility (track for cleanup)
     if (this.#terminalStore.showTerminal) {
-      this.#terminalStore.showTerminal.subscribe((show) => {
+      const terminalCleanup = this.#terminalStore.showTerminal.subscribe((show) => {
         this.#showTerminalAtom.set(show);
       });
+      this.#cleanupFunctions.push(terminalCleanup);
     }
   }
 
@@ -386,10 +435,19 @@ export class WorkbenchStore {
    * Trigger a browser build with debouncing.
    * This waits for file writes to settle before building to avoid
    * building when files are still being written (e.g., main.tsx exists but App.tsx doesn't).
+   *
+   * OPTIMIZED: Now tracks changed files for better debugging and potential incremental builds.
+   *
+   * @param changedFile - Optional path of the file that triggered the build
    */
-  async #triggerBrowserBuild(): Promise<void> {
+  async #triggerBrowserBuild(changedFile?: string): Promise<void> {
     if (this.#runtimeType !== 'browser') {
       return;
+    }
+
+    // Track the changed file if provided
+    if (changedFile) {
+      this.#pendingFiles.add(changedFile);
     }
 
     // Clear any existing debounce timer
@@ -400,6 +458,14 @@ export class WorkbenchStore {
 
     // Set a new debounce timer
     this.#buildDebounceTimer = setTimeout(() => {
+      // Log pending files for debugging
+      if (this.#pendingFiles.size > 0) {
+        logger.info(`Building with ${this.#pendingFiles.size} changed file(s):`, Array.from(this.#pendingFiles));
+      }
+
+      // Clear pending files before build
+      this.#pendingFiles.clear();
+
       this.#executeBrowserBuild();
     }, this.#buildDebounceMs);
   }
@@ -445,6 +511,8 @@ export class WorkbenchStore {
 
       if (result && result.errors.length === 0) {
         logger.info(`Browser build successful in ${Math.round(result.buildTime)}ms`);
+        // Clear any previous error on successful build
+        clearPreviewError();
       } else if (result && result.errors.length > 0) {
         // Log errors but don't treat as fatal - build can be retried
         logger.warn('Browser build had errors:', result.errors);
