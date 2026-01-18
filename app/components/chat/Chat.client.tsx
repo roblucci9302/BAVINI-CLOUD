@@ -595,8 +595,8 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
   const lastUpdateTimeRef = useRef<number>(0);
 
   // Constantes pour le streaming
-  const STREAMING_UPDATE_INTERVAL_MS = 32; // ~30fps pour un bon équilibre performance/fluidité
-  const STREAMING_FLUSH_DELAY_MS = 50; // Délai max avant flush forcé
+  const STREAMING_UPDATE_INTERVAL_MS = 16; // ~60fps pour une fluidité optimale
+  const STREAMING_FLUSH_DELAY_MS = 32; // Délai max avant flush forcé (réduit pour moins de pauses)
 
   /**
    * Mise à jour optimisée du contenu de streaming.
@@ -940,7 +940,8 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
         let parsedContent = ''; // Accumulator for parsed content
         let lineBuffer = ''; // Buffer for incomplete JSON lines
         let lastParseTime = 0; // Throttle parsing for performance
-        const PARSE_THROTTLE_MS = 50; // Parse at most every 50ms
+        // REDUCED: 50ms causait des pauses visibles. scheduleStreamingUpdate a déjà son throttle (32ms)
+        const PARSE_THROTTLE_MS = 16; // Parse at most every 16ms (~60fps)
 
         if (reader) {
           while (true) {
