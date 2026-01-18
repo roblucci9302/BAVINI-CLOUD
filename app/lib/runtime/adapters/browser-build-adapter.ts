@@ -228,7 +228,9 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
         };
       }
 
-      const entryContent = this._files.get(foundEntry)!;
+      // Create a virtual bootstrap entry that mounts React
+      // This wraps the actual entry point with React mounting code
+      const bootstrapEntry = this.createBootstrapEntry(foundEntry);
       const entryDir = foundEntry.substring(0, foundEntry.lastIndexOf('/')) || '/';
 
       logger.debug(`Building entry: ${foundEntry} in dir: ${entryDir}`);
@@ -239,10 +241,10 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
       // Build with esbuild
       const result = await esbuild.build({
         stdin: {
-          contents: entryContent,
-          loader: this.getLoader(foundEntry),
+          contents: bootstrapEntry,
+          loader: 'tsx',
           resolveDir: entryDir,
-          sourcefile: foundEntry,
+          sourcefile: '/__bootstrap__.tsx',
         },
         bundle: true,
         format: 'esm',
@@ -255,8 +257,9 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
         },
         jsx: 'automatic',
         jsxImportSource: 'react',
-        // esm-sh first to handle CDN paths before virtual-fs tries to load them as local files
-        plugins: [this.createEsmShPlugin(), this.createVirtualFsPlugin()],
+        // virtual-fs first to handle local files and path aliases (@/) before esm-sh
+        // esm-sh will handle remaining bare imports (npm packages)
+        plugins: [this.createVirtualFsPlugin(), this.createEsmShPlugin()],
         write: false,
         outdir: '/dist', // Required for outputFiles to be populated
         logLevel: 'warning',
@@ -423,10 +426,208 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
   /**
    * Create virtual filesystem plugin for esbuild
    */
+  /**
+   * Next.js shims for browser-only builds
+   * These provide browser-compatible implementations of Next.js-specific modules
+   */
+  private readonly NEXTJS_SHIMS: Record<string, string> = {
+    'next/font/google': `
+      // Browser shim for next/font/google
+      export function Inter(options) {
+        return {
+          className: 'font-inter',
+          variable: options?.variable || '--font-inter',
+          style: { fontFamily: 'Inter, system-ui, sans-serif' }
+        };
+      }
+      export function Roboto(options) {
+        return {
+          className: 'font-roboto',
+          variable: options?.variable || '--font-roboto',
+          style: { fontFamily: 'Roboto, system-ui, sans-serif' }
+        };
+      }
+      export function Open_Sans(options) {
+        return {
+          className: 'font-open-sans',
+          variable: options?.variable || '--font-open-sans',
+          style: { fontFamily: '"Open Sans", system-ui, sans-serif' }
+        };
+      }
+      export function Poppins(options) {
+        return {
+          className: 'font-poppins',
+          variable: options?.variable || '--font-poppins',
+          style: { fontFamily: 'Poppins, system-ui, sans-serif' }
+        };
+      }
+      // Default export for any font
+      export default function GoogleFont(options) {
+        return {
+          className: 'font-sans',
+          variable: '--font-sans',
+          style: { fontFamily: 'system-ui, sans-serif' }
+        };
+      }
+    `,
+    'next/image': `
+      // Browser shim for next/image
+      import React from 'react';
+
+      function Image({ src, alt, width, height, fill, className, style, priority, ...props }) {
+        const imgStyle = fill
+          ? { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: style?.objectFit || 'cover', ...style }
+          : { width, height, ...style };
+
+        return React.createElement('img', {
+          src: typeof src === 'object' ? src.src : src,
+          alt: alt || '',
+          className,
+          style: imgStyle,
+          loading: priority ? 'eager' : 'lazy',
+          ...props
+        });
+      }
+
+      export default Image;
+    `,
+    'next/link': `
+      // Browser shim for next/link
+      import React from 'react';
+
+      function Link({ href, children, className, style, onClick, ...props }) {
+        const handleClick = (e) => {
+          if (onClick) onClick(e);
+          // For browser preview, just use normal anchor behavior
+        };
+
+        return React.createElement('a', {
+          href: typeof href === 'object' ? href.pathname : href,
+          className,
+          style,
+          onClick: handleClick,
+          ...props
+        }, children);
+      }
+
+      export default Link;
+    `,
+    'next/navigation': `
+      // Browser shim for next/navigation
+      export function useRouter() {
+        return {
+          push: (url) => { window.location.href = url; },
+          replace: (url) => { window.location.replace(url); },
+          back: () => { window.history.back(); },
+          forward: () => { window.history.forward(); },
+          refresh: () => { window.location.reload(); },
+          prefetch: () => Promise.resolve(),
+        };
+      }
+
+      export function usePathname() {
+        return typeof window !== 'undefined' ? window.location.pathname : '/';
+      }
+
+      export function useSearchParams() {
+        const params = typeof window !== 'undefined'
+          ? new URLSearchParams(window.location.search)
+          : new URLSearchParams();
+        return {
+          get: (key) => params.get(key),
+          getAll: (key) => params.getAll(key),
+          has: (key) => params.has(key),
+          keys: () => params.keys(),
+          values: () => params.values(),
+          entries: () => params.entries(),
+          forEach: (fn) => params.forEach(fn),
+          toString: () => params.toString(),
+        };
+      }
+
+      export function useParams() {
+        return {};
+      }
+
+      export function notFound() {
+        throw new Error('Not Found');
+      }
+
+      export function redirect(url) {
+        if (typeof window !== 'undefined') {
+          window.location.href = url;
+        }
+      }
+    `,
+    'next': `
+      // Browser shim for next
+      export const Metadata = {};
+      export default {};
+    `,
+  };
+
   private createVirtualFsPlugin(): esbuild.Plugin {
     return {
       name: 'virtual-fs',
       setup: (build) => {
+        // Handle Next.js-specific imports with browser shims
+        // This MUST come before esm-sh plugin tries to fetch from CDN
+        build.onResolve({ filter: /^next(\/|$)/ }, (args) => {
+          // Skip if coming from esm-sh namespace
+          if (args.namespace === 'esm-sh') {
+            return null;
+          }
+
+          // Check if we have a shim for this import
+          const shimKey = args.path;
+          if (this.NEXTJS_SHIMS[shimKey]) {
+            logger.debug(`Resolving Next.js shim: ${args.path}`);
+            return { path: args.path, namespace: 'nextjs-shim' };
+          }
+
+          // For other next/* imports, still try to use shim namespace
+          // so we can provide a fallback
+          logger.debug(`Resolving Next.js import (no specific shim): ${args.path}`);
+          return { path: args.path, namespace: 'nextjs-shim' };
+        });
+
+        // Load Next.js shims
+        build.onLoad({ filter: /.*/, namespace: 'nextjs-shim' }, (args) => {
+          const shimCode = this.NEXTJS_SHIMS[args.path];
+
+          if (shimCode) {
+            logger.debug(`Loading Next.js shim for: ${args.path}`);
+            return { contents: shimCode, loader: 'jsx' };
+          }
+
+          // Provide a minimal fallback for unknown next/* imports
+          logger.warn(`No shim for Next.js import: ${args.path}, providing empty module`);
+          return {
+            contents: `
+              // Empty shim for ${args.path}
+              export default {};
+            `,
+            loader: 'js'
+          };
+        });
+
+        // Resolve @/ path aliases (e.g., @/components/Header -> /src/components/Header)
+        // This MUST be handled BEFORE esm-sh plugin tries to resolve as npm package
+        build.onResolve({ filter: /^@\// }, (args) => {
+          // Skip if coming from esm-sh namespace
+          if (args.namespace === 'esm-sh') {
+            return null;
+          }
+
+          // Convert @/path to /src/path
+          const virtualPath = args.path.replace(/^@\//, '/src/');
+          const resolveDir = virtualPath.substring(0, virtualPath.lastIndexOf('/')) || '/';
+
+          logger.debug(`Resolving @/ alias: ${args.path} -> ${virtualPath}`);
+
+          return { path: virtualPath, namespace: 'virtual-fs', pluginData: { resolveDir } };
+        });
+
         // Resolve relative imports (./file or ../file) - only from virtual-fs or no namespace
         build.onResolve({ filter: /^\./ }, (args) => {
           // Skip if coming from esm-sh namespace - let esm-sh handle its own relative imports
@@ -700,6 +901,130 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
     }
 
     return '/' + resolved.join('/');
+  }
+
+  /**
+   * Create a bootstrap entry that mounts React with the app
+   * This handles Next.js-style layouts and pages, as well as standard React entry files
+   */
+  private createBootstrapEntry(entryPath: string): string {
+    // Get the content of the entry file to analyze it
+    const entryContent = this._files.get(entryPath) || '';
+
+    // Check if this is already a mounting entry file (contains ReactDOM.render or createRoot)
+    // These files don't export components - they just execute and mount the app
+    const isMountingEntry = this.isMountingEntryFile(entryContent);
+
+    if (isMountingEntry) {
+      // For mounting entry files, just import them for side effects
+      // The file will handle its own ReactDOM.createRoot().render() call
+      logger.debug(`Entry ${entryPath} is a mounting file, importing for side effects`);
+      return `import '${entryPath.replace(/\.tsx?$/, '')}';`;
+    }
+
+    // Find the main page component (for Next.js style apps)
+    const pagePath = this.findFile('/src/app/page');
+
+    // Build import statements based on what files exist
+    const imports: string[] = [
+      `import React from 'react';`,
+      `import { createRoot } from 'react-dom/client';`,
+    ];
+
+    let appComponent = '';
+
+    if (pagePath) {
+      // We have both layout and page (Next.js style)
+      imports.push(`import RootLayout from '${entryPath.replace(/\.tsx?$/, '')}';`);
+      imports.push(`import HomePage from '${pagePath.replace(/\.tsx?$/, '')}';`);
+
+      appComponent = `
+function App() {
+  return (
+    <RootLayout>
+      <HomePage />
+    </RootLayout>
+  );
+}`;
+    } else {
+      // Check if the entry exports a default or named component
+      const hasDefaultExport = /export\s+default\s+/.test(entryContent);
+      const hasNamedAppExport = /export\s+(function|const|class)\s+App/.test(entryContent);
+
+      if (hasDefaultExport) {
+        imports.push(`import MainComponent from '${entryPath.replace(/\.tsx?$/, '')}';`);
+        appComponent = `
+function App() {
+  return <MainComponent />;
+}`;
+      } else if (hasNamedAppExport) {
+        imports.push(`import { App as MainComponent } from '${entryPath.replace(/\.tsx?$/, '')}';`);
+        appComponent = `
+function App() {
+  return <MainComponent />;
+}`;
+      } else {
+        // Fallback: try to find the main App component file
+        const appFilePath = this.findFile('/src/App');
+        if (appFilePath) {
+          const appContent = this._files.get(appFilePath) || '';
+          const appHasDefault = /export\s+default\s+/.test(appContent);
+          const appHasNamed = /export\s+(function|const|class)\s+App/.test(appContent);
+
+          if (appHasDefault) {
+            imports.push(`import MainComponent from '${appFilePath.replace(/\.tsx?$/, '')}';`);
+          } else if (appHasNamed) {
+            imports.push(`import { App as MainComponent } from '${appFilePath.replace(/\.tsx?$/, '')}';`);
+          } else {
+            imports.push(`import MainComponent from '${appFilePath.replace(/\.tsx?$/, '')}';`);
+          }
+        } else {
+          // Last resort: try default import
+          imports.push(`import MainComponent from '${entryPath.replace(/\.tsx?$/, '')}';`);
+        }
+
+        appComponent = `
+function App() {
+  return <MainComponent />;
+}`;
+      }
+    }
+
+    // Generate the bootstrap code
+    return `
+${imports.join('\n')}
+
+${appComponent}
+
+// Mount the app
+const container = document.getElementById('root');
+if (container) {
+  const root = createRoot(container);
+  root.render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
+  );
+} else {
+  console.error('Root element not found');
+}
+`;
+  }
+
+  /**
+   * Check if a file is a mounting entry file (handles its own React mounting)
+   * These files typically contain ReactDOM.render() or createRoot().render() calls
+   */
+  private isMountingEntryFile(content: string): boolean {
+    // Check for ReactDOM.render or createRoot patterns
+    const mountingPatterns = [
+      /ReactDOM\.render\s*\(/,           // ReactDOM.render(
+      /ReactDOM\.createRoot\s*\(/,       // ReactDOM.createRoot(
+      /createRoot\s*\([^)]*\)\.render/,  // createRoot(...).render
+      /\.render\s*\(\s*<.*>/,            // .render(<Component>)
+    ];
+
+    return mountingPatterns.some(pattern => pattern.test(content));
   }
 
   /**
