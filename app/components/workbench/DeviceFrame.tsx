@@ -1,8 +1,7 @@
 'use client';
 
-import { memo, type ReactNode, useMemo } from 'react';
+import { memo, type ReactNode, useMemo, useState, useEffect, useRef } from 'react';
 import { useStore } from '@nanostores/react';
-import { classNames } from '~/utils/classNames';
 import { DEVICE_PRESETS, getDeviceDimensions } from '~/utils/devices';
 import { selectedDeviceId, deviceOrientation } from '~/lib/stores/previews';
 
@@ -10,133 +9,214 @@ interface DeviceFrameProps {
   children: ReactNode;
 }
 
-// Device display configurations (visual sizes, not viewport)
-const DEVICE_CONFIGS = {
+// Target visual widths for each device type
+const TARGET_VISUAL_WIDTH = {
+  desktop: -1,
+  tablet: 450,
+  mobile: 360,
+} as const;
+
+// Device frame styling
+const DEVICE_STYLES = {
   desktop: {
-    scale: 1,
     frameRadius: 8,
     screenRadius: 4,
     padding: 0,
-    showFrame: false,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    background: '#18181b',
+    shadow: '0 4px 20px rgba(0,0,0,0.3)',
   },
   tablet: {
-    scale: 0.55,
     frameRadius: 36,
     screenRadius: 24,
     padding: 14,
-    showFrame: true,
+    borderWidth: 4,
+    borderColor: '#3f3f46',
+    background: 'linear-gradient(145deg, #27272a, #1f1f23)',
+    shadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255,255,255,0.05)',
   },
   mobile: {
-    scale: 0.75,
     frameRadius: 44,
     screenRadius: 32,
     padding: 14,
-    showFrame: true,
+    borderWidth: 4,
+    borderColor: '#3f3f46',
+    background: 'linear-gradient(145deg, #27272a, #1f1f23)',
+    shadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255,255,255,0.05)',
   },
 } as const;
 
+// Smooth easing curve - longer duration and softer easing for fluidity
+const EASING = 'cubic-bezier(0.25, 0.1, 0.25, 1)';
+const DURATION = '0.5s';
+
 /**
- * DeviceFrame - Wraps content in a device frame for mobile/tablet preview
+ * DeviceFrame - Smooth morphing device preview
  *
- * Performance optimized:
- * - Uses transform: scale() for GPU-accelerated animations
- * - Avoids animating width/height (causes layout thrashing)
- * - Uses will-change hint for smoother transitions
+ * Animates all properties for organic transitions:
+ * - Width/height morph smoothly
+ * - Border-radius interpolates
+ * - Scale adjusts fluidly
  */
 export const DeviceFrame = memo(({ children }: DeviceFrameProps) => {
   const currentDeviceId = useStore(selectedDeviceId);
   const orientation = useStore(deviceOrientation);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerSize, setContainerSize] = useState({ width: 800, height: 600 });
 
   const device = useMemo(() => DEVICE_PRESETS.find((d) => d.id === currentDeviceId), [currentDeviceId]);
-
   const deviceType = device?.type || 'desktop';
-  const config = DEVICE_CONFIGS[deviceType];
+  const style = DEVICE_STYLES[deviceType];
   const isDesktop = deviceType === 'desktop';
   const isMobile = deviceType === 'mobile';
 
+  // Get device dimensions
   const dimensions = useMemo(() => {
     if (!device || device.type === 'desktop') {
-      return { width: 375, height: 667 };
+      return {
+        width: Math.max(containerSize.width - 48, 400),
+        height: Math.max(containerSize.height - 24, 300)
+      };
     }
     return getDeviceDimensions(device, orientation);
-  }, [device, orientation]);
+  }, [device, orientation, containerSize]);
+
+  // Track container size
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) {
+        setContainerSize({
+          width: entry.contentRect.width,
+          height: entry.contentRect.height,
+        });
+      }
+    });
+
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
 
   const { width, height } = dimensions;
 
-  // Frame total size including padding
-  const frameWidth = width + (config.padding * 2);
-  const frameHeight = height + (config.padding * 2);
+  // Calculate visual dimensions
+  const visualWidth = useMemo(() => {
+    if (isDesktop) return width;
+    const target = TARGET_VISUAL_WIDTH[deviceType as keyof typeof TARGET_VISUAL_WIDTH];
+    return target > 0 ? target : width;
+  }, [isDesktop, deviceType, width]);
+
+  // Scale to achieve target visual width
+  const scale = visualWidth / (width + style.padding * 2);
+
+  // Final visual height (maintaining aspect ratio)
+  const visualHeight = (height + style.padding * 2) * scale;
 
   return (
     <div
-      className={classNames(
-        'w-full h-full flex items-center justify-center overflow-hidden',
-        !isDesktop && 'bg-bolt-elements-background-depth-3',
-      )}
+      ref={containerRef}
+      className="w-full h-full flex items-center justify-center overflow-hidden"
+      style={{
+        background: isDesktop ? 'transparent' : 'var(--bolt-elements-background-depth-3)',
+        transition: `background ${DURATION} ${EASING}`,
+      }}
     >
-      {/* Scaling container - only transform animates (GPU accelerated) */}
+      {/* Outer container for visual size */}
       <div
         style={{
-          transform: isDesktop ? 'scale(1)' : `scale(${config.scale})`,
-          transition: 'transform 0.35s cubic-bezier(0.32, 0.72, 0, 1)',
-          willChange: 'transform',
+          width: visualWidth,
+          height: visualHeight,
+          transition: `width ${DURATION} ${EASING}, height ${DURATION} ${EASING}`,
+          willChange: 'width, height',
         }}
       >
-        {/* Device Shell - no animation on size, instant change */}
+        {/* Scale container */}
         <div
-          className="relative"
           style={{
-            width: isDesktop ? '100vw' : frameWidth,
-            height: isDesktop ? 'calc(100vh - 120px)' : frameHeight,
-            maxWidth: isDesktop ? '100%' : undefined,
-            maxHeight: isDesktop ? '100%' : undefined,
-            background: isDesktop
-              ? 'transparent'
-              : 'linear-gradient(145deg, #27272a, #1f1f23)',
-            borderRadius: config.frameRadius,
-            padding: config.padding,
-            border: isDesktop ? '1px solid rgba(255,255,255,0.08)' : '4px solid #3f3f46',
-            boxShadow: isDesktop
-              ? 'none'
-              : '0 25px 50px -12px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255,255,255,0.05)',
+            width: '100%',
+            height: '100%',
+            transform: `scale(${scale})`,
+            transformOrigin: 'top left',
+            transition: `transform ${DURATION} ${EASING}`,
           }}
         >
-          {/* Screen */}
+          {/* Device Shell */}
           <div
-            className="overflow-hidden bg-white w-full h-full"
+            className="relative"
             style={{
-              borderRadius: config.screenRadius,
+              width: width + style.padding * 2,
+              height: height + style.padding * 2,
+              background: style.background,
+              borderRadius: style.frameRadius,
+              padding: style.padding,
+              borderWidth: style.borderWidth,
+              borderStyle: 'solid',
+              borderColor: style.borderColor,
+              boxShadow: style.shadow,
+              overflow: 'hidden',
+              contain: 'layout style',
+              willChange: 'width, height, border-radius',
+              transition: `
+                width ${DURATION} ${EASING},
+                height ${DURATION} ${EASING},
+                border-radius ${DURATION} ${EASING},
+                padding ${DURATION} ${EASING},
+                background ${DURATION} ${EASING},
+                box-shadow ${DURATION} ${EASING}
+              `,
             }}
           >
-            {children}
-          </div>
-
-          {/* Dynamic Island - Mobile only */}
-          {isMobile && (
+            {/* Screen */}
             <div
-              className="absolute left-1/2 -translate-x-1/2 bg-[#18181b]"
+              className="overflow-hidden bg-white"
+              style={{
+                width: width,
+                height: height,
+                borderRadius: style.screenRadius,
+                contain: 'layout style',
+                willChange: 'width, height, border-radius',
+                transition: `
+                  width ${DURATION} ${EASING},
+                  height ${DURATION} ${EASING},
+                  border-radius ${DURATION} ${EASING}
+                `,
+              }}
+            >
+              {children}
+            </div>
+
+            {/* Dynamic Island - Mobile only */}
+            <div
+              className="absolute left-1/2 bg-[#18181b] pointer-events-none"
               style={{
                 top: 18,
                 width: 100,
                 height: 28,
                 borderRadius: 20,
+                transform: 'translateX(-50%)',
+                opacity: isMobile ? 1 : 0,
+                transition: `opacity ${DURATION} ${EASING}`,
               }}
             />
-          )}
 
-          {/* Home Bar - Mobile only */}
-          {isMobile && (
+            {/* Home Bar - Mobile only */}
             <div
-              className="absolute left-1/2 -translate-x-1/2"
+              className="absolute left-1/2 pointer-events-none"
               style={{
                 bottom: 20,
                 width: 100,
                 height: 5,
                 background: 'rgba(255,255,255,0.35)',
                 borderRadius: 3,
+                transform: 'translateX(-50%)',
+                opacity: isMobile ? 1 : 0,
+                transition: `opacity ${DURATION} ${EASING}`,
               }}
             />
-          )}
+          </div>
         </div>
       </div>
     </div>
