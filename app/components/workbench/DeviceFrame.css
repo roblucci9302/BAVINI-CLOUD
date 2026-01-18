@@ -118,8 +118,8 @@
 }
 
 .device-frame-container.tablet .device-frame-shell {
-  width: 440px;
-  height: 580px;
+  width: 680px;
+  height: 880px;
   background: #18181b;
   border-radius: 24px;
   padding: 10px;
@@ -142,16 +142,16 @@
 
 /* Tablet Landscape */
 .device-frame-container.tablet.landscape .device-frame-shell {
-  width: 580px;
-  height: 440px;
+  width: 880px;
+  height: 680px;
 }
 
 /* ========================================
    MOBILE MODE - Floating Shadow
    ======================================== */
 .device-frame-container.mobile .device-frame-shell {
-  width: 320px;
-  height: 680px;
+  width: 390px;
+  height: 820px;
   background: #18181b;
   border-radius: 44px;
   padding: 12px;
@@ -178,8 +178,8 @@
 
 /* Mobile Landscape */
 .device-frame-container.mobile.landscape .device-frame-shell {
-  width: 680px;
-  height: 320px;
+  width: 820px;
+  height: 390px;
 }
 
 .device-frame-container.mobile.landscape .device-frame-notch {
