@@ -287,6 +287,62 @@ export interface TaskContext {
 
   /** Informations supplémentaires */
   additionalInfo?: Record<string, unknown>;
+
+  // ========================================
+  // Architect Agent Handoff Properties
+  // ========================================
+
+  /** Document d'architecture généré par l'Architect (architectToCoder) */
+  architectureDesign?: string;
+
+  /** Document de design (alias pour architectureDesign) */
+  designDocument?: string;
+
+  /** Fichiers à modifier identifiés par l'Architect */
+  filesToModify?: string[];
+
+  /** Résultat d'exploration pour l'Architect (exploreToArchitect) */
+  explorationResult?: string;
+
+  /** Flag indiquant que le design est nécessaire */
+  needsDesign?: boolean;
+
+  /** Résultat de review pour l'Architect (reviewerToArchitect) */
+  reviewResult?: string;
+
+  /** Flag indiquant des préoccupations architecturales */
+  architecturalConcerns?: boolean;
+
+  // ========================================
+  // Other Handoff Properties
+  // ========================================
+
+  /** Erreur de build (builderToFixer) */
+  buildError?: string;
+
+  /** Erreur Git (deployerToFixer) */
+  gitError?: string;
+
+  /** Résultats de tests (testerToReviewer) */
+  testResults?: string;
+
+  /** Flag indiquant que les tests sont passés */
+  testsPassed?: boolean;
+
+  /** Flag indiquant que la review est approuvée */
+  reviewApproved?: boolean;
+
+  /** Résumé de la review (reviewerToDeployer) */
+  reviewSummary?: string;
+
+  /** Fichiers modifiés (coderToTester) */
+  modifiedFiles?: string[];
+
+  /** Changements de code (coderToTester) */
+  codeChanges?: string;
+
+  /** Permet les propriétés additionnelles */
+  [key: string]: unknown;
 }
 
 /**

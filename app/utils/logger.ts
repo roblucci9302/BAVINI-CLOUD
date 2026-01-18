@@ -16,7 +16,8 @@ interface Logger {
   setLevel: (level: DebugLevel) => void;
 }
 
-let currentLevel: DebugLevel = (import.meta.env.VITE_LOG_LEVEL ?? import.meta.env.DEV) ? 'debug' : 'info';
+// Prioriser VITE_LOG_LEVEL s'il est défini, sinon utiliser 'debug' en dev et 'info' en prod
+let currentLevel: DebugLevel = (import.meta.env.VITE_LOG_LEVEL as DebugLevel) || (import.meta.env.DEV ? 'debug' : 'info');
 
 const isWorker = 'HTMLRewriter' in globalThis;
 const supportsColor = !isWorker;

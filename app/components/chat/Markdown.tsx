@@ -18,7 +18,6 @@ interface MarkdownProps {
 }
 
 export const Markdown = memo(({ children, html = false, limitedMarkdown = false }: MarkdownProps) => {
-  logger.trace('Render');
 
   // Memoize plugins to prevent unnecessary re-parsing
   const memoizedRemarkPlugins = useMemo(() => remarkPlugins(limitedMarkdown), [limitedMarkdown]);

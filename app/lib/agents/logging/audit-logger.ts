@@ -189,7 +189,7 @@ export const DEFAULT_AUDIT_CONFIG: AuditLoggerConfig = {
   includedTypes: [],
   excludedTypes: [],
   retentionMs: 7 * 24 * 60 * 60 * 1000, // 7 jours
-  consoleOutput: true,
+  consoleOutput: false, // Désactivé par défaut pour réduire le bruit dans les logs
   maxMemoryEntries: 10000,
 };
 

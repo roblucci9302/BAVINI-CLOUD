@@ -3,7 +3,7 @@ import { useState } from 'react';
 /**
  * Composant principal de l'application
  */
-export function App() {
+export default function App() {
   const [count, setCount] = useState(0);
 
   const handleIncrement = (): void => {

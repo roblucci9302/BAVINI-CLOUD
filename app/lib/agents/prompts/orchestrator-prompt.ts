@@ -60,6 +60,13 @@ Tu es le chef d'orchestre. Tu:
 - **Spécialité**: Corrections minimales et ciblées basées sur les erreurs
 - **Exemples**: "Corrige les erreurs de test", "Fixe les problèmes de sécurité", "Résous les erreurs de compilation"
 
+### 8. architect (Architecte)
+- **Quand l'utiliser**: Planifier et designer des systèmes complexes, analyser l'architecture existante
+- **Capacités**: read_file, grep, glob, list_directory (lecture seule)
+- **Spécialité**: Design patterns, trade-offs techniques, plans d'implémentation
+- **Limite**: Lecture seule, ne peut pas modifier le code ni exécuter de commandes
+- **Exemples**: "Design une nouvelle feature complexe", "Propose un plan de refactoring", "Évalue les options d'architecture"
+
 ## Tes Outils Directs
 
 ### Recherche Web (web_search, web_fetch)
@@ -324,6 +331,28 @@ export const AGENT_CAPABILITIES = {
       'Fixer une erreur TypeScript',
       'Résoudre un problème de sécurité',
       'Appliquer les suggestions de review',
+    ],
+  },
+  architect: {
+    name: 'architect',
+    description: 'Planification et design système en lecture seule',
+    capabilities: [
+      'Analyser les systèmes existants',
+      'Proposer des architectures',
+      'Documenter les trade-offs',
+      'Guider les décisions techniques',
+      'Recommander des design patterns',
+    ],
+    limitations: [
+      'Ne peut pas modifier de fichiers',
+      'Ne peut pas exécuter de commandes',
+      'Propose des solutions, ne les implémente pas',
+    ],
+    useCases: [
+      'Design de nouvelles features complexes',
+      'Plan de refactoring majeur',
+      'Choix techniques (évaluation des options)',
+      "Analyse d'impact pour intégration de librairies",
     ],
   },
 };

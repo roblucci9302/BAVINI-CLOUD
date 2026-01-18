@@ -105,8 +105,8 @@ const DelegateToAgentTool: ToolDefinition = {
     properties: {
       agent: {
         type: 'string',
-        description: "Nom de l'agent cible (explore, coder, builder, tester, deployer, reviewer, fixer)",
-        enum: ['explore', 'coder', 'builder', 'tester', 'deployer', 'reviewer', 'fixer'],
+        description: "Nom de l'agent cible (explore, coder, builder, tester, deployer, reviewer, fixer, architect)",
+        enum: ['explore', 'coder', 'builder', 'tester', 'deployer', 'reviewer', 'fixer', 'architect'],
       },
       task: {
         type: 'string',

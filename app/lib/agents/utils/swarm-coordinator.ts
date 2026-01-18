@@ -899,6 +899,169 @@ export const PREDEFINED_RULES = {
       },
     }),
   }),
+
+  /**
+   * Architect → Coder (après production d'un plan d'implémentation)
+   */
+  architectToCoder: (): HandoffRule => ({
+    from: 'architect',
+    to: 'coder',
+    condition: {
+      type: 'custom',
+      predicate: (_task, result) => {
+        if (!result.success) {
+          return false;
+        }
+
+        const output = result.output.toLowerCase();
+        // Déclencheurs EN/FR pour les plans d'implémentation
+        return (
+          output.includes("plan d'implémentation") ||
+          output.includes('implementation plan') ||
+          output.includes('## recommandation') ||
+          output.includes('## recommendation') ||
+          output.includes('design document') ||
+          output.includes('document de design') ||
+          output.includes('architecture proposée') ||
+          output.includes('proposed architecture')
+        );
+      },
+    },
+    priority: 6,
+    description: 'After architect produces implementation plan, handoff to coder',
+    transformTask: (task, result) => {
+      // Extraire les fichiers à modifier si mentionnés
+      const filesToModify: string[] = [];
+      const fileMatches = result.output.match(/(?:fichier|file)[s]?\s*[:]\s*([^\n]+)/gi);
+      if (fileMatches) {
+        for (const match of fileMatches) {
+          const files = match.split(/[,;]/).map((f) => f.replace(/^.*[:]\s*/, '').trim());
+          filesToModify.push(...files.filter((f) => f.length > 0));
+        }
+      }
+
+      return {
+        ...task,
+        id: `code-from-architect-${task.id}`,
+        prompt: `Implement the following architecture design:\n\n${result.output}`,
+        context: {
+          ...task.context,
+          architectureDesign: result.output,
+          designDocument: result.output,
+          filesToModify: filesToModify.length > 0 ? filesToModify : undefined,
+        },
+      };
+    },
+  }),
+
+  /**
+   * Explore → Architect (si exploration révèle des besoins architecturaux)
+   */
+  exploreToArchitect: (): HandoffRule => ({
+    from: 'explore',
+    to: 'architect',
+    condition: {
+      type: 'custom',
+      predicate: (_task, result) => {
+        if (!result.success) {
+          return false;
+        }
+
+        const output = result.output.toLowerCase();
+
+        // Doit mentionner architecture/refactoring/dette technique
+        const hasArchitecturalConcern =
+          output.includes('architecture') ||
+          output.includes('refactoring') ||
+          output.includes('dette technique') ||
+          output.includes('technical debt') ||
+          output.includes('restructuration') ||
+          output.includes('restructuring') ||
+          output.includes('design pattern');
+
+        // Et impliquer plusieurs fichiers/dépendances
+        const hasComplexity =
+          output.includes('multiple files') ||
+          output.includes('plusieurs fichiers') ||
+          output.includes('dépendances') ||
+          output.includes('dependencies') ||
+          output.includes('couplage') ||
+          output.includes('coupling') ||
+          output.includes('impact sur') ||
+          output.includes('impact on');
+
+        return hasArchitecturalConcern && hasComplexity;
+      },
+    },
+    priority: 4,
+    description: 'After exploration reveals architectural needs, handoff to architect',
+    transformTask: (task, result) => ({
+      ...task,
+      id: `architect-from-explore-${task.id}`,
+      prompt: `Analyze the following exploration results and propose an architecture solution:\n\n${result.output}`,
+      context: {
+        ...task.context,
+        explorationResult: result.output,
+        needsDesign: true,
+      },
+    }),
+  }),
+
+  /**
+   * Reviewer → Architect (si issues architecturales critiques détectées)
+   */
+  reviewerToArchitect: (): HandoffRule => ({
+    from: 'reviewer',
+    to: 'architect',
+    condition: {
+      type: 'custom',
+      predicate: (_task, result) => {
+        if (!result.success) {
+          return false;
+        }
+
+        const output = result.output.toLowerCase();
+
+        // Doit avoir des issues architecturales
+        const hasArchitecturalIssue =
+          output.includes('god class') ||
+          output.includes('classe dieu') ||
+          output.includes('tight coupling') ||
+          output.includes('couplage fort') ||
+          output.includes('srp violation') ||
+          output.includes('violation srp') ||
+          output.includes('single responsibility') ||
+          output.includes('responsabilité unique') ||
+          output.includes('circular dependency') ||
+          output.includes('dépendance circulaire') ||
+          output.includes('architectural issue') ||
+          output.includes('problème architectural');
+
+        // Et être de sévérité high ou critical
+        const isHighSeverity =
+          output.includes('"severity": "high"') ||
+          output.includes('"severity": "critical"') ||
+          output.includes('severity: high') ||
+          output.includes('severity: critical') ||
+          output.includes('sévérité: haute') ||
+          output.includes('sévérité: critique');
+
+        return hasArchitecturalIssue && isHighSeverity;
+      },
+    },
+    priority: 7,
+    description: 'On high severity architectural issues, handoff to architect for recommendations',
+    transformTask: (task, result) => ({
+      ...task,
+      id: `architect-from-review-${task.id}`,
+      prompt: `The code review identified critical architectural issues. Please analyze and provide recommendations:\n\n${result.output}`,
+      context: {
+        ...task.context,
+        reviewResult: result.output,
+        architecturalConcerns: true,
+      },
+    }),
+  }),
 };
 
 /*
@@ -937,6 +1100,11 @@ export function createSwarmCoordinator(
     coordinator.addRule(PREDEFINED_RULES.coderToTester());
     coordinator.addRule(PREDEFINED_RULES.builderToFixer());
     coordinator.addRule(PREDEFINED_RULES.testerToReviewer());
+
+    // Règles Architect (P2)
+    coordinator.addRule(PREDEFINED_RULES.architectToCoder());
+    coordinator.addRule(PREDEFINED_RULES.exploreToArchitect());
+    coordinator.addRule(PREDEFINED_RULES.reviewerToArchitect());
   }
 
   return coordinator;

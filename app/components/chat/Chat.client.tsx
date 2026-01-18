@@ -654,6 +654,12 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
       abortControllerRef.current = null;
     }
 
+    // BUGFIX: Annuler tout timer de streaming pending pour éviter les updates après stop
+    if (streamingUpdateRef.current !== null) {
+      clearTimeout(streamingUpdateRef.current);
+      streamingUpdateRef.current = null;
+    }
+
     setIsLoading(false);
     setStreamingContent('');
 
@@ -988,7 +994,6 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
                       scheduleStreamingUpdate(parsedContent);
                     }
                   } else if (parsed.type === 'agent_status') {
-                    console.log(`[Chat] Received agent_status: ${parsed.agent} -> ${parsed.status}`);
                     setCurrentAgent(parsed.agent);
                     updateAgentStatus(parsed.agent, parsed.status);
                   } else if (parsed.type === 'error') {
@@ -1099,8 +1104,18 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
             const finalDelta = messageParser.parse(messageIdRef.current, cachedFullContent);
             if (finalDelta) {
               parsedContent += finalDelta;
-              scheduleStreamingUpdate(parsedContent);
             }
+          }
+
+          // BUGFIX: Flush immédiat du contenu final pour éviter les race conditions
+          // Annuler tout timer pending et faire un update synchrone
+          if (streamingUpdateRef.current !== null) {
+            clearTimeout(streamingUpdateRef.current);
+            streamingUpdateRef.current = null;
+          }
+          // Update synchrone final avec tout le contenu parsé
+          if (parsedContent) {
+            setStreamingContent(parsedContent);
           }
         }
 
@@ -1113,8 +1128,11 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
           role: 'assistant',
           content: fullContent,
         };
-        setMessages((prev) => [...prev, assistantMessage]);
+
+        // BUGFIX: Clear streaming content AVANT d'ajouter le message
+        // pour éviter un flash où les deux sont visibles
         setStreamingContent('');
+        setMessages((prev) => [...prev, assistantMessage]);
 
         // Store in history
         storeMessageHistory([...messages, userMessage, assistantMessage]).catch((error) => toast.error(error.message));
@@ -1145,6 +1163,12 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
       } finally {
         setIsLoading(false);
         abortControllerRef.current = null;
+
+        // BUGFIX: Toujours annuler les timers de streaming pending
+        if (streamingUpdateRef.current !== null) {
+          clearTimeout(streamingUpdateRef.current);
+          streamingUpdateRef.current = null;
+        }
 
         // Toujours nettoyer l'état du parser (même en cas d'erreur)
         if (messageIdRef.current) {
