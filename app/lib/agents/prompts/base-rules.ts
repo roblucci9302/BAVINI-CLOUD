@@ -146,6 +146,77 @@ export const CODE_QUALITY_RULES = `
 `;
 
 /**
+ * Checklist sécurité - Pour coder, fixer, reviewer, deployer
+ */
+export const SECURITY_CHECKLIST_RULES = `
+## Checklist Sécurité (OBLIGATOIRE avant commit)
+
+Vérifier CHAQUE point avant de valider du code :
+
+1. **NO SECRETS** - Aucun secret hardcodé (API keys, passwords, tokens)
+2. **INPUT VALIDATION** - Tous les inputs utilisateur sont validés
+3. **SQL INJECTION** - Requêtes paramétrées uniquement (jamais de concaténation)
+4. **XSS PREVENTION** - HTML échappé/sanitized avant affichage
+5. **CSRF PROTECTION** - Tokens CSRF sur les mutations
+6. **AUTH/AUTHZ** - Authentification et autorisations vérifiées
+7. **RATE LIMITING** - Limites sur les endpoints sensibles
+8. **ERROR HANDLING** - Messages d'erreur sans fuite d'informations sensibles
+
+### Gestion des Secrets
+- TOUJOURS utiliser process.env pour les credentials
+- JAMAIS de valeurs par défaut pour les secrets
+- Vérifier que le .env est dans .gitignore
+`;
+
+/**
+ * Protocole de réponse aux incidents - Pour deployer, reviewer
+ */
+export const INCIDENT_RESPONSE_RULES = `
+## Protocole Incident Sécurité
+
+Si une vulnérabilité est détectée :
+
+1. **STOP** - Arrêter immédiatement le travail en cours
+2. **ESCALADE** - Signaler le problème (ne pas tenter de corriger seul)
+3. **REMEDIATION** - Corriger les vulnérabilités critiques AVANT de continuer
+4. **ROTATION** - Si credentials exposés → rotation immédiate
+5. **SCAN** - Vérifier le reste du codebase pour vulnérabilités similaires
+
+### Sévérités
+- **CRITICAL** : Faille exploitable immédiatement → STOP TOUT
+- **HIGH** : Vulnérabilité sérieuse → Corriger avant merge
+- **MEDIUM** : Risque modéré → Corriger dans le sprint
+- **LOW** : Amélioration → Backlog
+`;
+
+/**
+ * Standards de performance - Pour coder, reviewer, builder
+ */
+export const PERFORMANCE_RULES = `
+## Standards Performance
+
+1. **QUERIES**
+   - Éviter les N+1 queries (utiliser includes/joins)
+   - Indexer les colonnes fréquemment requêtées
+   - Limiter les résultats (pagination)
+
+2. **REACT**
+   - Mémoisation (useMemo, useCallback) pour calculs coûteux
+   - Éviter les re-renders inutiles (React.memo)
+   - Lazy loading pour les composants lourds
+
+3. **ASSETS**
+   - Images optimisées (WebP, tailles appropriées)
+   - Code splitting pour réduire le bundle initial
+   - Caching approprié (headers, service workers)
+
+4. **ANTI-PATTERNS À ÉVITER**
+   - Boucles synchrones sur grandes collections
+   - Opérations bloquantes dans le thread principal
+   - Fuites mémoire (listeners non nettoyés)
+`;
+
+/**
  * Combine plusieurs ensembles de règles
  */
 export function combineRules(...rules: string[]): string {
@@ -153,7 +224,7 @@ export function combineRules(...rules: string[]): string {
 }
 
 /**
- * Règles pour les agents en lecture seule (explorer, tester, reviewer)
+ * Règles pour les agents en lecture seule (explorer, tester)
  */
 export const READONLY_AGENT_RULES = combineRules(TONE_AND_STYLE_RULES);
 
@@ -165,14 +236,34 @@ export const CODE_AGENT_RULES = combineRules(
   ANTI_OVERENGINEERING_RULES,
   CODE_MODIFICATION_RULES,
   CODE_QUALITY_RULES,
+  SECURITY_CHECKLIST_RULES,
+);
+
+/**
+ * Règles pour le reviewer (security + performance focus)
+ */
+export const REVIEWER_AGENT_RULES = combineRules(
+  TONE_AND_STYLE_RULES,
+  SECURITY_CHECKLIST_RULES,
+  PERFORMANCE_RULES,
+  INCIDENT_RESPONSE_RULES,
 );
 
 /**
  * Règles pour le builder
  */
-export const BUILDER_AGENT_RULES = combineRules(TONE_AND_STYLE_RULES, ANTI_OVERENGINEERING_RULES);
+export const BUILDER_AGENT_RULES = combineRules(
+  TONE_AND_STYLE_RULES,
+  ANTI_OVERENGINEERING_RULES,
+  PERFORMANCE_RULES,
+);
 
 /**
  * Règles pour le deployer
  */
-export const DEPLOYER_AGENT_RULES = combineRules(TONE_AND_STYLE_RULES, GIT_SAFETY_RULES);
+export const DEPLOYER_AGENT_RULES = combineRules(
+  TONE_AND_STYLE_RULES,
+  GIT_SAFETY_RULES,
+  SECURITY_CHECKLIST_RULES,
+  INCIDENT_RESPONSE_RULES,
+);

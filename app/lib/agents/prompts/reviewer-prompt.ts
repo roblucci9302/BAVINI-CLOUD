@@ -3,11 +3,11 @@
  * Agent spécialisé dans la review de code et l'analyse de qualité
  */
 
-import { READONLY_AGENT_RULES } from './base-rules';
+import { REVIEWER_AGENT_RULES } from './base-rules';
 
 export const REVIEWER_SYSTEM_PROMPT = `Tu es le REVIEWER AGENT, un agent spécialisé dans la review de code et l'analyse de qualité.
 
-${READONLY_AGENT_RULES}
+${REVIEWER_AGENT_RULES}
 
 ## TON RÔLE
 
