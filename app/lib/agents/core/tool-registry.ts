@@ -134,6 +134,13 @@ export class ToolRegistry {
     failureCount: 0,
   };
 
+  /**
+   * Cache des définitions d'outils pour éviter les allocations/tris répétés
+   * Invalidé automatiquement lors des modifications du registre
+   */
+  private cachedDefinitions: ToolDefinition[] | null = null;
+  private cacheInvalidated: boolean = true;
+
   /*
    * ============================================================================
    * ENREGISTREMENT
@@ -157,6 +164,9 @@ export class ToolRegistry {
       priority,
       registeredAt: new Date(),
     });
+
+    // Invalider le cache des définitions
+    this.cacheInvalidated = true;
 
     logger.debug(`Registered tool: ${definition.name}`, { category, priority });
   }
@@ -188,6 +198,11 @@ export class ToolRegistry {
       }
     }
 
+    // Invalider le cache si au moins un outil a été enregistré
+    if (registered > 0) {
+      this.cacheInvalidated = true;
+    }
+
     logger.debug(`Batch registered ${registered} tools, skipped ${skipped}`, { category });
   }
 
@@ -198,6 +213,8 @@ export class ToolRegistry {
     const existed = this.tools.delete(name);
 
     if (existed) {
+      // Invalider le cache des définitions
+      this.cacheInvalidated = true;
       logger.debug(`Unregistered tool: ${name}`);
     }
 
@@ -215,6 +232,11 @@ export class ToolRegistry {
         this.tools.delete(name);
         count++;
       }
+    }
+
+    // Invalider le cache si au moins un outil a été supprimé
+    if (count > 0) {
+      this.cacheInvalidated = true;
     }
 
     logger.debug(`Unregistered ${count} tools from category: ${category}`);
@@ -258,11 +280,23 @@ export class ToolRegistry {
 
   /**
    * Obtenir toutes les définitions d'outils (pour le LLM)
+   *
+   * Utilise un cache interne pour éviter les allocations et le tri
+   * à chaque appel. Le cache est invalidé automatiquement lors de
+   * modifications du registre (register, unregister, clear, etc.)
+   *
+   * @returns {ToolDefinition[]} Définitions triées par priorité (décroissante)
    */
   getDefinitions(): ToolDefinition[] {
-    return Array.from(this.tools.values())
-      .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))
-      .map((t) => t.definition);
+    if (this.cacheInvalidated || !this.cachedDefinitions) {
+      this.cachedDefinitions = Array.from(this.tools.values())
+        .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))
+        .map((t) => t.definition);
+      this.cacheInvalidated = false;
+      logger.debug(`Definitions cache rebuilt with ${this.cachedDefinitions.length} tools`);
+    }
+
+    return this.cachedDefinitions;
   }
 
   /**
@@ -432,6 +466,11 @@ export class ToolRegistry {
       successCount: 0,
       failureCount: 0,
     };
+
+    // Invalider et vider le cache
+    this.cachedDefinitions = null;
+    this.cacheInvalidated = true;
+
     logger.debug('Registry cleared');
   }
 
@@ -463,6 +502,9 @@ export class ToolRegistry {
       newRegistry.tools.set(name, { ...tool });
     }
 
+    // Le nouveau registre a cacheInvalidated = true par défaut,
+    // donc le cache sera reconstruit au premier getDefinitions()
+
     return newRegistry;
   }
 
@@ -470,10 +512,19 @@ export class ToolRegistry {
    * Fusionner un autre registre (les outils existants ne sont pas remplacés)
    */
   merge(other: ToolRegistry): void {
+    let added = 0;
+
     for (const [name, tool] of other.tools) {
       if (!this.tools.has(name)) {
         this.tools.set(name, { ...tool });
+        added++;
       }
+    }
+
+    // Invalider le cache si au moins un outil a été ajouté
+    if (added > 0) {
+      this.cacheInvalidated = true;
+      logger.debug(`Merged ${added} tools from another registry`);
     }
   }
 }

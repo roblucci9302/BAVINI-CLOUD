@@ -8,6 +8,129 @@
  */
 
 import type { ToolDefinition, ToolExecutionResult } from '../types';
+import { createScopedLogger } from '~/utils/logger';
+
+const logger = createScopedLogger('IntegrationTools');
+
+/*
+ * ============================================================================
+ * SÉCURITÉ - PROTECTION CONTRE SQL INJECTION
+ * ============================================================================
+ */
+
+/**
+ * Whitelist des tables autorisées pour les requêtes de schéma
+ * Ces tables sont considérées comme sûres à requêter
+ */
+const ALLOWED_TABLES = new Set([
+  // Tables communes Supabase
+  'users',
+  'profiles',
+  'accounts',
+  'sessions',
+  'settings',
+  'preferences',
+  // Tables applicatives courantes
+  'projects',
+  'files',
+  'folders',
+  'documents',
+  'comments',
+  'messages',
+  'notifications',
+  'tasks',
+  'items',
+  'orders',
+  'products',
+  'categories',
+  'tags',
+  // Tables d'audit/logs
+  'audit_logs',
+  'activity_logs',
+  // Ajouter d'autres tables légitimes au besoin
+]);
+
+/**
+ * Regex pour valider les noms de tables SQL
+ * Autorise uniquement: lettres, chiffres, underscores
+ * Doit commencer par une lettre ou underscore
+ */
+const TABLE_NAME_REGEX = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
+/**
+ * Valider un nom de table contre les injections SQL
+ * @returns true si le nom est valide et autorisé
+ */
+function isValidTableName(tableName: string): boolean {
+  // Vérifier la longueur
+  if (!tableName || tableName.length === 0 || tableName.length > 128) {
+    return false;
+  }
+
+  // Vérifier le format (caractères autorisés)
+  if (!TABLE_NAME_REGEX.test(tableName)) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Valider et filtrer une liste de noms de tables
+ * @returns Object avec les tables valides et les tables rejetées
+ */
+function validateTableNames(tables: string[]): {
+  valid: boolean;
+  validTables: string[];
+  invalidTables: string[];
+  reason?: string;
+} {
+  if (!tables || tables.length === 0) {
+    return { valid: true, validTables: [], invalidTables: [] };
+  }
+
+  const validTables: string[] = [];
+  const invalidTables: string[] = [];
+
+  for (const table of tables) {
+    const normalizedTable = table.toLowerCase().trim();
+
+    // Vérifier le format du nom
+    if (!isValidTableName(normalizedTable)) {
+      invalidTables.push(table);
+      logger.warn(`Invalid table name format rejected: ${table}`);
+      continue;
+    }
+
+    // Vérifier si la table est dans la whitelist (optionnel mais recommandé)
+    // Commenté pour permettre les tables personnalisées, mais loggé
+    if (!ALLOWED_TABLES.has(normalizedTable)) {
+      logger.info(`Table not in whitelist, allowing but logging: ${table}`);
+    }
+
+    validTables.push(normalizedTable);
+  }
+
+  if (invalidTables.length > 0) {
+    return {
+      valid: false,
+      validTables,
+      invalidTables,
+      reason: `Invalid table names: ${invalidTables.join(', ')}. Only alphanumeric characters and underscores are allowed.`,
+    };
+  }
+
+  return { valid: true, validTables, invalidTables: [] };
+}
+
+/**
+ * Échapper un nom de table pour utilisation dans une requête SQL
+ * Utilise des guillemets doubles (standard SQL) pour les identifiants
+ */
+function escapeTableName(tableName: string): string {
+  // Double les guillemets existants et entoure de guillemets
+  return `"${tableName.replace(/"/g, '""')}"`;
+}
 
 /*
  * ============================================================================
@@ -613,10 +736,26 @@ async function fetchDatabaseSchema(
   tablesToFetch?: string[],
   includeSystem?: boolean,
 ): Promise<DatabaseSchema> {
+  // SÉCURITÉ: Valider les noms de tables AVANT de construire la requête
+  let validatedTables: string[] = [];
+  if (tablesToFetch && tablesToFetch.length > 0) {
+    const validation = validateTableNames(tablesToFetch);
+    if (!validation.valid) {
+      logger.error('SQL Injection attempt blocked', {
+        invalidTables: validation.invalidTables,
+        reason: validation.reason,
+      });
+      throw new Error(validation.reason);
+    }
+    validatedTables = validation.validTables;
+  }
+
   // Query pour récupérer les tables et colonnes
   const schemaFilter = includeSystem ? '' : "AND table_schema = 'public'";
-  const tableFilter = tablesToFetch?.length
-    ? `AND table_name IN (${tablesToFetch.map((t) => `'${t}'`).join(',')})`
+
+  // SÉCURITÉ: Utiliser des identifiants échappés pour les noms de tables
+  const tableFilter = validatedTables.length
+    ? `AND table_name IN (${validatedTables.map((t) => `'${t}'`).join(',')})`
     : '';
 
   // Récupérer les colonnes

@@ -334,3 +334,401 @@ describe('createCircuitBreaker Factory', () => {
     expect(breaker.getState('explore')).toBe('OPEN');
   });
 });
+
+describe('Estimate Recovery Time', () => {
+  let breaker: CircuitBreaker;
+
+  beforeEach(() => {
+    breaker = new CircuitBreaker({
+      failureThreshold: 3,
+      successThreshold: 2,
+      resetTimeout: 1000, // 1 second for faster tests
+      failureWindow: 60000,
+    });
+  });
+
+  it('should return null when circuit is CLOSED', () => {
+    expect(breaker.estimateRecoveryTime('explore')).toBeNull();
+  });
+
+  it('should return 0 when circuit is HALF_OPEN', async () => {
+    // Open the circuit
+    for (let i = 0; i < 3; i++) {
+      breaker.recordFailure('explore');
+    }
+
+    // Wait for timeout to transition to HALF_OPEN
+    await new Promise((r) => setTimeout(r, 1100));
+    breaker.isAllowed('explore'); // Trigger HALF_OPEN
+
+    expect(breaker.estimateRecoveryTime('explore')).toBe(0);
+  });
+
+  it('should return remaining time when circuit is OPEN', () => {
+    // Open the circuit
+    for (let i = 0; i < 3; i++) {
+      breaker.recordFailure('explore');
+    }
+
+    const recoveryTime = breaker.estimateRecoveryTime('explore');
+    expect(recoveryTime).not.toBeNull();
+    expect(recoveryTime).toBeGreaterThan(0);
+    expect(recoveryTime).toBeLessThanOrEqual(1000);
+  });
+
+  it('should show in stats', () => {
+    // Open the circuit
+    for (let i = 0; i < 3; i++) {
+      breaker.recordFailure('explore');
+    }
+
+    const stats = breaker.getStats('explore');
+    expect(stats.estimatedRecoveryTime).not.toBeNull();
+    expect(stats.estimatedRecoveryTime).toBeGreaterThan(0);
+  });
+});
+
+describe('Suggest Fallback', () => {
+  it('should return null when fallback not configured', () => {
+    const breaker = new CircuitBreaker();
+    expect(breaker.suggestFallback('coder')).toBeNull();
+  });
+
+  it('should return null when fallback disabled', () => {
+    const breaker = new CircuitBreaker({
+      fallback: {
+        enabled: false,
+        fallbackAgents: { coder: 'explore' },
+      },
+    });
+    expect(breaker.suggestFallback('coder')).toBeNull();
+  });
+
+  it('should return fallback agent when configured', () => {
+    const breaker = new CircuitBreaker({
+      failureThreshold: 3,
+      successThreshold: 2,
+      resetTimeout: 1000,
+      failureWindow: 5000,
+      fallback: {
+        enabled: true,
+        fallbackAgents: {
+          coder: 'explore',
+          deployer: 'orchestrator',
+        },
+      },
+    });
+
+    expect(breaker.suggestFallback('coder')).toBe('explore');
+    expect(breaker.suggestFallback('deployer')).toBe('orchestrator');
+    expect(breaker.suggestFallback('tester')).toBeNull(); // Not configured
+  });
+
+  it('should show suggested fallback in stats', () => {
+    const breaker = new CircuitBreaker({
+      failureThreshold: 3,
+      successThreshold: 2,
+      resetTimeout: 1000,
+      failureWindow: 5000,
+      fallback: {
+        enabled: true,
+        fallbackAgents: { coder: 'explore' },
+      },
+    });
+
+    const stats = breaker.getStats('coder');
+    expect(stats.suggestedFallbackAgent).toBe('explore');
+  });
+});
+
+describe('Blocked Request Count', () => {
+  let breaker: CircuitBreaker;
+
+  beforeEach(() => {
+    breaker = new CircuitBreaker({
+      failureThreshold: 3,
+      successThreshold: 2,
+      resetTimeout: 30000,
+      failureWindow: 60000,
+    });
+  });
+
+  it('should track blocked requests', async () => {
+    // Open the circuit
+    for (let i = 0; i < 3; i++) {
+      breaker.recordFailure('explore');
+    }
+
+    // Try to execute (will be blocked)
+    await breaker.execute('explore', async () => 'should not run');
+    await breaker.execute('explore', async () => 'should not run');
+
+    const stats = breaker.getStats('explore');
+    expect(stats.blockedRequestCount).toBe(2);
+  });
+
+  it('should return blockedRequestCount in execute result', async () => {
+    // Open the circuit
+    for (let i = 0; i < 3; i++) {
+      breaker.recordFailure('explore');
+    }
+
+    const result = await breaker.execute('explore', async () => 'should not run');
+    expect(result.wasBlocked).toBe(true);
+    expect(result.estimatedRecoveryTime).toBeDefined();
+    expect(result.recommendation).toBeDefined();
+  });
+});
+
+describe('Execute With Fallback', () => {
+  let breaker: CircuitBreaker;
+
+  beforeEach(() => {
+    breaker = new CircuitBreaker({
+      failureThreshold: 3,
+      successThreshold: 2,
+      resetTimeout: 30000,
+      failureWindow: 60000,
+      fallback: {
+        enabled: true,
+        fallbackAgents: { coder: 'explore' },
+      },
+    });
+  });
+
+  it('should execute primary function when circuit is CLOSED', async () => {
+    const result = await breaker.executeWithFallback('explore', async () => 'primary result');
+
+    expect(result.success).toBe(true);
+    expect(result.result).toBe('primary result');
+    expect(result.usedFallback).toBe(false);
+    expect(result.wasBlocked).toBe(false);
+  });
+
+  it('should use custom fallback when primary fails', async () => {
+    const result = await breaker.executeWithFallback(
+      'explore',
+      async () => {
+        throw new Error('Primary failed');
+      },
+      async () => 'fallback result',
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.result).toBe('fallback result');
+    expect(result.usedFallback).toBe(true);
+  });
+
+  it('should use configured fallback function when circuit is OPEN', async () => {
+    const breakerWithFn = new CircuitBreaker({
+      failureThreshold: 3,
+      successThreshold: 2,
+      resetTimeout: 30000,
+      failureWindow: 60000,
+      fallback: {
+        enabled: true,
+        fallbackFn: async (agent, error) => `fallback for ${agent}: ${error.message}`,
+      },
+    });
+
+    // Open the circuit
+    for (let i = 0; i < 3; i++) {
+      breakerWithFn.recordFailure('explore');
+    }
+
+    const result = await breakerWithFn.executeWithFallback('explore', async () => 'should not run');
+
+    expect(result.success).toBe(true);
+    expect(result.result).toBe('fallback for explore: Circuit is open');
+    expect(result.usedFallback).toBe(true);
+    expect(result.wasBlocked).toBe(true);
+  });
+
+  it('should track fallback usage count', async () => {
+    // Open the circuit
+    for (let i = 0; i < 3; i++) {
+      breaker.recordFailure('explore');
+    }
+
+    await breaker.executeWithFallback(
+      'explore',
+      async () => 'should not run',
+      async () => 'fallback',
+    );
+
+    await breaker.executeWithFallback(
+      'explore',
+      async () => 'should not run',
+      async () => 'fallback',
+    );
+
+    const stats = breaker.getStats('explore');
+    expect(stats.fallbackUsageCount).toBe(2);
+  });
+
+  it('should fail when no fallback available and circuit is OPEN', async () => {
+    const breakerNoFallback = new CircuitBreaker({
+      failureThreshold: 3,
+      successThreshold: 2,
+      resetTimeout: 30000,
+      failureWindow: 60000,
+    });
+
+    // Open the circuit
+    for (let i = 0; i < 3; i++) {
+      breakerNoFallback.recordFailure('explore');
+    }
+
+    const result = await breakerNoFallback.executeWithFallback('explore', async () => 'should not run');
+
+    expect(result.success).toBe(false);
+    expect(result.wasBlocked).toBe(true);
+    expect(result.usedFallback).toBe(false);
+    expect(result.recommendation).toBeDefined();
+  });
+});
+
+describe('Degraded Mode', () => {
+  let breaker: CircuitBreaker;
+
+  beforeEach(() => {
+    breaker = new CircuitBreaker({
+      failureThreshold: 3,
+      successThreshold: 2,
+      resetTimeout: 30000,
+      failureWindow: 60000,
+      degradedMode: {
+        enabled: true,
+        maxConcurrentRequests: 2,
+        timeout: 1000, // 1 second timeout
+        maxRetries: 0,
+      },
+    });
+  });
+
+  it('should execute in degraded mode when circuit is OPEN and fallback not available', async () => {
+    // Open the circuit
+    for (let i = 0; i < 3; i++) {
+      breaker.recordFailure('explore');
+    }
+
+    const result = await breaker.executeWithFallback('explore', async () => 'degraded result');
+
+    expect(result.success).toBe(true);
+    expect(result.result).toBe('degraded result');
+    expect(result.usedDegradedMode).toBe(true);
+  });
+
+  it('should track degraded mode usage count', async () => {
+    // Open the circuit
+    for (let i = 0; i < 3; i++) {
+      breaker.recordFailure('explore');
+    }
+
+    await breaker.executeWithFallback('explore', async () => 'result1');
+
+    const stats = breaker.getStats('explore');
+    expect(stats.degradedModeUsageCount).toBe(1);
+  });
+
+  it('should respect concurrent request limit', async () => {
+    // Open the circuit
+    for (let i = 0; i < 3; i++) {
+      breaker.recordFailure('explore');
+    }
+
+    // Start 3 concurrent requests (limit is 2)
+    const results = await Promise.all([
+      breaker.executeWithFallback('explore', async () => {
+        await new Promise((r) => setTimeout(r, 200));
+        return 'result1';
+      }),
+      breaker.executeWithFallback('explore', async () => {
+        await new Promise((r) => setTimeout(r, 200));
+        return 'result2';
+      }),
+      breaker.executeWithFallback('explore', async () => {
+        await new Promise((r) => setTimeout(r, 200));
+        return 'result3';
+      }),
+    ]);
+
+    // One should fail due to capacity
+    const successes = results.filter((r) => r.success);
+    const failures = results.filter((r) => !r.success);
+
+    expect(successes.length).toBe(2);
+    expect(failures.length).toBe(1);
+    expect(failures[0].error).toContain('at capacity');
+  });
+
+  it('should timeout in degraded mode', async () => {
+    // Open the circuit
+    for (let i = 0; i < 3; i++) {
+      breaker.recordFailure('explore');
+    }
+
+    const result = await breaker.executeWithFallback('explore', async () => {
+      await new Promise((r) => setTimeout(r, 2000)); // Wait longer than timeout
+      return 'should not complete';
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('timeout');
+    expect(result.usedDegradedMode).toBe(true);
+  });
+
+  it('should record success in degraded mode to help close circuit', async () => {
+    // Open the circuit
+    for (let i = 0; i < 3; i++) {
+      breaker.recordFailure('explore');
+    }
+
+    // Execute successfully in degraded mode
+    await breaker.executeWithFallback('explore', async () => 'success');
+
+    // The success should have been recorded, moving toward HALF_OPEN recovery
+    const stats = breaker.getStats('explore');
+    expect(stats.degradedModeUsageCount).toBe(1);
+  });
+});
+
+describe('Generate Recommendation', () => {
+  it('should suggest fallback agent when available', async () => {
+    const breaker = new CircuitBreaker({
+      failureThreshold: 3,
+      successThreshold: 2,
+      resetTimeout: 30000,
+      failureWindow: 60000,
+      fallback: {
+        enabled: true,
+        fallbackAgents: { coder: 'explore' },
+      },
+    });
+
+    // Open the circuit
+    for (let i = 0; i < 3; i++) {
+      breaker.recordFailure('coder');
+    }
+
+    const result = await breaker.execute('coder', async () => 'should not run');
+    expect(result.recommendation).toContain('explore');
+  });
+
+  it('should show recovery time when no fallback', async () => {
+    const breaker = new CircuitBreaker({
+      failureThreshold: 3,
+      successThreshold: 2,
+      resetTimeout: 30000,
+      failureWindow: 60000,
+    });
+
+    // Open the circuit
+    for (let i = 0; i < 3; i++) {
+      breaker.recordFailure('explore');
+    }
+
+    const result = await breaker.execute('explore', async () => 'should not run');
+    expect(result.recommendation).toContain('seconds');
+  });
+});

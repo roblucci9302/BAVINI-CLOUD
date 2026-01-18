@@ -48,6 +48,7 @@ import type {
   ExecutionStep,
   Artifact,
   ToolExecutionResult,
+  ToolCall,
 } from '../types';
 import { getModelForAgent, MAX_DECOMPOSITION_DEPTH } from '../types';
 import { createScopedLogger } from '~/utils/logger';
@@ -882,62 +883,237 @@ Choisis la meilleure approche.`;
   }
 
   /**
-   * Parser la décision du LLM
+   * Liste des agents valides pour la validation
    */
-  private parseDecision(response: Anthropic.Message): OrchestrationDecision {
+  private static readonly VALID_AGENTS: AgentType[] = [
+    'explore',
+    'coder',
+    'builder',
+    'tester',
+    'deployer',
+    'reviewer',
+    'fixer',
+    'architect',
+  ];
+
+  /**
+   * Valider qu'un agent est valide
+   */
+  private validateAgent(agent: unknown, context: string): AgentType {
+    if (!agent || typeof agent !== 'string') {
+      throw new Error(`${context}: Agent name is required and must be a string`);
+    }
+
+    const normalizedAgent = agent.toLowerCase().trim() as AgentType;
+    if (!Orchestrator.VALID_AGENTS.includes(normalizedAgent)) {
+      throw new Error(
+        `${context}: Invalid agent "${agent}". ` + `Valid agents are: ${Orchestrator.VALID_AGENTS.join(', ')}`,
+      );
+    }
+
+    return normalizedAgent;
+  }
+
+  /**
+   * Valider une description de tâche
+   */
+  private validateTaskDescription(description: unknown, context: string): string {
+    if (!description || typeof description !== 'string') {
+      throw new Error(`${context}: Task description is required and must be a string`);
+    }
+
+    const trimmed = description.trim();
+    if (trimmed.length === 0) {
+      throw new Error(`${context}: Task description cannot be empty`);
+    }
+
+    if (trimmed.length < 5) {
+      this.log('warn', `${context}: Very short task description`, { length: trimmed.length });
+    }
+
+    return trimmed;
+  }
+
+  /**
+   * Parser la décision du LLM avec validation stricte
+   * Accepte le format retourné par callLLM: { text, toolCalls }
+   */
+  private parseDecision(response: { text: string; toolCalls: ToolCall[] | undefined }): OrchestrationDecision {
     // Chercher les appels d'outils
-    for (const block of response.content) {
-      if (block.type === 'tool_use') {
-        const input = block.input as Record<string, unknown>;
+    if (response.toolCalls && response.toolCalls.length > 0) {
+      for (const toolCall of response.toolCalls) {
+        const input = toolCall.input;
 
-        if (block.name === 'delegate_to_agent') {
-          return {
-            action: 'delegate',
-            targetAgent: input.agent as AgentType,
-            reasoning: `Délégation à ${input.agent}: ${input.task}`,
-          };
-        }
+        try {
+          if (toolCall.name === 'delegate_to_agent') {
+            // Validation stricte de l'agent
+            const agent = this.validateAgent(input.agent, 'delegate_to_agent');
 
-        if (block.name === 'create_subtasks') {
-          const tasks = input.tasks as Array<{
-            agent: AgentType;
-            description: string;
-            dependsOn?: number[];
-          }>;
+            // Validation stricte de la tâche
+            const task = this.validateTaskDescription(input.task, 'delegate_to_agent');
 
-          return {
-            action: 'decompose',
-            subTasks: tasks.map((t, idx) => ({
-              type: t.agent,
-              prompt: t.description,
-              dependencies: t.dependsOn?.map((i) => `subtask-${i}`) || [],
-              priority: tasks.length - idx,
-            })),
-            reasoning: input.reasoning as string,
-          };
-        }
+            // Validation optionnelle du contexte
+            if (input.context !== undefined && typeof input.context !== 'object') {
+              this.log('warn', 'delegate_to_agent: context should be an object, ignoring', {
+                type: typeof input.context,
+              });
+            }
 
-        // NOUVEAU: Gérer l'action complete_task pour arrêter la boucle
-        if (block.name === 'complete_task') {
-          const result = input.result as string;
-          const summary = input.summary as string | undefined;
+            return {
+              action: 'delegate',
+              targetAgent: agent,
+              reasoning: `Délégation à ${agent}: ${task}`,
+            };
+          }
 
-          return {
-            action: 'complete',
-            response: result,
-            reasoning: summary || 'Tâche terminée avec succès',
-          };
+          if (toolCall.name === 'create_subtasks') {
+            const tasks = input.tasks as unknown;
+
+            // Validation stricte: tasks doit être un tableau non vide
+            if (!Array.isArray(tasks)) {
+              throw new Error('create_subtasks: "tasks" must be an array');
+            }
+
+            if (tasks.length === 0) {
+              throw new Error('create_subtasks: At least one subtask is required');
+            }
+
+            // Limite le nombre de sous-tâches pour éviter les abus
+            if (tasks.length > 20) {
+              throw new Error(`create_subtasks: Too many subtasks (${tasks.length}). Maximum is 20.`);
+            }
+
+            // Valider chaque sous-tâche
+            const validatedTasks = tasks.map((t, idx) => {
+              if (!t || typeof t !== 'object') {
+                throw new Error(`create_subtasks: Subtask at index ${idx} must be an object`);
+              }
+
+              const subtask = t as Record<string, unknown>;
+
+              // Description est obligatoire
+              const description = this.validateTaskDescription(
+                subtask.description,
+                `create_subtasks[${idx}].description`,
+              );
+
+              // Agent est optionnel mais doit être valide si présent
+              let agent: AgentType | undefined;
+              if (subtask.agent !== undefined && subtask.agent !== null && subtask.agent !== '') {
+                agent = this.validateAgent(subtask.agent, `create_subtasks[${idx}].agent`);
+              }
+
+              // Validation des dépendances
+              let dependsOn: number[] | undefined;
+              if (subtask.dependsOn !== undefined) {
+                if (!Array.isArray(subtask.dependsOn)) {
+                  throw new Error(`create_subtasks[${idx}].dependsOn must be an array of indices`);
+                }
+
+                dependsOn = (subtask.dependsOn as unknown[]).map((dep, depIdx) => {
+                  if (typeof dep !== 'number' || !Number.isInteger(dep) || dep < 0) {
+                    throw new Error(
+                      `create_subtasks[${idx}].dependsOn[${depIdx}] must be a non-negative integer`,
+                    );
+                  }
+                  if (dep >= tasks.length) {
+                    throw new Error(
+                      `create_subtasks[${idx}].dependsOn[${depIdx}] references invalid task index ${dep}`,
+                    );
+                  }
+                  if (dep >= idx) {
+                    this.log('warn', `create_subtasks: Circular or forward dependency detected`, {
+                      taskIndex: idx,
+                      dependsOn: dep,
+                    });
+                  }
+                  return dep;
+                });
+              }
+
+              return {
+                agent,
+                description,
+                dependsOn,
+              };
+            });
+
+            // Validation du reasoning
+            const reasoning = input.reasoning as string | undefined;
+            if (reasoning !== undefined && typeof reasoning !== 'string') {
+              this.log('warn', 'create_subtasks: reasoning should be a string');
+            }
+
+            return {
+              action: 'decompose',
+              subTasks: validatedTasks.map((t, idx) => ({
+                type: t.agent || 'explore',
+                prompt: t.description,
+                dependencies: t.dependsOn?.map((i) => `subtask-${i}`) || [],
+                priority: validatedTasks.length - idx,
+              })),
+              reasoning: (reasoning && typeof reasoning === 'string' ? reasoning : '') || 'Task decomposition',
+            };
+          }
+
+          if (toolCall.name === 'complete_task') {
+            const result = input.result as unknown;
+            const summary = input.summary as string | undefined;
+
+            // Validation stricte du résultat
+            if (!result || typeof result !== 'string') {
+              throw new Error('complete_task: "result" is required and must be a string');
+            }
+
+            const trimmedResult = result.trim();
+            if (trimmedResult.length === 0) {
+              throw new Error('complete_task: "result" cannot be empty');
+            }
+
+            // Validation optionnelle du summary
+            if (summary !== undefined && typeof summary !== 'string') {
+              this.log('warn', 'complete_task: summary should be a string');
+            }
+
+            // Validation optionnelle des artifacts
+            const artifacts = input.artifacts as unknown;
+            if (artifacts !== undefined) {
+              if (!Array.isArray(artifacts)) {
+                this.log('warn', 'complete_task: artifacts should be an array');
+              } else {
+                // Valider que chaque artifact est une string
+                for (const [idx, artifact] of artifacts.entries()) {
+                  if (typeof artifact !== 'string') {
+                    this.log('warn', `complete_task: artifacts[${idx}] should be a string`);
+                  }
+                }
+              }
+            }
+
+            return {
+              action: 'complete',
+              response: trimmedResult,
+              reasoning: (summary && typeof summary === 'string' ? summary : '') || 'Tâche terminée avec succès',
+            };
+          }
+        } catch (error) {
+          // Log l'erreur de validation et propager
+          this.log('error', `Validation error in parseDecision for tool ${toolCall.name}`, {
+            error: error instanceof Error ? error.message : String(error),
+            toolName: toolCall.name,
+            input: JSON.stringify(input).substring(0, 500),
+          });
+          throw error;
         }
       }
     }
 
     // Si pas d'outil appelé, c'est une réponse directe
-    let textContent = '';
+    const textContent = response.text || '';
 
-    for (const block of response.content) {
-      if (block.type === 'text') {
-        textContent += block.text;
-      }
+    // Validation: la réponse directe ne doit pas être vide
+    if (!textContent.trim()) {
+      this.log('warn', 'parseDecision: Empty response without tool use');
     }
 
     return {
@@ -1336,9 +1512,6 @@ Choisis la meilleure approche.`;
     return this.registry.getAgentsInfo();
   }
 }
-
-// Type import pour parseDecision
-import type Anthropic from '@anthropic-ai/sdk';
 
 /**
  * Factory pour créer l'orchestrateur

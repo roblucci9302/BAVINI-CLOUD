@@ -3,6 +3,7 @@
  * Gère les dépendances entre tâches et l'exécution concurrente
  */
 
+import { EventEmitter } from 'events';
 import type { Task, TaskResult, TaskStatus, AgentType, AgentEvent } from '../types';
 import { AgentRegistry } from './agent-registry';
 import { createScopedLogger } from '~/utils/logger';
@@ -90,6 +91,12 @@ export class TaskQueue {
 
   private isProcessing = false;
   private isPaused = false;
+
+  /**
+   * EventEmitter interne pour les événements de tâches
+   * Permet d'attendre la fin d'une tâche sans polling
+   */
+  private taskEvents = new EventEmitter();
 
   constructor(registry: AgentRegistry, apiKey: string, config?: Partial<TaskQueueConfig>) {
     this.registry = registry;
@@ -299,6 +306,44 @@ export class TaskQueue {
     this.clear();
     this.completed.dispose();
     this.failed.dispose();
+    // Nettoyer tous les listeners de l'EventEmitter
+    this.taskEvents.removeAllListeners();
+  }
+
+  /**
+   * S'abonner aux événements de tâches
+   *
+   * Événements disponibles:
+   * - `task:completed` - Émis quand une tâche est terminée ({ taskId, result })
+   * - `task:failed` - Émis quand une tâche échoue ({ taskId, result })
+   * - `task:${taskId}:completed` - Émis quand une tâche spécifique est terminée
+   * - `task:${taskId}:failed` - Émis quand une tâche spécifique échoue
+   *
+   * @param event - Nom de l'événement
+   * @param listener - Callback à appeler
+   * @returns Fonction pour se désabonner
+   */
+  onTaskEvent(
+    event: string,
+    listener: (data: TaskResult | { taskId: string; result: TaskResult }) => void,
+  ): () => void {
+    this.taskEvents.on(event, listener);
+    return () => {
+      this.taskEvents.off(event, listener);
+    };
+  }
+
+  /**
+   * S'abonner à un événement une seule fois
+   */
+  onceTaskEvent(
+    event: string,
+    listener: (data: TaskResult | { taskId: string; result: TaskResult }) => void,
+  ): () => void {
+    this.taskEvents.once(event, listener);
+    return () => {
+      this.taskEvents.off(event, listener);
+    };
   }
 
   /*
@@ -368,7 +413,9 @@ export class TaskQueue {
               ],
             };
             this.failed.set(item.task.id, { task: item.task, error: result.output });
+            // Émettre les événements (externe et interne)
             this.emitEvent('task:failed', item.task.id, { task: item.task, error: result.output });
+            this.emitTaskEvent(item.task.id, 'failed', result);
             this.log('error', `Task ${item.task.id} failed due to dependency failure`, { failedDeps });
             item.resolve(result);
             continue;
@@ -426,7 +473,9 @@ export class TaskQueue {
       this.completed.set(task.id, result);
       this.running.delete(task.id);
 
+      // Émettre les événements (externe et interne)
       this.emitEvent('task:completed', task.id, { task, result });
+      this.emitTaskEvent(task.id, 'completed', result);
       this.log('info', `Task completed: ${task.id}`, { success: result.success });
 
       item.resolve(result);
@@ -467,7 +516,9 @@ export class TaskQueue {
         this.failed.set(task.id, { task, error: errorMessage });
         this.running.delete(task.id);
 
+        // Émettre les événements (externe et interne)
         this.emitEvent('task:failed', task.id, { task, error: errorMessage });
+        this.emitTaskEvent(task.id, 'failed', result);
         this.log('error', `Task failed: ${task.id}`, { error: errorMessage });
 
         item.resolve(result);
@@ -476,6 +527,15 @@ export class TaskQueue {
 
     // Continuer le traitement
     this.processQueue();
+  }
+
+  /**
+   * Émettre un événement interne pour une tâche
+   * Utilisé par waitForTask() pour éviter le polling
+   */
+  private emitTaskEvent(taskId: string, status: 'completed' | 'failed', result: TaskResult): void {
+    this.taskEvents.emit(`task:${taskId}:${status}`, result);
+    this.taskEvents.emit(`task:${status}`, { taskId, result });
   }
 
   /**
@@ -514,24 +574,81 @@ export class TaskQueue {
    */
 
   /**
-   * Attendre qu'une tâche soit terminée
+   * Attendre qu'une tâche soit terminée (basé sur EventEmitter, pas de polling)
+   *
+   * Cette méthode utilise un système d'événements pour attendre la fin d'une tâche,
+   * ce qui est plus efficace que le polling à intervalle fixe.
+   *
+   * @param taskId - ID de la tâche à attendre
+   * @param timeout - Timeout en ms (défaut: 5 minutes)
+   * @returns Le résultat de la tâche
+   * @throws Error si la tâche échoue ou si le timeout est atteint
    */
   private async waitForTask(taskId: string, timeout = 300000): Promise<TaskResult> {
-    const startTime = Date.now();
+    // Vérifier si la tâche est déjà terminée
+    if (this.completed.has(taskId)) {
+      return this.completed.get(taskId)!;
+    }
 
-    while (Date.now() - startTime < timeout) {
+    // Vérifier si la tâche a déjà échoué
+    if (this.failed.has(taskId)) {
+      const failedInfo = this.failed.get(taskId);
+      throw new Error(`Dependency task failed: ${taskId}${failedInfo ? ` - ${failedInfo.error}` : ''}`);
+    }
+
+    // Vérifier si la tâche existe (en attente ou en cours)
+    const taskExists = this.queue.some((item) => item.task.id === taskId) || this.running.has(taskId);
+
+    if (!taskExists) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+
+    // Attendre avec événements (pas de polling)
+    return new Promise<TaskResult>((resolve, reject) => {
+      // Timeout handler
+      const timeoutId = setTimeout(() => {
+        cleanup();
+        reject(new Error(`Timeout waiting for task: ${taskId} (${timeout}ms)`));
+      }, timeout);
+
+      // Handler de succès
+      const onCompleted = (result: TaskResult) => {
+        cleanup();
+        resolve(result);
+      };
+
+      // Handler d'échec
+      const onFailed = (result: TaskResult) => {
+        cleanup();
+        reject(new Error(`Dependency task failed: ${taskId} - ${result.output}`));
+      };
+
+      // Fonction de nettoyage pour éviter les fuites de mémoire
+      const cleanup = () => {
+        clearTimeout(timeoutId);
+        this.taskEvents.off(`task:${taskId}:completed`, onCompleted);
+        this.taskEvents.off(`task:${taskId}:failed`, onFailed);
+      };
+
+      // S'abonner aux événements (once = auto-remove après premier appel)
+      this.taskEvents.once(`task:${taskId}:completed`, onCompleted);
+      this.taskEvents.once(`task:${taskId}:failed`, onFailed);
+
+      // Double-vérification après l'abonnement (race condition protection)
+      // La tâche pourrait s'être terminée entre la vérification initiale et l'abonnement
       if (this.completed.has(taskId)) {
-        return this.completed.get(taskId)!;
+        cleanup();
+        resolve(this.completed.get(taskId)!);
+        return;
       }
 
       if (this.failed.has(taskId)) {
-        throw new Error(`Dependency task failed: ${taskId}`);
+        cleanup();
+        const failedInfo = this.failed.get(taskId);
+        reject(new Error(`Dependency task failed: ${taskId}${failedInfo ? ` - ${failedInfo.error}` : ''}`));
+        return;
       }
-
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-
-    throw new Error(`Timeout waiting for task: ${taskId}`);
+    });
   }
 
   /**

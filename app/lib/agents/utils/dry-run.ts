@@ -125,18 +125,29 @@ export interface DryRunConfig {
  */
 
 /**
+ * Détection de l'environnement pour activer dry-run par défaut en dev/staging
+ */
+const isDevelopment = typeof process !== 'undefined' && process.env?.NODE_ENV !== 'production';
+
+/**
  * Manages dry-run state and operations
  */
 export class DryRunManager {
-  private enabled: boolean = false;
+  // Activé par défaut en développement pour la sécurité
+  private enabled: boolean = isDevelopment;
   private verbose: boolean = false;
-  private blockIrreversible: boolean = false;
+  // Bloque les opérations irréversibles par défaut
+  private blockIrreversible: boolean = true;
   private categories: Set<OperationCategory> | null = null;
   private operations: DryRunOperation[] = [];
   private onOperation?: (operation: DryRunOperation) => void;
   private operationCounter: number = 0;
 
   constructor(config: Partial<DryRunConfig> = {}) {
+    // Si on est en production et que dry-run n'est pas explicitement activé, le désactiver
+    if (!isDevelopment && config.enabled === undefined) {
+      this.enabled = false;
+    }
     this.configure(config);
   }
 

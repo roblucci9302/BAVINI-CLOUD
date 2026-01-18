@@ -104,6 +104,7 @@ function getAgentIcon(agent: AgentType): string {
     deployer: 'i-ph:rocket-launch',
     reviewer: 'i-ph:eye',
     fixer: 'i-ph:wrench',
+    architect: 'i-ph:blueprint',
   };
   return icons[agent] || 'i-ph:robot';
 }
@@ -121,6 +122,7 @@ function getAgentColor(agent: AgentType): string {
     deployer: 'text-pink-400',
     reviewer: 'text-blue-400',
     fixer: 'text-red-400',
+    architect: 'text-indigo-400',
   };
   return colors[agent] || 'text-gray-400';
 }

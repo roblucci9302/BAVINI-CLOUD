@@ -17,7 +17,7 @@ import { getSharedReadHandlers } from '../utils/shared-handler-pool';
 import { LRUCache } from '../utils/lru-cache';
 import { REVIEWER_SYSTEM_PROMPT } from '../prompts/reviewer-prompt';
 import type { Task, TaskResult, ToolDefinition, Artifact, ToolExecutionResult } from '../types';
-import { getModelForAgent } from '../types';
+import { getModelForAgent, AGENT_HISTORY_LIMIT } from '../types';
 import { createScopedLogger } from '~/utils/logger';
 
 const logger = createScopedLogger('ReviewerAgent');
@@ -128,6 +128,8 @@ export class ReviewerAgent extends BaseAgent {
       systemPrompt: REVIEWER_SYSTEM_PROMPT,
       maxTokens: 16384, // Increased from 8K to 16K for complete reviews
       temperature: 0.2, // Légère variation pour suggestions créatives
+      timeout: 180000, // 3 minutes - analyses peuvent être intensives
+      maxRetries: 2, // Réessayer si l'analyse échoue
     });
 
     // Initialiser le cache d'analyse
@@ -404,9 +406,9 @@ export class ReviewerAgent extends BaseAgent {
       issuesFound: result.issues.length,
     });
 
-    // Garder seulement les 50 dernières reviews
-    if (this.reviewHistory.length > 50) {
-      this.reviewHistory = this.reviewHistory.slice(-50);
+    // Garder seulement les N dernières reviews
+    if (this.reviewHistory.length > AGENT_HISTORY_LIMIT) {
+      this.reviewHistory = this.reviewHistory.slice(-AGENT_HISTORY_LIMIT);
     }
   }
 

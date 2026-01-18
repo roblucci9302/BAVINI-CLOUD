@@ -695,6 +695,210 @@ export const PREDEFINED_RULES = {
       prompt: 'Lancer les tests après le build',
     }),
   }),
+
+  /**
+   * Explore → Coder (si exploration suggère des modifications)
+   */
+  exploreToCoder: (): HandoffRule => ({
+    from: 'explore',
+    to: 'coder',
+    condition: {
+      type: 'custom',
+      predicate: (_task, result) => {
+        if (!result.success) {
+          return false;
+        }
+
+        const output = result.output.toLowerCase();
+        return (
+          output.includes('should be modified') ||
+          output.includes('needs to be updated') ||
+          output.includes('should be fixed') ||
+          output.includes('requires changes') ||
+          output.includes('à modifier') ||
+          output.includes('doit être mis à jour') ||
+          output.includes('doit être corrigé') ||
+          output.includes('nécessite des modifications')
+        );
+      },
+    },
+    priority: 3,
+    description: 'After exploration suggests changes, handoff to coder',
+    transformTask: (task, result) => ({
+      ...task,
+      id: `code-from-explore-${task.id}`,
+      prompt: `Based on the exploration results below, implement the necessary changes:\n\n${result.output}`,
+      context: {
+        ...task.context,
+        explorationResult: result.output,
+        artifacts: result.artifacts,
+      },
+    }),
+  }),
+
+  /**
+   * Deployer → Fixer (si opération Git échoue)
+   */
+  deployerToFixer: (): HandoffRule => ({
+    from: 'deployer',
+    to: 'fixer',
+    condition: { type: 'on_failure' },
+    priority: 5,
+    description: 'On Git operation failure, handoff to fixer',
+    transformTask: (task, result) => ({
+      ...task,
+      id: `fix-git-${task.id}`,
+      prompt: `Git operation failed. Please fix the issue:\n\nError:\n${result.output}\n\n${
+        result.errors && result.errors.length > 0
+          ? `Errors:\n${result.errors.map((e) => `- ${e.message}${e.suggestion ? ` (suggestion: ${e.suggestion})` : ''}`).join('\n')}`
+          : ''
+      }`,
+      context: {
+        ...task.context,
+        gitError: result.output,
+        errors: result.errors,
+      },
+    }),
+  }),
+
+  /**
+   * Reviewer → Deployer (après approbation du code)
+   */
+  reviewerToDeployer: (): HandoffRule => ({
+    from: 'reviewer',
+    to: 'deployer',
+    condition: {
+      type: 'custom',
+      predicate: (_task, result) => {
+        if (!result.success) {
+          return false;
+        }
+
+        const output = result.output.toLowerCase();
+        const hasApproval =
+          output.includes('approved') ||
+          output.includes('looks good') ||
+          output.includes('lgtm') ||
+          output.includes('no issues found') ||
+          output.includes('approuvé') ||
+          output.includes('aucun problème');
+
+        // Ne pas passer au deployer s'il y a des issues critiques ou hautes
+        const hasBlockingIssues =
+          output.includes('"severity": "critical"') ||
+          output.includes('"severity": "high"') ||
+          output.includes('critical issues') ||
+          output.includes('high severity');
+
+        return hasApproval && !hasBlockingIssues;
+      },
+    },
+    priority: 2,
+    description: 'After code approval, handoff to deployer',
+    transformTask: (task, result) => ({
+      ...task,
+      id: `deploy-after-review-${task.id}`,
+      prompt: `Code review passed. Please proceed with deployment (commit and push if appropriate).\n\nReview summary:\n${result.output}`,
+      context: {
+        ...task.context,
+        reviewApproved: true,
+        reviewSummary: result.output,
+      },
+    }),
+  }),
+
+  /**
+   * Coder → Tester (après modification de code)
+   */
+  coderToTester: (): HandoffRule => ({
+    from: 'coder',
+    to: 'tester',
+    condition: { type: 'on_success' },
+    priority: 3,
+    description: 'After coding, run tests to verify changes',
+    transformTask: (task, result) => {
+      // Extraire les fichiers modifiés des artefacts
+      const modifiedFiles =
+        result.artifacts
+          ?.filter((a) => a.type === 'file' && a.path)
+          .map((a) => a.path as string)
+          .filter(Boolean) || [];
+
+      return {
+        ...task,
+        id: `test-after-code-${task.id}`,
+        prompt: `Run tests to verify the code changes:\n\n${result.output}${
+          modifiedFiles.length > 0 ? `\n\nModified files:\n${modifiedFiles.map((f) => `- ${f}`).join('\n')}` : ''
+        }`,
+        context: {
+          ...task.context,
+          modifiedFiles,
+          codeChanges: result.output,
+          artifacts: result.artifacts,
+        },
+      };
+    },
+  }),
+
+  /**
+   * Builder → Fixer (si le build échoue)
+   */
+  builderToFixer: (): HandoffRule => ({
+    from: 'builder',
+    to: 'fixer',
+    condition: { type: 'on_failure' },
+    priority: 8,
+    description: 'On build failure, handoff to fixer',
+    transformTask: (task, result) => ({
+      ...task,
+      id: `fix-build-${task.id}`,
+      prompt: `Build failed. Please fix the build errors:\n\n${result.output}`,
+      context: {
+        ...task.context,
+        buildError: result.output,
+        errors: result.errors,
+      },
+    }),
+  }),
+
+  /**
+   * Tester → Reviewer (si les tests passent)
+   */
+  testerToReviewer: (): HandoffRule => ({
+    from: 'tester',
+    to: 'reviewer',
+    condition: {
+      type: 'custom',
+      predicate: (_task, result) => {
+        if (!result.success) {
+          return false;
+        }
+
+        const output = result.output.toLowerCase();
+        // Ne passer au reviewer que si tous les tests passent
+        return (
+          (output.includes('all tests passed') ||
+            output.includes('tous les tests passés') ||
+            output.includes('test suite passed') ||
+            output.includes('0 failed')) &&
+          !output.includes('failed') &&
+          !output.includes('error')
+        );
+      },
+    },
+    priority: 4,
+    description: 'After all tests pass, handoff to reviewer',
+    transformTask: (task, result) => ({
+      ...task,
+      id: `review-after-test-${task.id}`,
+      prompt: `Tests passed. Please review the code quality:\n\n${result.output}`,
+      context: {
+        ...task.context,
+        testResults: result.output,
+        testsPassed: true,
+      },
+    }),
+  }),
 };
 
 /*
@@ -719,11 +923,20 @@ export function createSwarmCoordinator(
 
   // Ajouter les règles prédéfinies si demandé
   if (options.enablePredefinedRules) {
+    // Règles existantes
     coordinator.addRule(PREDEFINED_RULES.testToFixer());
     coordinator.addRule(PREDEFINED_RULES.fixerToTester());
     coordinator.addRule(PREDEFINED_RULES.coderToReviewer());
     coordinator.addRule(PREDEFINED_RULES.reviewerToFixer());
     coordinator.addRule(PREDEFINED_RULES.builderToTester());
+
+    // Nouvelles règles (P1.5)
+    coordinator.addRule(PREDEFINED_RULES.exploreToCoder());
+    coordinator.addRule(PREDEFINED_RULES.deployerToFixer());
+    coordinator.addRule(PREDEFINED_RULES.reviewerToDeployer());
+    coordinator.addRule(PREDEFINED_RULES.coderToTester());
+    coordinator.addRule(PREDEFINED_RULES.builderToFixer());
+    coordinator.addRule(PREDEFINED_RULES.testerToReviewer());
   }
 
   return coordinator;

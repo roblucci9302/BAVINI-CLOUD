@@ -44,7 +44,7 @@ export type TaskStatus =
 /**
  * Type d'agent disponible
  */
-export type AgentType = 'orchestrator' | 'explore' | 'coder' | 'builder' | 'tester' | 'deployer' | 'reviewer' | 'fixer';
+export type AgentType = 'orchestrator' | 'explore' | 'coder' | 'builder' | 'tester' | 'deployer' | 'reviewer' | 'fixer' | 'architect';
 
 /**
  * Mode d'exécution des agents
@@ -328,6 +328,12 @@ export interface TaskMetadata {
 
 /** Profondeur maximum de décomposition de tâches */
 export const MAX_DECOMPOSITION_DEPTH = 5;
+
+/**
+ * Limite d'historique pour les agents
+ * Utilisé pour limiter la taille des historiques (tests, reviews, operations, etc.)
+ */
+export const AGENT_HISTORY_LIMIT = 50;
 
 /*
  * ============================================================================
@@ -662,6 +668,7 @@ export const MODEL_ASSIGNMENT: Record<AgentType, AgentModel> = {
   coder: 'claude-opus-4-5-20251101',
   reviewer: 'claude-opus-4-5-20251101',
   fixer: 'claude-opus-4-5-20251101',
+  architect: 'claude-opus-4-5-20251101', // Decisions architecturales complexes
 
   // Agents utilisant Sonnet 4.5 (tâches simples, rapidité)
   explore: 'claude-sonnet-4-5-20250929',
@@ -732,4 +739,8 @@ export const AGENT_DESCRIPTIONS: Record<AgentType, string> = {
   fixer:
     'Agent de correction automatique. Corrige les erreurs de test, de compilation, ' +
     'et les problèmes de sécurité identifiés par les autres agents.',
+
+  architect:
+    'Agent de planification et design système. Analyse les besoins, propose des architectures, ' +
+    'documente les trade-offs et guide les décisions techniques avant implémentation.',
 };

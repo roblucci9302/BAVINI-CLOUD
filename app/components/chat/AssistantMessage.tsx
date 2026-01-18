@@ -68,6 +68,12 @@ const AGENT_CONFIG: Record<AgentType, { bg: string; border: string; text: string
     text: 'text-blue-500',
     icon: 'i-ph:eye',
   },
+  architect: {
+    bg: 'bg-indigo-500/[0.08]',
+    border: 'border-indigo-500/25',
+    text: 'text-indigo-500',
+    icon: 'i-ph:blueprint',
+  },
 };
 
 /**

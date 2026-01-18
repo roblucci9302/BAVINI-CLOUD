@@ -39,10 +39,11 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { createScopedLogger } from '~/utils/logger';
 import { ToolRegistry, type ToolHandler } from './tool-registry';
-import { getCachedSystemPrompt, getCachedToolConversion } from '../utils/prompt-cache';
-import { getCachedResponse, cacheResponse } from '../cache/llm-cache';
+import { LLMClient, type LLMCallOptions } from './llm-client';
+import { MessageHistory, type MessageHistoryConfig } from './message-history';
+import { ToolExecutor, type ToolExecutorCallbacks } from './tool-executor';
 import { getPooledClient, releasePooledClient } from '../cache/api-pool';
-import { compressContext, needsCompression, estimateTokens } from '../utils/context-compressor';
+import { isPromptSafe, type SanitizationConfig } from '../security/prompt-sanitizer';
 import type { RetryStrategy, RetryContext } from '../queue/retry-strategies';
 import type {
   AgentConfig,
@@ -69,17 +70,8 @@ import type {
  * ============================================================================
  */
 
-/** Maximum number of messages to keep in history to prevent memory issues */
-const MAX_MESSAGE_HISTORY = 50;
-
-/** Maximum number of retries for rate-limited requests */
-const MAX_RATE_LIMIT_RETRIES = 5;
-
-/** Base delay for exponential backoff (in ms) */
-const BASE_BACKOFF_DELAY_MS = 1000;
-
-/** Maximum backoff delay (in ms) */
-const MAX_BACKOFF_DELAY_MS = 60000;
+/** Maximum number of iterations in the agent loop */
+const MAX_AGENT_ITERATIONS = 15;
 
 /**
  * Simple mutex implementation for preventing concurrent execution.
@@ -117,23 +109,6 @@ class SimpleMutex {
 }
 
 /**
- * Sleep for a given number of milliseconds
- */
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * Calculate exponential backoff delay with jitter
- */
-function calculateBackoffDelay(attempt: number): number {
-  const exponentialDelay = BASE_BACKOFF_DELAY_MS * Math.pow(2, attempt);
-  const jitter = Math.random() * 0.3 * exponentialDelay; // 0-30% jitter
-
-  return Math.min(exponentialDelay + jitter, MAX_BACKOFF_DELAY_MS);
-}
-
-/**
  * Classe abstraite de base pour tous les agents BAVINI
  *
  * Cette classe fournit l'infrastructure commune pour tous les agents:
@@ -163,10 +138,15 @@ export abstract class BaseAgent {
   protected config: AgentConfig;
   protected status: AgentStatus = 'idle';
   protected currentTask: Task | null = null;
-  protected messageHistory: AgentMessage[] = [];
 
-  /** Compteur de tokens incrémental pour éviter recalcul O(n) */
-  protected cumulativeTokens: number = 0;
+  // Classes SRP extraites
+  /** Client LLM pour la communication avec Claude */
+  protected llmClient: LLMClient;
+  /** Gestionnaire d'historique des messages */
+  protected msgHistory: MessageHistory;
+  /** Exécuteur d'outils */
+  protected toolExec: ToolExecutor;
+
   protected abortController: AbortController | null = null;
   protected logger: ReturnType<typeof createScopedLogger>;
   protected eventCallbacks: Set<AgentEventCallback> = new Set();
@@ -210,6 +190,50 @@ export abstract class BaseAgent {
       ...config,
     };
     this.logger = createScopedLogger(`Agent:${config.name}`);
+
+    // Initialiser les classes SRP
+    this.llmClient = new LLMClient({
+      agentName: config.name,
+      model: this.config.model,
+      maxTokens: this.config.maxTokens,
+      temperature: this.config.temperature,
+      extendedThinking: this.config.extendedThinking,
+      thinkingBudget: this.config.thinkingBudget,
+    });
+
+    // Configurer le logging pour le LLM client
+    this.llmClient.setLogCallback((level, message, data) => {
+      this.log(level, message, data);
+    });
+
+    this.msgHistory = new MessageHistory({ maxMessages: 50 });
+    this.msgHistory.setLogCallback((level, message, data) => {
+      this.log(level, message, data);
+    });
+
+    this.toolExec = new ToolExecutor(this.toolRegistry, {
+      defaultTimeout: 30000,
+      enableParallelExecution: true,
+    });
+
+    // Configurer les callbacks de l'exécuteur d'outils
+    this.toolExec.setCallbacks({
+      onToolCall: (toolName, input) => {
+        this.emitEvent('agent:tool_call', { toolName, input });
+      },
+      onToolResult: (toolName, result, executionTime) => {
+        this.emitEvent('agent:tool_result', { toolName, result, executionTime });
+      },
+    });
+
+    this.toolExec.setLogCallback((level, message, data) => {
+      this.log(level, message, data);
+    });
+
+    // Handler pour les outils personnalisés
+    this.toolExec.setCustomToolHandler((toolName, input) => {
+      return this.handleCustomTool(toolName, input);
+    });
   }
 
   /*
@@ -304,7 +328,7 @@ export abstract class BaseAgent {
     // Initialiser
     this.currentTask = task;
     this.status = 'thinking';
-    this.messageHistory = [];
+    this.msgHistory.clear(); // Utiliser la classe SRP
     this.metrics = this.createEmptyMetrics();
     this.abortController = new AbortController();
 
@@ -557,10 +581,11 @@ export abstract class BaseAgent {
   /**
    * Appelle le LLM Claude avec les messages fournis
    *
-   * Cette méthode gère l'appel à l'API Anthropic avec:
+   * Cette méthode délègue au LLMClient (SRP) pour:
    * - Conversion des messages au format Anthropic
    * - Injection du system prompt
    * - Comptabilisation des tokens utilisés
+   * - Retry avec exponential backoff
    *
    * @protected
    * @param {AgentMessage[]} messages - Historique de la conversation
@@ -568,17 +593,13 @@ export abstract class BaseAgent {
    * @param {ToolDefinition[]} [options.tools] - Outils disponibles pour cet appel
    * @param {number} [options.maxTokens] - Limite de tokens pour la réponse
    * @param {number} [options.temperature] - Température de génération
-   * @returns {Promise<Anthropic.Message>} La réponse brute de Claude
+   * @returns {Promise<{text: string, toolCalls: ToolCall[] | undefined}>} Réponse parsée
    * @throws {Error} Si le client Anthropic n'est pas initialisé
    */
   protected async callLLM(
     messages: AgentMessage[],
-    options?: {
-      tools?: ToolDefinition[];
-      maxTokens?: number;
-      temperature?: number;
-    },
-  ): Promise<Anthropic.Message> {
+    options?: LLMCallOptions,
+  ): Promise<{ text: string; toolCalls: ToolCall[] | undefined }> {
     if (!this.anthropicClient) {
       throw new Error('Anthropic client not initialized');
     }
@@ -586,216 +607,46 @@ export abstract class BaseAgent {
     this.status = 'thinking';
     this.metrics.llmCalls++;
 
-    const startTime = Date.now();
-
-    // Compresser le contexte si nécessaire (évite de dépasser les limites de tokens)
-    let messagesToProcess = messages;
-
-    if (needsCompression(messages)) {
-      const { messages: compressed, stats } = compressContext(messages);
-      messagesToProcess = compressed;
-      this.log('debug', 'Context compressed', {
-        originalMessages: stats.originalMessages,
-        compressedMessages: stats.compressedMessages,
-        compressionRatio: stats.compressionRatio.toFixed(2),
-      });
-    }
-
-    // Convertir nos messages au format Anthropic (once, outside retry loop)
-    const anthropicMessages = this.convertToAnthropicMessages(messagesToProcess);
-
-    // Get cached system prompt (static per agent type)
-    const systemPrompt = getCachedSystemPrompt(this.config.name, () => this.getSystemPrompt());
-
-    // Get cached tool conversion (avoid repeated transformation)
-    const tools = options?.tools || this.config.tools;
-    const anthropicTools = getCachedToolConversion(tools, (t) => this.convertToAnthropicTools(t));
-
-    // Check LLM cache first (only for non-tool responses)
-    const cachedResponse = getCachedResponse(
-      this.config.model,
-      systemPrompt,
-      anthropicMessages,
-      anthropicTools.length > 0 ? anthropicTools : undefined,
+    // Déléguer au LLMClient (SRP)
+    const response = await this.llmClient.call(
+      this.anthropicClient,
+      messages,
+      () => this.getSystemPrompt(),
+      {
+        tools: options?.tools || this.config.tools,
+        maxTokens: options?.maxTokens,
+        temperature: options?.temperature,
+      },
     );
 
-    if (cachedResponse) {
-      this.log('debug', 'LLM cache hit', {
-        duration: Date.now() - startTime,
-      });
-      return cachedResponse;
-    }
+    // Comptabiliser les tokens
+    this.metrics.inputTokens += response.inputTokens;
+    this.metrics.outputTokens += response.outputTokens;
 
-    // Retry loop with exponential backoff for rate limiting
-    let lastError: Error | null = null;
-
-    for (let attempt = 0; attempt <= MAX_RATE_LIMIT_RETRIES; attempt++) {
-      try {
-        // Préparer les paramètres de base
-        const createParams: Anthropic.MessageCreateParamsNonStreaming = {
-          model: this.config.model,
-          max_tokens: options?.maxTokens || this.config.maxTokens || 16384,
-          system: systemPrompt,
-          messages: anthropicMessages,
-          tools: anthropicTools.length > 0 ? anthropicTools : undefined,
-          temperature: options?.temperature || this.config.temperature || 0.2,
-        };
-
-        // Ajouter Extended Thinking si activé (uniquement pour Opus/Sonnet 4.5+)
-        // Extended Thinking nécessite temperature=1 et désactive certains paramètres
-        if (this.config.extendedThinking) {
-          const thinkingBudget = this.config.thinkingBudget || 16000; // Default: 16K tokens
-          // Extended Thinking requiert temperature = 1
-          createParams.temperature = 1;
-
-          // Utiliser Object.assign pour ajouter la propriété thinking non typée dans le SDK
-          Object.assign(createParams, {
-            thinking: {
-              type: 'enabled',
-              budget_tokens: Math.min(thinkingBudget, 31999), // Max 31999
-            },
-          });
-        }
-
-        // Appeler l'API (non-streaming)
-        const response = (await this.anthropicClient.messages.create(createParams)) as Anthropic.Message;
-
-        // Comptabiliser les tokens
-        this.metrics.inputTokens += response.usage.input_tokens;
-        this.metrics.outputTokens += response.usage.output_tokens;
-
-        this.log('debug', 'LLM call completed', {
-          inputTokens: response.usage.input_tokens,
-          outputTokens: response.usage.output_tokens,
-          stopReason: response.stop_reason,
-          duration: Date.now() - startTime,
-          attempt: attempt > 0 ? attempt : undefined,
-        });
-
-        // Cache the response for future identical requests
-        cacheResponse(
-          this.config.model,
-          systemPrompt,
-          anthropicMessages,
-          anthropicTools.length > 0 ? anthropicTools : undefined,
-          response,
-        );
-
-        return response;
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-
-        // Check if this is a rate limit error (429)
-        const isRateLimitError =
-          error instanceof Anthropic.RateLimitError ||
-          (error instanceof Error && error.message.includes('rate limit')) ||
-          (error instanceof Error && 'status' in error && (error as { status?: number }).status === 429);
-
-        if (isRateLimitError && attempt < MAX_RATE_LIMIT_RETRIES) {
-          const backoffDelay = calculateBackoffDelay(attempt);
-
-          this.log('warn', `Rate limit hit, retrying in ${Math.round(backoffDelay / 1000)}s`, {
-            attempt: attempt + 1,
-            maxRetries: MAX_RATE_LIMIT_RETRIES,
-            backoffMs: backoffDelay,
-          });
-
-          await sleep(backoffDelay);
-
-          continue;
-        }
-
-        // For non-rate-limit errors or exhausted retries, log and throw
-        this.log('error', 'LLM call failed', {
-          error: lastError.message,
-          isRateLimitError,
-          attempts: attempt + 1,
-        });
-
-        throw lastError;
-      }
-    }
-
-    // Should not reach here, but just in case
-    throw lastError || new Error('LLM call failed after all retries');
+    return {
+      text: response.text,
+      toolCalls: response.toolCalls,
+    };
   }
 
   /**
    * Exécute un outil et retourne le résultat
+   *
+   * Délègue au ToolExecutor (SRP) pour l'exécution réelle.
    */
   protected async executeTool(toolName: string, input: Record<string, unknown>): Promise<ToolExecutionResult> {
     this.status = 'waiting_for_tool';
     this.metrics.toolCalls++;
 
-    const startTime = Date.now();
+    // Déléguer au ToolExecutor (SRP)
+    const result = await this.toolExec.execute(toolName, input);
 
-    this.log('debug', `Executing tool: ${toolName}`, { input });
-    this.emitEvent('agent:tool_call', { toolName, input });
-
-    try {
-      // Trouver l'outil dans la configuration
-      const tool = this.config.tools.find((t) => t.name === toolName);
-
-      if (!tool) {
-        throw new Error(`Tool not found: ${toolName}`);
-      }
-
-      /*
-       * L'exécution réelle sera gérée par les handlers spécifiques
-       * Pour l'instant, on retourne un placeholder
-       * Les sous-classes doivent override cette méthode ou fournir des handlers
-       */
-      const result = await this.executeToolHandler(toolName, input);
-
-      const executionTime = Date.now() - startTime;
-      this.metrics.toolExecutionTime += executionTime;
-
-      this.emitEvent('agent:tool_result', { toolName, result, executionTime });
-
-      return {
-        success: true,
-        output: result,
-        executionTime,
-      };
-    } catch (error) {
-      const executionTime = Date.now() - startTime;
-      this.metrics.toolExecutionTime += executionTime;
-
-      const errorMessage = error instanceof Error ? error.message : String(error);
-
-      this.emitEvent('agent:tool_result', {
-        toolName,
-        error: errorMessage,
-        executionTime,
-      });
-
-      return {
-        success: false,
-        output: null,
-        error: errorMessage,
-        executionTime,
-      };
-    }
-  }
-
-  /**
-   * Handler d'exécution des outils
-   * Utilise le ToolRegistry pour trouver et exécuter le handler approprié
-   */
-  protected async executeToolHandler(toolName: string, input: Record<string, unknown>): Promise<unknown> {
-    // 1. Chercher dans le registre d'outils
-    if (this.toolRegistry.has(toolName)) {
-      const result = await this.toolRegistry.execute(toolName, input);
-
-      if (!result.success) {
-        throw new Error(result.error || `Tool '${toolName}' execution failed`);
-      }
-
-      return result.output;
+    // Comptabiliser le temps d'exécution
+    if (result.executionTime) {
+      this.metrics.toolExecutionTime += result.executionTime;
     }
 
-    // 2. Permettre aux sous-classes de gérer des outils personnalisés
-    return this.handleCustomTool(toolName, input);
+    return result;
   }
 
   /**
@@ -836,23 +687,46 @@ export abstract class BaseAgent {
    * ```
    */
   protected async runAgentLoop(initialPrompt: string): Promise<TaskResult> {
-    // Initialiser avec le prompt utilisateur
-    this.addToMessageHistory({
-      role: 'user',
-      content: initialPrompt,
-    });
+    // SÉCURITÉ: Sanitizer le prompt utilisateur avant traitement
+    const sanitizationConfig: Partial<SanitizationConfig> = {
+      mode: 'permissive', // Log mais n'empêche pas l'exécution
+      riskThreshold: 60, // Seuil de suspicion
+    };
+
+    const safetyCheck = isPromptSafe(initialPrompt, sanitizationConfig);
+
+    // Log si le prompt a été modifié ou est suspect
+    if (safetyCheck.result.wasModified) {
+      this.log('debug', 'Prompt was sanitized', {
+        originalLength: initialPrompt.length,
+        sanitizedLength: safetyCheck.result.sanitized.length,
+      });
+    }
+
+    if (!safetyCheck.safe) {
+      this.log('warn', 'Suspicious prompt detected', {
+        riskScore: safetyCheck.result.riskScore,
+        patterns: safetyCheck.result.detectedPatterns.map((p) => p.name),
+        reason: safetyCheck.reason,
+      });
+
+      // En mode strict, on pourrait bloquer ici. En mode permissif, on continue avec un warning
+      // Pour l'instant, on continue mais on pourrait ajouter une config pour bloquer
+    }
+
+    // Utiliser le prompt sanitizé
+    const processedPrompt = safetyCheck.result.sanitized;
+
+    // Initialiser avec le prompt utilisateur sanitizé (utiliser MessageHistory SRP)
+    this.msgHistory.addUserMessage(processedPrompt);
 
     let iterations = 0;
-    const maxIterations = 15; // Sécurité contre les boucles infinies (ajusté pour tâches complexes)
 
-    while (iterations < maxIterations) {
+    while (iterations < MAX_AGENT_ITERATIONS) {
       iterations++;
 
-      // Trim message history only when approaching capacity (80% threshold)
-      // Évite les appels inutiles à chaque itération
-      if (this.messageHistory.length >= MAX_MESSAGE_HISTORY * 0.8) {
-        this.trimMessageHistory();
-      }
+      // Trim message history si nécessaire (déléguer à MessageHistory SRP)
+      this.msgHistory.trimIfNeeded();
 
       // Vérifier l'annulation
       if (this.abortController?.signal.aborted) {
@@ -861,22 +735,16 @@ export abstract class BaseAgent {
 
       // ⚠️ Injecter un rappel d'itération après iter 3 pour inciter à terminer
       if (iterations >= 4) {
-        const iterationReminder = this.getIterationReminder(iterations, maxIterations);
-        this.addToMessageHistory({
-          role: 'user',
-          content: iterationReminder,
-        });
-        this.log('debug', `Iteration reminder injected`, { iteration: iterations, maxIterations });
+        const iterationReminder = this.getIterationReminder(iterations, MAX_AGENT_ITERATIONS);
+        this.msgHistory.addUserMessage(iterationReminder);
+        this.log('debug', `Iteration reminder injected`, { iteration: iterations, maxIterations: MAX_AGENT_ITERATIONS });
       }
 
-      // Appeler le LLM
-      const response = await this.callLLM(this.messageHistory);
+      // Appeler le LLM (callLLM retourne directement { text, toolCalls })
+      const { text, toolCalls } = await this.callLLM(this.msgHistory.getMessages());
 
-      // Traiter la réponse
-      const { text, toolCalls } = this.parseResponse(response);
-
-      // Ajouter la réponse à l'historique
-      this.addToMessageHistory({
+      // Ajouter la réponse à l'historique (utiliser MessageHistory SRP)
+      this.msgHistory.add({
         role: 'assistant',
         content: text,
         toolCalls,
@@ -887,26 +755,17 @@ export abstract class BaseAgent {
         return this.createSuccessResult(text);
       }
 
-      // Exécuter les outils en parallèle pour de meilleures performances
-      // Les outils sont indépendants les uns des autres dans une même réponse LLM
-      const toolResults: ToolResult[] = await Promise.all(
-        toolCalls.map(async (toolCall) => {
-          const result = await this.executeTool(toolCall.name, toolCall.input);
-          return {
-            toolCallId: toolCall.id,
-            output: result.output,
-            error: result.error,
-            isError: !result.success,
-          };
-        }),
-      );
+      // Exécuter les outils via ToolExecutor (SRP)
+      const toolResults = await this.toolExec.executeAll(toolCalls);
 
-      // Ajouter les résultats à l'historique
-      this.addToMessageHistory({
-        role: 'user',
-        content: '', // Le contenu est dans toolResults
-        toolResults,
-      });
+      // Log le résumé si des outils ont échoué
+      const failedTools = toolResults.filter((r) => r.isError);
+      if (failedTools.length > 0) {
+        this.log('warn', `${failedTools.length}/${toolCalls.length} tools failed`);
+      }
+
+      // Ajouter les résultats à l'historique (utiliser MessageHistory SRP)
+      this.msgHistory.addToolResultsMessage(toolResults);
     }
 
     // Si on atteint la limite d'itérations
@@ -916,7 +775,7 @@ export abstract class BaseAgent {
       errors: [
         {
           code: 'MAX_ITERATIONS',
-          message: `Agent reached maximum iterations (${maxIterations})`,
+          message: `Agent reached maximum iterations (${MAX_AGENT_ITERATIONS})`,
           recoverable: false,
         },
       ],
@@ -999,96 +858,6 @@ RAPPEL:
   }
 
   /**
-   * Convertit nos messages au format Anthropic
-   */
-  private convertToAnthropicMessages(messages: AgentMessage[]): Anthropic.MessageParam[] {
-    return messages.map((msg) => {
-      if (msg.role === 'system') {
-        // Les messages system sont gérés séparément
-        return { role: 'user' as const, content: msg.content };
-      }
-
-      if (msg.toolResults && msg.toolResults.length > 0) {
-        // Message avec résultats d'outils
-        return {
-          role: 'user' as const,
-          content: msg.toolResults.map((tr) => ({
-            type: 'tool_result' as const,
-            tool_use_id: tr.toolCallId,
-            content: typeof tr.output === 'string' ? tr.output : JSON.stringify(tr.output),
-            is_error: tr.isError,
-          })),
-        };
-      }
-
-      if (msg.toolCalls && msg.toolCalls.length > 0) {
-        // Message assistant avec appels d'outils
-        const content: Anthropic.ContentBlockParam[] = [];
-
-        if (msg.content) {
-          content.push({ type: 'text' as const, text: msg.content });
-        }
-
-        for (const tc of msg.toolCalls) {
-          content.push({
-            type: 'tool_use' as const,
-            id: tc.id,
-            name: tc.name,
-            input: tc.input,
-          });
-        }
-
-        return { role: 'assistant' as const, content };
-      }
-
-      // Message simple
-      return {
-        role: msg.role as 'user' | 'assistant',
-        content: msg.content,
-      };
-    });
-  }
-
-  /**
-   * Convertit nos outils au format Anthropic
-   */
-  private convertToAnthropicTools(tools: ToolDefinition[]): Anthropic.Tool[] {
-    return tools.map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      input_schema: tool.inputSchema as Anthropic.Tool['input_schema'],
-    }));
-  }
-
-  /**
-   * Parse la réponse du LLM
-   */
-  private parseResponse(response: Anthropic.Message): {
-    text: string;
-    toolCalls: ToolCall[] | undefined;
-  } {
-    let text = '';
-    const toolCalls: ToolCall[] = [];
-
-    for (const block of response.content) {
-      if (block.type === 'text') {
-        text += block.text;
-      } else if (block.type === 'tool_use') {
-        toolCalls.push({
-          id: block.id,
-          name: block.name,
-          input: block.input as Record<string, unknown>,
-        });
-      }
-    }
-
-    return {
-      text,
-      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-    };
-  }
-
-  /**
    * Crée un résultat de succès
    */
   private createSuccessResult(output: string): TaskResult {
@@ -1118,64 +887,6 @@ RAPPEL:
       message: String(error),
       recoverable: false,
     };
-  }
-
-  /**
-   * Ajoute un message à l'historique et met à jour le compteur de tokens.
-   * Performance: O(1) au lieu de recalculer O(n) à chaque vérification.
-   */
-  private addToMessageHistory(message: AgentMessage): void {
-    // Estimer les tokens du message
-    let messageTokens = 0;
-
-    if (message.content) {
-      messageTokens += estimateTokens(message.content);
-    }
-
-    if (message.toolCalls) {
-      for (const call of message.toolCalls) {
-        messageTokens += estimateTokens(JSON.stringify(call.input));
-      }
-    }
-
-    if (message.toolResults) {
-      for (const result of message.toolResults) {
-        messageTokens += estimateTokens(String(result.output ?? ''));
-        messageTokens += estimateTokens(String(result.error ?? ''));
-      }
-    }
-
-    this.cumulativeTokens += messageTokens;
-    this.messageHistory.push(message);
-  }
-
-  /**
-   * Trim message history to prevent memory issues and context overflow.
-   * Keeps the most recent messages, preserving the first message (usually the initial prompt).
-   */
-  private trimMessageHistory(): void {
-    if (this.messageHistory.length <= MAX_MESSAGE_HISTORY) {
-      return;
-    }
-
-    // Keep the first message (initial prompt) and the most recent messages
-    const firstMessage = this.messageHistory[0];
-    const recentMessages = this.messageHistory.slice(-(MAX_MESSAGE_HISTORY - 1));
-
-    this.messageHistory = [firstMessage, ...recentMessages];
-
-    // Recalculer le compteur de tokens après trim
-    this.cumulativeTokens = 0;
-    for (const msg of this.messageHistory) {
-      if (msg.content) {
-        this.cumulativeTokens += estimateTokens(msg.content);
-      }
-    }
-
-    this.log('debug', `Trimmed message history to ${this.messageHistory.length} messages`, {
-      maxHistory: MAX_MESSAGE_HISTORY,
-      estimatedTokens: this.cumulativeTokens,
-    });
   }
 
   /**

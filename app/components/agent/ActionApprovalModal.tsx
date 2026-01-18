@@ -75,6 +75,7 @@ const AGENT_ICONS: Record<AgentType, string> = {
   deployer: 'i-ph:rocket-launch',
   reviewer: 'i-ph:eye',
   fixer: 'i-ph:wrench',
+  architect: 'i-ph:blueprint',
 };
 
 /** Color classes for each action type */

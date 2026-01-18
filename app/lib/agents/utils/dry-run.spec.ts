@@ -28,7 +28,14 @@ describe('DryRunManager', () => {
   });
 
   describe('enable/disable', () => {
-    it('should be disabled by default', () => {
+    it('should be enabled by default in development mode', () => {
+      // P0.4: dry-run is enabled by default in development mode for safety
+      // In production, it would be disabled by default
+      expect(manager.isEnabled()).toBe(true);
+    });
+
+    it('should be disabled when explicitly configured', () => {
+      manager.configure({ enabled: false });
       expect(manager.isEnabled()).toBe(false);
     });
 
@@ -131,6 +138,9 @@ describe('DryRunManager', () => {
     });
 
     it('should track reversibility', () => {
+      // Disable blocking for this test to allow tracking irreversible operations
+      manager.configure({ blockIrreversible: false });
+
       manager.simulate(
         'file_write',
         'write_file',
@@ -234,6 +244,9 @@ describe('DryRunManager', () => {
     });
 
     it('should count irreversible operations', () => {
+      // Disable blocking for this test to allow tracking irreversible operations
+      manager.configure({ blockIrreversible: false });
+
       manager.simulate('file_write', 'write', { path: '/a' }, { reversible: true });
       manager.simulate('file_delete', 'delete', { path: '/b' }, { reversible: false });
       manager.simulate('file_delete', 'delete', { path: '/c' }, { reversible: false });

@@ -190,6 +190,46 @@ Si une vulnérabilité est détectée :
 `;
 
 /**
+ * Règles pour l'architecte - Pour architect agent
+ */
+export const ARCHITECT_RULES = `
+## Principes Architecturaux
+
+1. **MODULARITÉ**
+   - Single Responsibility Principle pour chaque composant
+   - Interfaces claires entre les modules
+   - Couplage faible, cohésion forte
+
+2. **SCALABILITÉ**
+   - Design pour le scaling horizontal
+   - Services stateless quand possible
+   - Caching stratégique
+
+3. **MAINTENABILITÉ**
+   - Structure de dossiers cohérente
+   - Documentation des décisions (ADR)
+   - Patterns reconnaissables
+
+4. **SÉCURITÉ**
+   - Defense in depth
+   - Principe du moindre privilège
+   - Validation aux frontières
+
+5. **PERFORMANCE**
+   - Identifier les goulots d'étranglement potentiels
+   - Prévoir le monitoring dès le design
+   - Optimiser les chemins critiques
+
+## Process de Design
+
+1. **ANALYSE** - Examiner l'existant, identifier la dette technique
+2. **REQUIREMENTS** - Clarifier les besoins fonctionnels et non-fonctionnels
+3. **OPTIONS** - Proposer 2-3 approches avec trade-offs
+4. **DÉCISION** - Documenter le choix avec justification
+5. **PLAN** - Détailler les étapes d'implémentation
+`;
+
+/**
  * Standards de performance - Pour coder, reviewer, builder
  */
 export const PERFORMANCE_RULES = `
@@ -266,4 +306,14 @@ export const DEPLOYER_AGENT_RULES = combineRules(
   GIT_SAFETY_RULES,
   SECURITY_CHECKLIST_RULES,
   INCIDENT_RESPONSE_RULES,
+);
+
+/**
+ * Règles pour l'architect (planning + design)
+ */
+export const ARCHITECT_AGENT_RULES = combineRules(
+  TONE_AND_STYLE_RULES,
+  ARCHITECT_RULES,
+  PERFORMANCE_RULES,
+  SECURITY_CHECKLIST_RULES,
 );

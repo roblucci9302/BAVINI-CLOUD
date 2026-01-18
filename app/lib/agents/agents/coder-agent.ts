@@ -45,11 +45,34 @@ export type CoderFileSystem = WritableFileSystem;
 /**
  * Agent de développement pour l'écriture de code
  */
+/**
+ * Configuration du rollback pour CoderAgent
+ */
+export interface CoderRollbackConfig {
+  /** Activer le mécanisme de snapshots/rollback */
+  enabled: boolean;
+
+  /** Rollback automatique en cas d'erreur dans execute() */
+  rollbackOnError: boolean;
+}
+
+/**
+ * Agent de développement pour l'écriture de code
+ */
 export class CoderAgent extends BaseAgent {
   private fileSystem: CoderFileSystem | null = null;
   private modifiedFiles: Map<string, { action: string; content?: string }> = new Map();
   private screenshotService: ScreenshotServiceInterface | null = null;
   private connectorsState: ConnectorsStateInterface | null = null;
+
+  /** Snapshots des fichiers pour le rollback */
+  private fileSnapshots: Map<string, string | null> = new Map();
+
+  /** Configuration du rollback */
+  private rollbackConfig: CoderRollbackConfig = {
+    enabled: true,
+    rollbackOnError: true,
+  };
 
   constructor() {
     super({
@@ -62,6 +85,8 @@ export class CoderAgent extends BaseAgent {
       systemPrompt: CODER_SYSTEM_PROMPT,
       maxTokens: 32768, // Increased from 8K to 32K for complex code generation
       temperature: 0.1, // Plus déterministe pour le code
+      timeout: 180000, // 3 minutes - génération de code peut être intensive
+      maxRetries: 2, // Réessayer en cas d'erreur transitoire
     });
 
     // Enregistrer les outils de design immédiatement (pas de dépendance externe)
@@ -134,8 +159,14 @@ export class CoderAgent extends BaseAgent {
       };
     }
 
-    // Réinitialiser les fichiers modifiés
+    // Réinitialiser les fichiers modifiés et les snapshots
     this.modifiedFiles.clear();
+    this.fileSnapshots.clear();
+
+    // Créer des snapshots des fichiers existants si le rollback est activé
+    if (this.rollbackConfig.enabled && task.context?.files && task.context.files.length > 0) {
+      await this.createFileSnapshots(task.context.files);
+    }
 
     // Construire le prompt avec contexte
     let prompt = task.prompt;
@@ -159,26 +190,41 @@ export class CoderAgent extends BaseAgent {
       }
     }
 
-    // Exécuter la boucle d'agent
-    const result = await this.runAgentLoop(prompt);
+    try {
+      // Exécuter la boucle d'agent
+      const result = await this.runAgentLoop(prompt);
 
-    // Ajouter les artefacts des fichiers modifiés
-    if (result.success && this.modifiedFiles.size > 0) {
-      result.artifacts = result.artifacts || [];
+      // Ajouter les artefacts des fichiers modifiés
+      if (result.success && this.modifiedFiles.size > 0) {
+        result.artifacts = result.artifacts || [];
 
-      for (const [path, info] of this.modifiedFiles) {
-        const artifact: Artifact = {
-          type: 'file',
-          path,
-          action: info.action as 'created' | 'modified' | 'deleted',
-          content: info.content || '',
-          title: `${info.action}: ${path}`,
-        };
-        result.artifacts.push(artifact);
+        for (const [path, info] of this.modifiedFiles) {
+          const artifact: Artifact = {
+            type: 'file',
+            path,
+            action: info.action as 'created' | 'modified' | 'deleted',
+            content: info.content || '',
+            title: `${info.action}: ${path}`,
+          };
+          result.artifacts.push(artifact);
+        }
       }
-    }
 
-    return result;
+      // Succès: nettoyer les snapshots
+      this.fileSnapshots.clear();
+      return result;
+    } catch (error) {
+      // Échec: rollback si activé
+      if (this.rollbackConfig.enabled && this.rollbackConfig.rollbackOnError && this.fileSnapshots.size > 0) {
+        this.log('warn', 'Rolling back changes due to error', {
+          error: error instanceof Error ? error.message : String(error),
+          filesAffected: this.fileSnapshots.size,
+        });
+        await this.rollbackChanges();
+      }
+
+      throw error;
+    }
   }
 
   /**
@@ -251,6 +297,163 @@ export class CoderAgent extends BaseAgent {
    */
   getAvailableTools(): ToolDefinition[] {
     return this.config.tools;
+  }
+
+  /*
+   * ============================================================================
+   * ROLLBACK/CLEANUP FUNCTIONALITY
+   * ============================================================================
+   */
+
+  /**
+   * Configurer le rollback
+   */
+  configureRollback(config: Partial<CoderRollbackConfig>): void {
+    this.rollbackConfig = { ...this.rollbackConfig, ...config };
+    logger.info('Rollback configuration updated', { config: this.rollbackConfig });
+  }
+
+  /**
+   * Obtenir la configuration de rollback actuelle
+   */
+  getRollbackConfig(): CoderRollbackConfig {
+    return { ...this.rollbackConfig };
+  }
+
+  /**
+   * Créer des snapshots des fichiers existants pour permettre le rollback
+   *
+   * @param paths - Chemins des fichiers à sauvegarder
+   */
+  private async createFileSnapshots(paths: string[]): Promise<void> {
+    if (!this.fileSystem) {
+      return;
+    }
+
+    for (const filePath of paths) {
+      try {
+        const content = await this.fileSystem.readFile(filePath);
+        this.fileSnapshots.set(filePath, content);
+        this.log('debug', 'Created snapshot', { file: filePath });
+      } catch {
+        // Le fichier n'existe pas encore, stocker null pour pouvoir le supprimer en cas de rollback
+        this.fileSnapshots.set(filePath, null);
+        this.log('debug', 'File does not exist, will delete on rollback', { file: filePath });
+      }
+    }
+
+    this.log('info', `Created ${this.fileSnapshots.size} file snapshots for potential rollback`);
+  }
+
+  /**
+   * Restaurer les fichiers depuis les snapshots (rollback)
+   */
+  private async rollbackChanges(): Promise<void> {
+    if (!this.fileSystem) {
+      return;
+    }
+
+    let restored = 0;
+    let deleted = 0;
+    let errors = 0;
+
+    for (const [filePath, content] of this.fileSnapshots) {
+      try {
+        if (content === null) {
+          // Le fichier n'existait pas avant, le supprimer s'il a été créé
+          try {
+            await this.fileSystem.deleteFile(filePath);
+            deleted++;
+            this.log('info', 'Rollback: deleted new file', { file: filePath });
+          } catch {
+            // Le fichier n'a peut-être pas été créé, ignorer
+          }
+        } else {
+          // Restaurer le contenu original
+          await this.fileSystem.writeFile(filePath, content);
+          restored++;
+          this.log('info', 'Rollback: restored file', { file: filePath });
+        }
+      } catch (error) {
+        errors++;
+        logger.error('Failed to rollback file', {
+          file: filePath,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    this.fileSnapshots.clear();
+    this.modifiedFiles.clear();
+
+    this.log('info', 'Rollback completed', { restored, deleted, errors });
+  }
+
+  /**
+   * Effectuer un rollback manuel (disponible publiquement)
+   *
+   * @returns Nombre de fichiers restaurés
+   */
+  async performRollback(): Promise<{ restored: number; deleted: number; errors: number }> {
+    if (this.fileSnapshots.size === 0) {
+      this.log('warn', 'No snapshots available for rollback');
+      return { restored: 0, deleted: 0, errors: 0 };
+    }
+
+    const result = { restored: 0, deleted: 0, errors: 0 };
+
+    if (!this.fileSystem) {
+      return result;
+    }
+
+    for (const [filePath, content] of this.fileSnapshots) {
+      try {
+        if (content === null) {
+          try {
+            await this.fileSystem.deleteFile(filePath);
+            result.deleted++;
+          } catch {
+            // Fichier n'existe pas, ignorer
+          }
+        } else {
+          await this.fileSystem.writeFile(filePath, content);
+          result.restored++;
+        }
+      } catch (error) {
+        result.errors++;
+        logger.error('Failed to rollback file', {
+          file: filePath,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    this.fileSnapshots.clear();
+    this.modifiedFiles.clear();
+
+    return result;
+  }
+
+  /**
+   * Vider les snapshots sans restaurer (commit les changements)
+   */
+  clearSnapshots(): void {
+    this.fileSnapshots.clear();
+    this.log('debug', 'File snapshots cleared');
+  }
+
+  /**
+   * Vérifier si des snapshots sont disponibles
+   */
+  hasSnapshots(): boolean {
+    return this.fileSnapshots.size > 0;
+  }
+
+  /**
+   * Obtenir la liste des fichiers avec snapshots
+   */
+  getSnapshotFiles(): string[] {
+    return Array.from(this.fileSnapshots.keys());
   }
 }
 

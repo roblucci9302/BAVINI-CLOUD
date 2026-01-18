@@ -42,6 +42,8 @@ export class BuilderAgent extends BaseAgent {
       systemPrompt: BUILDER_SYSTEM_PROMPT,
       maxTokens: 16384, // Increased from 4K to 16K for complex builds
       temperature: 0.1,
+      timeout: 300000, // 5 minutes - builds peuvent être longs (npm install, compilation)
+      maxRetries: 2, // Réessayer en cas d'instabilité réseau npm
     });
   }
 

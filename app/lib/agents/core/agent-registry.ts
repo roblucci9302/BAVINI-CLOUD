@@ -109,6 +109,10 @@ export class AgentRegistry {
   // Store unsubscribe functions to prevent memory leaks
   private agentUnsubscribes: Map<AgentType, () => void> = new Map();
 
+  // Protection contre les race conditions lors du chargement lazy
+  // Stocke les Promises de chargement en cours pour éviter les doubles instanciations
+  private lazyLoadPromises: Map<AgentType, Promise<BaseAgent | null>> = new Map();
+
   private constructor() {
     logger.info('AgentRegistry initialized');
   }
@@ -185,7 +189,9 @@ export class AgentRegistry {
   }
 
   /**
-   * Charger un agent lazy (créer l'instance)
+   * Charger un agent lazy (créer l'instance) - Version synchrone
+   * ATTENTION: Cette méthode peut créer des race conditions si appelée
+   * en parallèle. Préférer getAsync() pour les appels concurrents.
    */
   private loadLazyAgent(name: AgentType): BaseAgent | undefined {
     const lazyInfo = this.lazyAgents.get(name);
@@ -222,6 +228,126 @@ export class AgentRegistry {
     });
 
     return agent;
+  }
+
+  /**
+   * Charger un agent lazy de manière thread-safe
+   * Utilise un système de promesses partagées pour éviter les doubles instanciations
+   */
+  private async loadLazyAgentSafe(name: AgentType): Promise<BaseAgent | null> {
+    const lazyInfo = this.lazyAgents.get(name);
+
+    if (!lazyInfo) {
+      return null;
+    }
+
+    // Double-check: déjà chargé?
+    if (lazyInfo.instance) {
+      return lazyInfo.instance;
+    }
+
+    try {
+      const startTime = Date.now();
+      const agent = lazyInfo.factory();
+
+      // Vérifier à nouveau (un autre thread a pu charger entre-temps)
+      if (lazyInfo.instance) {
+        logger.warn(`Lazy agent ${name} was loaded by another thread, discarding duplicate`);
+        return lazyInfo.instance;
+      }
+
+      lazyInfo.instance = agent;
+      lazyInfo.isLoaded = true;
+
+      // Subscribe to agent events
+      const unsubscribe = agent.subscribe((event) => this.handleAgentEvent(event));
+      this.agentUnsubscribes.set(name, unsubscribe);
+
+      logger.info(`Lazy agent loaded (safe): ${name}`, {
+        loadTime: Date.now() - startTime,
+      });
+
+      this.emitEvent({
+        type: 'agent:started',
+        timestamp: new Date(),
+        agentName: name,
+        data: { action: 'lazy-loaded' },
+      });
+
+      return agent;
+    } catch (error) {
+      logger.error(`Failed to load lazy agent ${name}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Obtenir un agent de manière asynchrone et thread-safe
+   * Garantit qu'un agent lazy n'est instancié qu'une seule fois
+   * même en cas d'appels concurrents.
+   *
+   * @param {AgentType} name - Le nom de l'agent
+   * @returns {Promise<BaseAgent | undefined>} L'agent ou undefined si non trouvé
+   *
+   * @example
+   * ```typescript
+   * // Sûr même avec des appels parallèles
+   * const [agent1, agent2] = await Promise.all([
+   *   registry.getAsync('coder'),
+   *   registry.getAsync('coder'),
+   * ]);
+   * // agent1 === agent2 (même instance)
+   * ```
+   */
+  async getAsync(name: AgentType): Promise<BaseAgent | undefined> {
+    // Vérifier d'abord le cache direct (agents non-lazy)
+    const registered = this.agents.get(name);
+    if (registered) {
+      registered.lastUsedAt = new Date();
+      registered.usageCount++;
+      return registered.agent;
+    }
+
+    // Vérifier si c'est un agent lazy
+    const lazyInfo = this.lazyAgents.get(name);
+    if (!lazyInfo) {
+      return undefined;
+    }
+
+    // Si déjà chargé, retourner directement
+    if (lazyInfo.instance) {
+      lazyInfo.lastUsedAt = new Date();
+      lazyInfo.usageCount++;
+      return lazyInfo.instance;
+    }
+
+    // Vérifier si un chargement est déjà en cours
+    const existingPromise = this.lazyLoadPromises.get(name);
+    if (existingPromise) {
+      logger.debug(`Waiting for existing load of ${name}`);
+      const agent = await existingPromise;
+      if (agent) {
+        lazyInfo.lastUsedAt = new Date();
+        lazyInfo.usageCount++;
+      }
+      return agent ?? undefined;
+    }
+
+    // Créer une nouvelle promesse de chargement
+    const loadPromise = this.loadLazyAgentSafe(name);
+    this.lazyLoadPromises.set(name, loadPromise);
+
+    try {
+      const agent = await loadPromise;
+      if (agent) {
+        lazyInfo.lastUsedAt = new Date();
+        lazyInfo.usageCount++;
+      }
+      return agent ?? undefined;
+    } finally {
+      // Nettoyer la promesse après chargement
+      this.lazyLoadPromises.delete(name);
+    }
   }
 
   /**

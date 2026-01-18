@@ -242,23 +242,145 @@ const JSON_PATTERNS = [
 ];
 
 /**
- * Extrait du JSON d'un texte de manière flexible
+ * Résultat d'un parsing JSON avec contexte d'erreur
  */
-export function extractJSON<T = unknown>(text: string): T | null {
+export interface JSONParseResult<T> {
+  success: boolean;
+  data: T | null;
+  error?: JSONParseError;
+}
+
+/**
+ * Erreur de parsing JSON avec contexte enrichi
+ */
+export interface JSONParseError {
+  message: string;
+  position?: number;
+  line?: number;
+  column?: number;
+  context?: string;
+  rawInput?: string;
+}
+
+/**
+ * Parse du JSON de manière sécurisée avec contexte d'erreur enrichi
+ * Améliore le debugging en fournissant:
+ * - Position exacte de l'erreur
+ * - Ligne et colonne de l'erreur
+ * - Contexte autour de l'erreur
+ * - Le contenu brut problématique
+ *
+ * @param jsonStr - Chaîne JSON à parser
+ * @param options - Options de parsing
+ * @returns Résultat avec données ou erreur détaillée
+ */
+export function safeJSONParse<T = unknown>(
+  jsonStr: string,
+  options: { logErrors?: boolean; maxContextLength?: number } = {},
+): JSONParseResult<T> {
+  const { logErrors = true, maxContextLength = 50 } = options;
+
+  try {
+    const parsed = JSON.parse(jsonStr) as T;
+    return { success: true, data: parsed };
+  } catch (err) {
+    const error = err as SyntaxError;
+
+    // Extraire la position de l'erreur du message
+    // Format typique: "Unexpected token X in JSON at position Y"
+    const positionMatch = error.message.match(/at position (\d+)/);
+    const position = positionMatch ? parseInt(positionMatch[1], 10) : undefined;
+
+    // Calculer ligne et colonne si on a la position
+    let line: number | undefined;
+    let column: number | undefined;
+    let context: string | undefined;
+
+    if (position !== undefined && position >= 0 && position < jsonStr.length) {
+      const beforeError = jsonStr.substring(0, position);
+      const lines = beforeError.split('\n');
+      line = lines.length;
+      column = (lines[lines.length - 1]?.length || 0) + 1;
+
+      // Extraire le contexte autour de l'erreur
+      const startContext = Math.max(0, position - maxContextLength);
+      const endContext = Math.min(jsonStr.length, position + maxContextLength);
+      const before = jsonStr.substring(startContext, position);
+      const after = jsonStr.substring(position, endContext);
+      context = `${startContext > 0 ? '...' : ''}${before}>>>HERE<<<${after}${endContext < jsonStr.length ? '...' : ''}`;
+    }
+
+    // Tronquer le rawInput si trop long pour les logs
+    const maxRawLength = 200;
+    const rawInput = jsonStr.length > maxRawLength ? jsonStr.substring(0, maxRawLength) + '...' : jsonStr;
+
+    const parseError: JSONParseError = {
+      message: error.message,
+      position,
+      line,
+      column,
+      context,
+      rawInput,
+    };
+
+    // Log l'erreur avec contexte
+    if (logErrors) {
+      logger.warn('JSON parse error with context', {
+        message: parseError.message,
+        position: parseError.position,
+        line: parseError.line,
+        column: parseError.column,
+        context: parseError.context,
+        inputLength: jsonStr.length,
+      });
+    }
+
+    return { success: false, data: null, error: parseError };
+  }
+}
+
+/**
+ * Formater une erreur de parsing JSON pour l'affichage
+ */
+export function formatJSONParseError(error: JSONParseError): string {
+  const lines: string[] = [`JSON Parse Error: ${error.message}`];
+
+  if (error.line !== undefined && error.column !== undefined) {
+    lines.push(`  Location: line ${error.line}, column ${error.column}`);
+  }
+  if (error.position !== undefined) {
+    lines.push(`  Position: ${error.position}`);
+  }
+  if (error.context) {
+    lines.push(`  Context: ${error.context}`);
+  }
+  if (error.rawInput) {
+    lines.push(`  Input preview: ${error.rawInput}`);
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Extrait du JSON d'un texte de manière flexible
+ * Utilise safeJSONParse pour un meilleur logging des erreurs
+ */
+export function extractJSON<T = unknown>(text: string, options?: { logErrors?: boolean }): T | null {
+  const logErrors = options?.logErrors ?? false; // Silencieux par défaut pour ne pas spammer
+
   for (const pattern of JSON_PATTERNS) {
     // Reset regex
     pattern.lastIndex = 0;
 
     const match = pattern.exec(text);
     if (match) {
-      try {
-        const jsonStr = match[1].trim();
-        const parsed = JSON.parse(jsonStr);
-        return parsed as T;
-      } catch {
-        // Essayer le pattern suivant
-        continue;
+      const jsonStr = match[1].trim();
+      const result = safeJSONParse<T>(jsonStr, { logErrors });
+
+      if (result.success && result.data !== null) {
+        return result.data;
       }
+      // Essayer le pattern suivant si échec
     }
   }
 
@@ -266,30 +388,65 @@ export function extractJSON<T = unknown>(text: string): T | null {
 }
 
 /**
- * Extrait tous les objets JSON d'un texte
+ * Extrait du JSON avec rapport d'erreur détaillé
+ * Utile quand on veut comprendre pourquoi le parsing a échoué
  */
-export function extractAllJSON(text: string): unknown[] {
+export function extractJSONWithErrors<T = unknown>(text: string): {
+  data: T | null;
+  errors: JSONParseError[];
+  attemptedPatterns: string[];
+} {
+  const errors: JSONParseError[] = [];
+  const attemptedPatterns: string[] = [];
+
+  for (const pattern of JSON_PATTERNS) {
+    pattern.lastIndex = 0;
+
+    const match = pattern.exec(text);
+    if (match) {
+      const jsonStr = match[1].trim();
+      attemptedPatterns.push(pattern.source.substring(0, 30) + '...');
+
+      const result = safeJSONParse<T>(jsonStr, { logErrors: false });
+
+      if (result.success && result.data !== null) {
+        return { data: result.data, errors, attemptedPatterns };
+      }
+
+      if (result.error) {
+        errors.push(result.error);
+      }
+    }
+  }
+
+  return { data: null, errors, attemptedPatterns };
+}
+
+/**
+ * Extrait tous les objets JSON d'un texte
+ * Avec logging amélioré des erreurs
+ */
+export function extractAllJSON(text: string, options?: { logErrors?: boolean }): unknown[] {
   const results: unknown[] = [];
   const seen = new Set<string>();
+  const logErrors = options?.logErrors ?? false;
 
   for (const pattern of JSON_PATTERNS) {
     pattern.lastIndex = 0;
 
     let match: RegExpExecArray | null;
     while ((match = pattern.exec(text)) !== null) {
-      try {
-        const jsonStr = match[1].trim();
+      const jsonStr = match[1].trim();
 
-        // Éviter les doublons
-        if (seen.has(jsonStr)) {
-          continue;
-        }
-        seen.add(jsonStr);
+      // Éviter les doublons
+      if (seen.has(jsonStr)) {
+        continue;
+      }
+      seen.add(jsonStr);
 
-        const parsed = JSON.parse(jsonStr);
-        results.push(parsed);
-      } catch {
-        // Ignorer les JSON invalides
+      const result = safeJSONParse(jsonStr, { logErrors });
+      if (result.success && result.data !== null) {
+        results.push(result.data);
       }
     }
   }
@@ -582,7 +739,10 @@ export default {
   extractFilePaths,
   isValidFilePath,
   extractJSON,
+  extractJSONWithErrors,
   extractAllJSON,
+  safeJSONParse,
+  formatJSONParseError,
   extractCodeBlocks,
   extractCodeBlocksByLanguage,
   extractLineReferences,

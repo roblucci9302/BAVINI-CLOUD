@@ -419,7 +419,11 @@ describe('Orchestrator Decomposition', () => {
     const result = await orchestrator.run(task, 'test-api-key');
 
     expect(result.success).toBe(false);
-    expect(result.errors?.[0]?.code).toBe('NO_SUBTASKS');
+    // P1.6: Strict validation now catches empty subtasks during parsing
+    // The error code may be AGENT_ERROR (from wrapped validation error) or NO_SUBTASKS
+    expect(result.errors?.[0]?.code).toMatch(/NO_SUBTASKS|AGENT_ERROR/);
+    // The error message should indicate the issue with subtasks
+    expect(result.errors?.[0]?.message || result.output).toMatch(/subtask|empty/i);
   });
 });
 

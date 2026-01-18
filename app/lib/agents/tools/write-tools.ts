@@ -5,6 +5,10 @@
 
 import type { ToolDefinition, ToolExecutionResult } from '../types';
 import { validateBeforeWrite } from '../utils/import-validator';
+import { validateContentForSecrets, suggestSecretFixes } from '../security/secret-scanner';
+import { createScopedLogger } from '~/utils/logger';
+
+const logger = createScopedLogger('WriteTools');
 
 /*
  * ============================================================================
@@ -263,6 +267,28 @@ export function createWriteToolHandlers(
         };
       }
 
+      // Scanner les secrets hardcodés AVANT l'écriture
+      const secretValidation = validateContentForSecrets(content, path);
+      if (!secretValidation.allowed) {
+        const suggestions = suggestSecretFixes(secretValidation.findings);
+        logger.warn(`Secret scan blocked write to ${path}`, {
+          findings: secretValidation.findings.length,
+          reason: secretValidation.reason,
+        });
+        return {
+          success: false,
+          output: null,
+          error: `${secretValidation.reason}\n\nSuggestions:\n${suggestions.map((s) => `- ${s}`).join('\n')}`,
+        };
+      }
+
+      // Log warning si des secrets medium ont été trouvés mais autorisés
+      if (secretValidation.findings.length > 0) {
+        logger.warn(`Secrets detected but allowed in ${path}`, {
+          findings: secretValidation.findings.map((f) => f.type),
+        });
+      }
+
       // Valider les imports (pour fichiers TS/JS)
       const importValidation = await validateBeforeWrite(path, content, fs);
       if (!importValidation.canWrite) {
@@ -320,6 +346,21 @@ export function createWriteToolHandlers(
           success: false,
           output: null,
           error: pathValidation.error,
+        };
+      }
+
+      // Scanner les secrets dans le nouveau contenu AVANT l'édition
+      const secretValidation = validateContentForSecrets(newContent, path);
+      if (!secretValidation.allowed) {
+        const suggestions = suggestSecretFixes(secretValidation.findings);
+        logger.warn(`Secret scan blocked edit to ${path}`, {
+          findings: secretValidation.findings.length,
+          reason: secretValidation.reason,
+        });
+        return {
+          success: false,
+          output: null,
+          error: `${secretValidation.reason}\n\nSuggestions:\n${suggestions.map((s) => `- ${s}`).join('\n')}`,
         };
       }
 

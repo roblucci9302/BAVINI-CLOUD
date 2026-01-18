@@ -103,6 +103,7 @@ function getAgentIcon(agent: AgentType): string {
     deployer: 'i-ph:rocket-launch',
     reviewer: 'i-ph:eye',
     fixer: 'i-ph:wrench',
+    architect: 'i-ph:blueprint',
   };
   return icons[agent] || 'i-ph:robot';
 }
@@ -120,6 +121,7 @@ function getAgentDisplayName(agent: AgentType): string {
     deployer: 'Deployer',
     reviewer: 'Reviewer',
     fixer: 'Fixer',
+    architect: 'Architect',
   };
   return names[agent] || agent;
 }

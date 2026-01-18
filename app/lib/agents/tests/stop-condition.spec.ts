@@ -8,23 +8,22 @@ import { createOrchestrator } from '../agents/orchestrator';
 import type { OrchestrationDecision } from '../types';
 import { ORCHESTRATOR_SYSTEM_PROMPT } from '../prompts/orchestrator-prompt';
 
-// Mock de l'API Anthropic pour simuler les réponses
-const mockAnthropicResponse = (toolName: string, toolInput: Record<string, unknown>) => ({
-  id: 'msg_test',
-  type: 'message' as const,
-  role: 'assistant' as const,
-  content: [
+// Mock helper pour simuler les réponses au format { text, toolCalls }
+// Ce format est utilisé par parseDecision après le refactoring SRP
+const mockParsedResponse = (toolName: string, toolInput: Record<string, unknown>) => ({
+  text: '',
+  toolCalls: [
     {
-      type: 'tool_use' as const,
       id: 'tool_1',
       name: toolName,
       input: toolInput,
     },
   ],
-  model: 'claude-sonnet-4-5-20250929',
-  stop_reason: 'tool_use' as const,
-  stop_sequence: null,
-  usage: { input_tokens: 100, output_tokens: 50 },
+});
+
+const mockTextResponse = (text: string) => ({
+  text,
+  toolCalls: undefined,
 });
 
 describe('Stop Conditions - Phase 1', () => {
@@ -35,8 +34,8 @@ describe('Stop Conditions - Phase 1', () => {
       // Accéder à la méthode privée via any (pour le test uniquement)
       const parseDecision = (orchestrator as any).parseDecision.bind(orchestrator);
 
-      // Simuler une réponse avec complete_task
-      const mockResponse = mockAnthropicResponse('complete_task', {
+      // Simuler une réponse avec complete_task (nouveau format { text, toolCalls })
+      const mockResponse = mockParsedResponse('complete_task', {
         result: 'Le composant Button a été créé avec succès dans src/components/Button.tsx',
         summary: 'Création du composant terminée',
       });
@@ -52,7 +51,7 @@ describe('Stop Conditions - Phase 1', () => {
       const orchestrator = createOrchestrator();
       const parseDecision = (orchestrator as any).parseDecision.bind(orchestrator);
 
-      const mockResponse = mockAnthropicResponse('delegate_to_agent', {
+      const mockResponse = mockParsedResponse('delegate_to_agent', {
         agent: 'coder',
         task: 'Créer un composant Button',
       });
@@ -67,7 +66,7 @@ describe('Stop Conditions - Phase 1', () => {
       const orchestrator = createOrchestrator();
       const parseDecision = (orchestrator as any).parseDecision.bind(orchestrator);
 
-      const mockResponse = mockAnthropicResponse('create_subtasks', {
+      const mockResponse = mockParsedResponse('create_subtasks', {
         tasks: [
           { agent: 'explore', description: 'Trouver le fichier' },
           { agent: 'coder', description: 'Modifier le code', dependsOn: [0] },
@@ -85,21 +84,8 @@ describe('Stop Conditions - Phase 1', () => {
       const orchestrator = createOrchestrator();
       const parseDecision = (orchestrator as any).parseDecision.bind(orchestrator);
 
-      const mockResponse = {
-        id: 'msg_test',
-        type: 'message' as const,
-        role: 'assistant' as const,
-        content: [
-          {
-            type: 'text' as const,
-            text: 'Voici la réponse directe',
-          },
-        ],
-        model: 'claude-sonnet-4-5-20250929',
-        stop_reason: 'end_turn' as const,
-        stop_sequence: null,
-        usage: { input_tokens: 100, output_tokens: 50 },
-      };
+      // Nouveau format: réponse texte sans toolCalls
+      const mockResponse = mockTextResponse('Voici la réponse directe');
 
       const decision: OrchestrationDecision = parseDecision(mockResponse);
 
@@ -132,7 +118,7 @@ describe('Stop Conditions - Phase 1', () => {
   });
 
   describe('maxIterations safety', () => {
-    it('should have maxIterations set to 15', async () => {
+    it('should have MAX_AGENT_ITERATIONS set to 15', async () => {
       const fs = await import('fs/promises');
       const path = await import('path');
 
@@ -140,7 +126,8 @@ describe('Stop Conditions - Phase 1', () => {
       const basePath = path.resolve(process.cwd(), 'app/lib/agents/core/base-agent.ts');
       const content = await fs.readFile(basePath, 'utf-8');
 
-      const match = content.match(/const maxIterations = (\d+)/);
+      // Chercher la constante MAX_AGENT_ITERATIONS (refactorée en P2.1)
+      const match = content.match(/const MAX_AGENT_ITERATIONS = (\d+)/);
       expect(match).not.toBeNull();
       // Increased from 8 to 15 for complex tasks requiring more iterations
       expect(match![1]).toBe('15');

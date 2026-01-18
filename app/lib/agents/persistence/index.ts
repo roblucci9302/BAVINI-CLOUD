@@ -55,3 +55,23 @@ export type {
 } from './checkpoint-scheduler';
 
 export { CheckpointScheduler, createCheckpointScheduler, createAgentCheckpointScheduler } from './checkpoint-scheduler';
+
+// Dead-Letter Queue with auto-retry
+export type {
+  DLQConfig,
+  DLQEntryStatus,
+  DLQErrorHistoryEntry,
+  DLQEntry,
+  TaskExecutorCallback,
+  DLQEvent,
+  DLQEventCallback,
+  DLQStats,
+} from './dead-letter-queue';
+
+export {
+  DEFAULT_DLQ_CONFIG,
+  DeadLetterQueue,
+  createDeadLetterQueue,
+  getGlobalDeadLetterQueue,
+  initializeGlobalDeadLetterQueue,
+} from './dead-letter-queue';

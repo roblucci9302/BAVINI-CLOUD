@@ -14,7 +14,7 @@ import {
 } from '../tools/git-tools';
 import { DEPLOYER_SYSTEM_PROMPT } from '../prompts/deployer-prompt';
 import type { Task, TaskResult, ToolDefinition, Artifact, ToolExecutionResult } from '../types';
-import { getModelForAgent } from '../types';
+import { getModelForAgent, AGENT_HISTORY_LIMIT } from '../types';
 import { createScopedLogger } from '~/utils/logger';
 
 const logger = createScopedLogger('DeployerAgent');
@@ -53,6 +53,8 @@ export class DeployerAgent extends BaseAgent {
       systemPrompt: DEPLOYER_SYSTEM_PROMPT,
       maxTokens: 16384, // Increased from 8K to 16K for complex Git operations
       temperature: 0.1, // Très déterministe pour les opérations Git
+      timeout: 180000, // 3 minutes - opérations Git devraient être rapides
+      maxRetries: 2, // Réessayer en cas d'erreur réseau
     });
   }
 
@@ -231,9 +233,9 @@ export class DeployerAgent extends BaseAgent {
       details,
     });
 
-    // Garder seulement les 50 dernières opérations
-    if (this.operationHistory.length > 50) {
-      this.operationHistory = this.operationHistory.slice(-50);
+    // Garder seulement les N dernières opérations
+    if (this.operationHistory.length > AGENT_HISTORY_LIMIT) {
+      this.operationHistory = this.operationHistory.slice(-AGENT_HISTORY_LIMIT);
     }
   }
 
@@ -251,9 +253,9 @@ export class DeployerAgent extends BaseAgent {
         timestamp: new Date(),
       });
 
-      // Garder seulement les 20 derniers commits
-      if (this.commitHistory.length > 20) {
-        this.commitHistory = this.commitHistory.slice(-20);
+      // Garder seulement les N derniers commits
+      if (this.commitHistory.length > AGENT_HISTORY_LIMIT) {
+        this.commitHistory = this.commitHistory.slice(-AGENT_HISTORY_LIMIT);
       }
     }
   }

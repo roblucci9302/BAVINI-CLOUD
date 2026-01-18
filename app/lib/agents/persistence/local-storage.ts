@@ -18,6 +18,7 @@ import type {
   StorageOperationResult,
 } from './storage-adapter';
 import { STORAGE_SCHEMA_VERSION, LOCALSTORAGE_PREFIX } from './storage-adapter';
+import { safeJSONParse, formatJSONParseError, type JSONParseError } from '../utils/output-parser';
 import { createScopedLogger } from '~/utils/logger';
 
 const logger = createScopedLogger('LocalStorage');
@@ -606,55 +607,83 @@ export class LocalStorageAdapter implements StorageAdapter {
   }
 
   private loadFromStorage(): void {
+    const parseErrors: { key: string; error: JSONParseError }[] = [];
+
     try {
-      // Charger les tâches
+      // Charger les tâches avec gestion d'erreur améliorée
       const tasksJson = localStorage.getItem(KEYS.TASKS);
 
       if (tasksJson) {
-        const tasks = JSON.parse(tasksJson) as PersistedTask[];
+        const parseResult = safeJSONParse<PersistedTask[]>(tasksJson, { logErrors: false });
 
-        for (const pt of tasks) {
-          // Reconvertir les dates
-          pt.task.createdAt = new Date(pt.task.createdAt);
+        if (parseResult.success && parseResult.data) {
+          for (const pt of parseResult.data) {
+            // Reconvertir les dates
+            pt.task.createdAt = new Date(pt.task.createdAt);
 
-          if (pt.task.startedAt) {
-            pt.task.startedAt = new Date(pt.task.startedAt);
+            if (pt.task.startedAt) {
+              pt.task.startedAt = new Date(pt.task.startedAt);
+            }
+
+            if (pt.task.completedAt) {
+              pt.task.completedAt = new Date(pt.task.completedAt);
+            }
+
+            pt.persistedAt = new Date(pt.persistedAt);
+            pt.updatedAt = new Date(pt.updatedAt);
+            this.tasksCache.set(pt.task.id, pt);
           }
-
-          if (pt.task.completedAt) {
-            pt.task.completedAt = new Date(pt.task.completedAt);
-          }
-
-          pt.persistedAt = new Date(pt.persistedAt);
-          pt.updatedAt = new Date(pt.updatedAt);
-          this.tasksCache.set(pt.task.id, pt);
+        } else if (parseResult.error) {
+          parseErrors.push({ key: KEYS.TASKS, error: parseResult.error });
         }
       }
 
-      // Charger les checkpoints
+      // Charger les checkpoints avec gestion d'erreur améliorée
       const checkpointsJson = localStorage.getItem(KEYS.CHECKPOINTS);
 
       if (checkpointsJson) {
-        const checkpoints = JSON.parse(checkpointsJson) as CheckpointState[];
+        const parseResult = safeJSONParse<CheckpointState[]>(checkpointsJson, { logErrors: false });
 
-        for (const cp of checkpoints) {
-          cp.createdAt = new Date(cp.createdAt);
-          cp.updatedAt = new Date(cp.updatedAt);
-          this.checkpointsCache.set(cp.id, cp);
+        if (parseResult.success && parseResult.data) {
+          for (const cp of parseResult.data) {
+            cp.createdAt = new Date(cp.createdAt);
+            cp.updatedAt = new Date(cp.updatedAt);
+            this.checkpointsCache.set(cp.id, cp);
+          }
+        } else if (parseResult.error) {
+          parseErrors.push({ key: KEYS.CHECKPOINTS, error: parseResult.error });
         }
       }
 
-      // Charger la DLQ
+      // Charger la DLQ avec gestion d'erreur améliorée
       const dlqJson = localStorage.getItem(KEYS.DEAD_LETTER_QUEUE);
 
       if (dlqJson) {
-        const dlq = JSON.parse(dlqJson) as PersistedDeadLetterEntry[];
+        const parseResult = safeJSONParse<PersistedDeadLetterEntry[]>(dlqJson, { logErrors: false });
 
-        for (const entry of dlq) {
-          entry.firstFailedAt = new Date(entry.firstFailedAt);
-          entry.lastFailedAt = new Date(entry.lastFailedAt);
-          entry.expiresAt = new Date(entry.expiresAt);
-          this.dlqCache.set(entry.id, entry);
+        if (parseResult.success && parseResult.data) {
+          for (const entry of parseResult.data) {
+            entry.firstFailedAt = new Date(entry.firstFailedAt);
+            entry.lastFailedAt = new Date(entry.lastFailedAt);
+            entry.expiresAt = new Date(entry.expiresAt);
+            this.dlqCache.set(entry.id, entry);
+          }
+        } else if (parseResult.error) {
+          parseErrors.push({ key: KEYS.DEAD_LETTER_QUEUE, error: parseResult.error });
+        }
+      }
+
+      // Logger les erreurs de parsing avec contexte détaillé
+      if (parseErrors.length > 0) {
+        for (const { key, error } of parseErrors) {
+          logger.error(`JSON parse error loading ${key}`, {
+            message: error.message,
+            line: error.line,
+            column: error.column,
+            context: error.context,
+          });
+          // Log le rapport formaté pour un debugging plus facile
+          logger.debug(`Detailed error report:\n${formatJSONParseError(error)}`);
         }
       }
 
@@ -662,6 +691,7 @@ export class LocalStorageAdapter implements StorageAdapter {
         tasks: this.tasksCache.size,
         checkpoints: this.checkpointsCache.size,
         dlq: this.dlqCache.size,
+        parseErrors: parseErrors.length,
       });
     } catch (error) {
       logger.error('Failed to load data from localStorage:', error);

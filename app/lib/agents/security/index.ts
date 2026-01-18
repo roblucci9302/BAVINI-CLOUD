@@ -5,3 +5,5 @@
 
 export * from './command-whitelist';
 export * from './action-validator';
+export * from './secret-scanner';
+export * from './prompt-sanitizer';

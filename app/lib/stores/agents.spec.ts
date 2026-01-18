@@ -375,9 +375,9 @@ describe('agents store', () => {
 
       const stats = agentStatsStore.get();
 
-      expect(stats.totalAgents).toBe(8);
+      expect(stats.totalAgents).toBe(9); // 9 agents including architect
       expect(stats.busyAgents).toBe(2);
-      expect(stats.idleAgents).toBe(6);
+      expect(stats.idleAgents).toBe(7);
       expect(stats.completedTasks).toBe(1);
       expect(stats.pendingTasks).toBe(1);
       expect(stats.successfulTasks).toBe(1);

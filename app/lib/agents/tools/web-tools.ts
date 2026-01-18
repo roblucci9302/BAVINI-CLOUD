@@ -9,6 +9,162 @@
  */
 
 import type { ToolDefinition, ToolExecutionResult } from '../types';
+import { createScopedLogger } from '~/utils/logger';
+
+const logger = createScopedLogger('WebTools');
+
+/*
+ * ============================================================================
+ * SÉCURITÉ - PROTECTION CONTRE SSRF
+ * ============================================================================
+ */
+
+/**
+ * Hosts bloqués pour prévenir les attaques SSRF
+ * Inclut localhost, les adresses de loopback et les métadonnées cloud
+ */
+const BLOCKED_HOSTS = new Set([
+  // Localhost et loopback
+  'localhost',
+  '127.0.0.1',
+  '::1',
+  '0.0.0.0',
+  '0',
+
+  // Métadonnées cloud (AWS, GCP, Azure)
+  '169.254.169.254', // AWS EC2 metadata
+  'metadata.google.internal', // GCP metadata
+  'metadata.google.com',
+  '169.254.169.253', // AWS ECS task metadata
+  'fd00:ec2::254', // AWS IMDSv6
+
+  // Kubernetes
+  'kubernetes.default.svc',
+  'kubernetes.default',
+  'kubernetes',
+
+  // Docker
+  'host.docker.internal',
+  'gateway.docker.internal',
+
+  // Autres
+  '[::1]',
+  '[::]',
+]);
+
+/**
+ * Patterns regex pour les plages d'IP privées/réservées
+ */
+const PRIVATE_IP_PATTERNS: RegExp[] = [
+  // IPv4 privées
+  /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/, // 10.0.0.0/8
+  /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/, // 172.16.0.0/12
+  /^192\.168\.\d{1,3}\.\d{1,3}$/, // 192.168.0.0/16
+
+  // Loopback
+  /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/, // 127.0.0.0/8
+
+  // Link-local
+  /^169\.254\.\d{1,3}\.\d{1,3}$/, // 169.254.0.0/16
+
+  // Réservées/Non-routables
+  /^0\./, // 0.0.0.0/8
+  /^100\.(6[4-9]|[7-9]\d|1[0-2]\d|127)\.\d{1,3}\.\d{1,3}$/, // 100.64.0.0/10 (CGN)
+  /^192\.0\.0\./, // 192.0.0.0/24
+  /^192\.0\.2\./, // 192.0.2.0/24 (TEST-NET-1)
+  /^198\.51\.100\./, // 198.51.100.0/24 (TEST-NET-2)
+  /^203\.0\.113\./, // 203.0.113.0/24 (TEST-NET-3)
+  /^224\./, // 224.0.0.0/4 (Multicast)
+  /^240\./, // 240.0.0.0/4 (Reserved)
+  /^255\./, // 255.0.0.0/8
+
+  // IPv6 privées/réservées (formats courants dans les URLs)
+  /^\[?fe80:/i, // Link-local
+  /^\[?fc00:/i, // Unique local
+  /^\[?fd00:/i, // Unique local
+  /^\[?::1\]?$/, // Loopback
+  /^\[?::\]?$/, // Unspecified
+];
+
+/**
+ * Schémas d'URL bloqués
+ */
+const BLOCKED_SCHEMES = new Set(['file', 'ftp', 'sftp', 'ssh', 'telnet', 'gopher', 'dict', 'ldap', 'ldaps']);
+
+/**
+ * Vérifier si une URL doit être bloquée pour des raisons de sécurité
+ * @returns { blocked: boolean, reason?: string }
+ */
+function isBlockedUrl(url: string): { blocked: boolean; reason?: string } {
+  try {
+    // Décoder l'URL pour éviter les bypasses via encodage
+    const decodedUrl = decodeURIComponent(url);
+
+    // Parser l'URL
+    const parsedUrl = new URL(decodedUrl);
+    const hostname = parsedUrl.hostname.toLowerCase();
+    const protocol = parsedUrl.protocol.replace(':', '').toLowerCase();
+
+    // Vérifier le schéma
+    if (BLOCKED_SCHEMES.has(protocol)) {
+      logger.warn('Blocked URL - Forbidden scheme', { url, protocol });
+      return { blocked: true, reason: `Protocol "${protocol}" is not allowed for security reasons` };
+    }
+
+    // Autoriser uniquement HTTP et HTTPS
+    if (protocol !== 'http' && protocol !== 'https') {
+      logger.warn('Blocked URL - Non-HTTP scheme', { url, protocol });
+      return { blocked: true, reason: `Only HTTP and HTTPS protocols are allowed` };
+    }
+
+    // Vérifier les hosts bloqués
+    if (BLOCKED_HOSTS.has(hostname)) {
+      logger.warn('SSRF attempt blocked - Blocked host', { url, hostname });
+      return { blocked: true, reason: `Access to "${hostname}" is blocked for security reasons` };
+    }
+
+    // Vérifier si c'est une IP privée
+    for (const pattern of PRIVATE_IP_PATTERNS) {
+      if (pattern.test(hostname)) {
+        logger.warn('SSRF attempt blocked - Private IP', { url, hostname });
+        return { blocked: true, reason: `Access to private/internal IP addresses is not allowed` };
+      }
+    }
+
+    // Vérifier les sous-domaines de localhost (ex: foo.localhost)
+    if (hostname.endsWith('.localhost') || hostname.endsWith('.local')) {
+      logger.warn('SSRF attempt blocked - Local domain', { url, hostname });
+      return { blocked: true, reason: `Access to local domains is not allowed` };
+    }
+
+    // Vérifier les redirections DNS rebinding (hostname avec port inhabituel sur localhost)
+    // et les bypass via @user:pass@host
+    if (parsedUrl.username || parsedUrl.password) {
+      logger.warn('SSRF attempt blocked - URL with credentials', { url });
+      return { blocked: true, reason: `URLs with embedded credentials are not allowed` };
+    }
+
+    // Vérifier si le hostname ressemble à une IP (pour attraper les bypass via encodage)
+    const ipBypassPatterns = [
+      /^0x[0-9a-f]+$/i, // Hex IP: 0x7f000001
+      /^\d+$/, // Decimal IP: 2130706433
+      /^0\d+/, // Octal IP: 0177.0.0.1
+    ];
+
+    for (const pattern of ipBypassPatterns) {
+      if (pattern.test(hostname)) {
+        logger.warn('SSRF attempt blocked - IP encoding bypass', { url, hostname });
+        return { blocked: true, reason: `Suspicious hostname format detected` };
+      }
+    }
+
+    return { blocked: false };
+  } catch (error) {
+    // Si l'URL ne peut pas être parsée, la bloquer par sécurité
+    logger.error('URL parsing error', { url, error: error instanceof Error ? error.message : String(error) });
+    return { blocked: true, reason: `Invalid URL format` };
+  }
+}
 
 /*
  * ============================================================================
@@ -507,6 +663,17 @@ export function createWebToolHandlers(
       // Add https if missing
       if (!url.startsWith('https://')) {
         url = `https://${url}`;
+      }
+
+      // SÉCURITÉ: Vérifier les attaques SSRF AVANT de faire la requête
+      const ssrfCheck = isBlockedUrl(url);
+      if (ssrfCheck.blocked) {
+        logger.warn('SSRF protection: Request blocked', { url, reason: ssrfCheck.reason });
+        return {
+          success: false,
+          output: null,
+          error: `Security: ${ssrfCheck.reason}`,
+        };
       }
 
       try {

@@ -9,7 +9,7 @@ import { TEST_TOOLS, createTestToolHandlers, type TestRunner } from '../tools/te
 import { TESTER_SYSTEM_PROMPT } from '../prompts/tester-prompt';
 import { parseTestResults, type TestResults } from '../utils/output-parser';
 import type { Task, TaskResult, ToolDefinition, Artifact, ToolExecutionResult } from '../types';
-import { getModelForAgent } from '../types';
+import { getModelForAgent, AGENT_HISTORY_LIMIT } from '../types';
 import { createScopedLogger } from '~/utils/logger';
 
 const logger = createScopedLogger('TesterAgent');
@@ -41,6 +41,8 @@ export class TesterAgent extends BaseAgent {
       systemPrompt: TESTER_SYSTEM_PROMPT,
       maxTokens: 16384, // Increased from 8K to 16K for detailed test analysis
       temperature: 0.1, // Déterministe pour l'analyse
+      timeout: 300000, // 5 minutes - suites de tests peuvent être longues
+      maxRetries: 2, // Tests flaky peuvent nécessiter un retry
     });
   }
 
@@ -187,9 +189,9 @@ export class TesterAgent extends BaseAgent {
         logger.debug('Test framework detected', { framework: results.framework });
       }
 
-      // Garder seulement les 50 derniers runs (augmenté de 20)
-      if (this.testHistory.length > 50) {
-        this.testHistory = this.testHistory.slice(-50);
+      // Garder seulement les N derniers runs
+      if (this.testHistory.length > AGENT_HISTORY_LIMIT) {
+        this.testHistory = this.testHistory.slice(-AGENT_HISTORY_LIMIT);
       }
     }
   }

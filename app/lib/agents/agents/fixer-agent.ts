@@ -11,7 +11,7 @@ import { getSharedReadHandlers } from '../utils/shared-handler-pool';
 import { wrapHandlersOnSuccess } from '../utils/handler-wrapper';
 import { FIXER_SYSTEM_PROMPT } from '../prompts/fixer-prompt';
 import type { Task, TaskResult, ToolDefinition, Artifact } from '../types';
-import { getModelForAgent } from '../types';
+import { getModelForAgent, AGENT_HISTORY_LIMIT } from '../types';
 import type { CodeIssue } from '../tools/review-tools';
 import { createScopedLogger } from '~/utils/logger';
 
@@ -190,6 +190,8 @@ export class FixerAgent extends BaseAgent {
       systemPrompt: FIXER_SYSTEM_PROMPT,
       maxTokens: 32768, // Increased from 8K to 32K for complete fixes
       temperature: 0.1, // Très déterministe pour les corrections
+      timeout: 240000, // 4 minutes - fixes complexes avec vérification
+      maxRetries: 3, // Plus de retries car les fixes peuvent être complexes
     });
 
     // Initialiser la configuration de vérification
@@ -412,9 +414,9 @@ export class FixerAgent extends BaseAgent {
       success,
     });
 
-    // Garder seulement les 100 dernières corrections
-    if (this.fixHistory.length > 100) {
-      this.fixHistory = this.fixHistory.slice(-100);
+    // Garder seulement les N dernières corrections
+    if (this.fixHistory.length > AGENT_HISTORY_LIMIT) {
+      this.fixHistory = this.fixHistory.slice(-AGENT_HISTORY_LIMIT);
     }
   }
 

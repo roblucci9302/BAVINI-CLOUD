@@ -41,6 +41,19 @@ export type {
   RegistryStats as ToolRegistryStats,
 } from './core/tool-registry';
 
+// SRP Classes - Extracted from BaseAgent for better separation of concerns
+export { LLMClient } from './core/llm-client';
+export type { LLMClientConfig, LLMCallOptions, ParsedLLMResponse, LLMLogCallback } from './core/llm-client';
+export { MessageHistory } from './core/message-history';
+export type { MessageHistoryConfig, MessageHistoryStats, MessageHistoryLogCallback } from './core/message-history';
+export { ToolExecutor } from './core/tool-executor';
+export type {
+  ToolExecutorConfig,
+  ToolExecutorCallbacks,
+  ToolExecutorLogCallback,
+  CustomToolHandler,
+} from './core/tool-executor';
+
 /*
  * ============================================================================
  * AGENTS
@@ -58,6 +71,7 @@ export { ReviewerAgent, createReviewerAgent } from './agents/reviewer-agent';
 export type { ReviewReport } from './agents/reviewer-agent';
 export { FixerAgent, createFixerAgent } from './agents/fixer-agent';
 export type { FixableError, FixableErrorType, AppliedFix, FixResult } from './agents/fixer-agent';
+export { ArchitectAgent, createArchitectAgent } from './agents/architect-agent';
 
 /*
  * ============================================================================
@@ -335,6 +349,7 @@ export { TESTER_SYSTEM_PROMPT } from './prompts/tester-prompt';
 export { DEPLOYER_SYSTEM_PROMPT } from './prompts/deployer-prompt';
 export { REVIEWER_SYSTEM_PROMPT } from './prompts/reviewer-prompt';
 export { FIXER_SYSTEM_PROMPT } from './prompts/fixer-prompt';
+export { ARCHITECT_SYSTEM_PROMPT } from './prompts/architect-prompt';
 
 /*
  * ============================================================================
@@ -376,6 +391,7 @@ import { createTesterAgent } from './agents/tester-agent';
 import { createDeployerAgent } from './agents/deployer-agent';
 import { createReviewerAgent } from './agents/reviewer-agent';
 import { createFixerAgent } from './agents/fixer-agent';
+import { createArchitectAgent } from './agents/architect-agent';
 import type { FileSystem } from './tools/read-tools';
 import type { CodeAnalyzer } from './tools/review-tools';
 import { SwarmCoordinator, createSwarmCoordinator } from './utils/swarm-coordinator';
@@ -532,6 +548,10 @@ export class AgentSystem {
     // Créer et enregistrer l'Explore Agent
     const exploreAgent = createExploreAgent(this.fileSystem);
     this.registry.register(exploreAgent);
+
+    // Créer et enregistrer l'Architect Agent (lecture seule - planification)
+    const architectAgent = createArchitectAgent(this.fileSystem);
+    this.registry.register(architectAgent);
 
     // Créer et enregistrer le Coder Agent (si FileSystem writable disponible)
     if (this.writableFileSystem) {

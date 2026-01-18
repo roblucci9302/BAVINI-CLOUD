@@ -42,6 +42,7 @@ function getAgentLogBuffers(): Record<AgentType, CircularBuffer<LogEntry>> {
       deployer: new CircularBuffer(AGENT_LOGS_CAPACITY),
       reviewer: new CircularBuffer(AGENT_LOGS_CAPACITY),
       fixer: new CircularBuffer(AGENT_LOGS_CAPACITY),
+      architect: new CircularBuffer(AGENT_LOGS_CAPACITY),
     };
   }
   return _agentLogBuffers;
@@ -85,6 +86,7 @@ export const agentStatusStore = map<Record<AgentType, AgentStatus>>({
   deployer: 'idle',
   reviewer: 'idle',
   fixer: 'idle',
+  architect: 'idle',
 });
 
 /**
@@ -104,6 +106,7 @@ export const currentTasksStore = map<Record<AgentType, Task | null>>({
   deployer: null,
   reviewer: null,
   fixer: null,
+  architect: null,
 });
 
 /*
@@ -124,6 +127,7 @@ export const agentLogsStore = map<Record<AgentType, LogEntry[]>>({
   deployer: [],
   reviewer: [],
   fixer: [],
+  architect: [],
 });
 
 /**
@@ -659,6 +663,7 @@ export function clearAllLogs(): void {
     deployer: [],
     reviewer: [],
     fixer: [],
+    architect: [],
   });
 }
 
@@ -682,6 +687,7 @@ export function resetAgentStores(): void {
     deployer: 'idle',
     reviewer: 'idle',
     fixer: 'idle',
+    architect: 'idle',
   });
 
   activeAgentsStore.set([]);
@@ -695,6 +701,7 @@ export function resetAgentStores(): void {
     deployer: null,
     reviewer: null,
     fixer: null,
+    architect: null,
   });
 
   // Réinitialiser les buffers circulaires (seulement s'ils ont été créés)
@@ -717,6 +724,7 @@ export function resetAgentStores(): void {
     deployer: [],
     reviewer: [],
     fixer: [],
+    architect: [],
   });
 
   systemLogsStore.set([]);

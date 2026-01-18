@@ -524,22 +524,78 @@ export function validateCommand(
 }
 
 /**
- * Configuration de sécurité globale (peut être modifiée au runtime)
+ * Configuration de sécurité par défaut (fallback)
+ * IMPORTANT: Cette config globale est DEPRECATED, utiliser les configs par agent
  */
 let globalSecurityConfig: ShellSecurityConfig = { ...DEFAULT_SECURITY_CONFIG };
 
 /**
+ * Configurations de sécurité isolées par agent
+ * Chaque agent a sa propre configuration pour éviter les fuites de sécurité
+ */
+const agentSecurityConfigs: Map<string, ShellSecurityConfig> = new Map();
+
+/**
  * Définir la configuration de sécurité globale
+ * @deprecated Utiliser setSecurityConfigForAgent() à la place
  */
 export function setShellSecurityConfig(config: Partial<ShellSecurityConfig>): void {
+  console.warn('[SECURITY] setShellSecurityConfig() is deprecated. Use setSecurityConfigForAgent() for proper isolation.');
   globalSecurityConfig = { ...DEFAULT_SECURITY_CONFIG, ...config };
 }
 
 /**
- * Obtenir la configuration de sécurité actuelle
+ * Obtenir la configuration de sécurité globale
+ * @deprecated Utiliser getSecurityConfigForAgent() à la place
  */
 export function getShellSecurityConfig(): ShellSecurityConfig {
   return { ...globalSecurityConfig };
+}
+
+/**
+ * Définir la configuration de sécurité pour un agent spécifique
+ * Assure l'isolation de la configuration entre les agents
+ *
+ * @param agentId - Identifiant unique de l'agent
+ * @param config - Configuration de sécurité partielle à appliquer
+ */
+export function setSecurityConfigForAgent(agentId: string, config: Partial<ShellSecurityConfig>): void {
+  const currentConfig = agentSecurityConfigs.get(agentId) || { ...DEFAULT_SECURITY_CONFIG };
+  const newConfig = { ...currentConfig, ...config };
+  agentSecurityConfigs.set(agentId, newConfig);
+}
+
+/**
+ * Obtenir la configuration de sécurité pour un agent spécifique
+ * Retourne la config par défaut si l'agent n'a pas de config dédiée
+ *
+ * @param agentId - Identifiant unique de l'agent
+ * @returns Configuration de sécurité (copie défensive)
+ */
+export function getSecurityConfigForAgent(agentId: string): ShellSecurityConfig {
+  const config = agentSecurityConfigs.get(agentId);
+  if (config) {
+    return { ...config };
+  }
+  // Fallback vers la config par défaut (pas la globale pour éviter les fuites)
+  return { ...DEFAULT_SECURITY_CONFIG };
+}
+
+/**
+ * Supprimer la configuration d'un agent (nettoyage)
+ * Appelé lors de la destruction de l'agent
+ *
+ * @param agentId - Identifiant unique de l'agent
+ */
+export function clearSecurityConfigForAgent(agentId: string): boolean {
+  return agentSecurityConfigs.delete(agentId);
+}
+
+/**
+ * Obtenir la liste des agents ayant une configuration personnalisée
+ */
+export function getAgentsWithCustomConfig(): string[] {
+  return Array.from(agentSecurityConfigs.keys());
 }
 
 /**
@@ -585,11 +641,59 @@ function isCommandSafe(command: string): { safe: boolean; reason?: string } {
  */
 
 /**
+ * Options pour créer les handlers shell
+ */
+export interface ShellToolHandlersOptions {
+  /** L'interface shell à utiliser */
+  shell: ShellInterface;
+
+  /** ID de l'agent pour la configuration de sécurité isolée */
+  agentId?: string;
+
+  /** Configuration de sécurité override (optionnelle, sinon utilise la config de l'agent) */
+  securityConfig?: ShellSecurityConfig;
+}
+
+/**
  * Créer les handlers pour les outils shell
+ *
+ * @param shellOrOptions - Interface shell ou options complètes
+ * @returns Handlers pour les outils shell
  */
 export function createShellToolHandlers(
-  shell: ShellInterface,
+  shellOrOptions: ShellInterface | ShellToolHandlersOptions,
 ): Record<string, (input: Record<string, unknown>) => Promise<ToolExecutionResult>> {
+  // Support de l'ancienne signature (ShellInterface seul) pour la rétrocompatibilité
+  let shell: ShellInterface;
+  let agentId: string | undefined;
+  let overrideConfig: ShellSecurityConfig | undefined;
+
+  if ('exec' in shellOrOptions && typeof shellOrOptions.exec === 'function') {
+    // Ancienne signature: ShellInterface directement
+    shell = shellOrOptions;
+  } else {
+    // Nouvelle signature: ShellToolHandlersOptions
+    const options = shellOrOptions as ShellToolHandlersOptions;
+    shell = options.shell;
+    agentId = options.agentId;
+    overrideConfig = options.securityConfig;
+  }
+
+  /**
+   * Obtenir la configuration de sécurité à utiliser
+   * Priorité: override > config agent > config par défaut
+   */
+  const getEffectiveSecurityConfig = (): ShellSecurityConfig => {
+    if (overrideConfig) {
+      return overrideConfig;
+    }
+    if (agentId) {
+      return getSecurityConfigForAgent(agentId);
+    }
+    // Fallback vers la config globale (deprecated mais nécessaire pour la rétrocompatibilité)
+    return globalSecurityConfig;
+  };
+
   return {
     /**
      * Exécuter une commande npm
@@ -638,8 +742,9 @@ export function createShellToolHandlers(
       const cwd = input.cwd as string | undefined;
       const timeout = (input.timeout as number) || 30000;
 
-      // Vérifier la sécurité de la commande avec le nouveau validateur
-      const validation = validateCommand(command, globalSecurityConfig);
+      // Vérifier la sécurité de la commande avec la configuration isolée de l'agent
+      const securityConfig = getEffectiveSecurityConfig();
+      const validation = validateCommand(command, securityConfig);
 
       if (!validation.safe) {
         let errorMessage = `Command rejected for safety: ${validation.reason}`;
