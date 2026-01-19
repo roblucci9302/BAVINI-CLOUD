@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { classNames } from '~/utils/classNames';
 
-interface PanelHeaderProps {
+export interface PanelHeaderProps {
   className?: string;
   children: React.ReactNode;
 }

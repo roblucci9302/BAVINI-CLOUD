@@ -525,8 +525,92 @@ export class WorkbenchStore {
   /**
    * Detect the entry point from available files.
    * Returns null if no suitable entry point is found.
+   * Supports React, Vue, Svelte, and Astro frameworks.
    */
   #detectEntryPoint(files: Map<string, string>): string | null {
+    // First, detect framework from package.json to prioritize correct entry points
+    const framework = this.#detectFrameworkFromFiles(files);
+
+    // Framework-specific entry point candidates
+    if (framework === 'astro') {
+      const astroCandidates = [
+        '/src/pages/index.astro',
+        '/src/pages/index.md',
+        '/src/pages/index.mdx',
+        '/pages/index.astro',
+        '/index.astro',
+      ];
+      for (const candidate of astroCandidates) {
+        if (files.has(candidate)) {
+          return candidate;
+        }
+      }
+    }
+
+    if (framework === 'vue') {
+      const vueCandidates = [
+        '/src/main.ts',
+        '/src/main.js',
+        '/src/App.vue',
+        '/App.vue',
+        '/main.ts',
+        '/main.js',
+      ];
+      for (const candidate of vueCandidates) {
+        if (files.has(candidate)) {
+          return candidate;
+        }
+      }
+    }
+
+    if (framework === 'svelte') {
+      const svelteCandidates = [
+        '/src/main.ts',
+        '/src/main.js',
+        '/src/App.svelte',
+        '/App.svelte',
+        '/main.ts',
+        '/main.js',
+      ];
+      for (const candidate of svelteCandidates) {
+        if (files.has(candidate)) {
+          return candidate;
+        }
+      }
+    }
+
+    // Next.js App Router candidates (check before default React)
+    // IMPORTANT: layout.tsx must be checked BEFORE page.tsx because layout imports globals.css
+    if (framework === 'react') {
+      const nextAppCandidates = [
+        // App Router - layout.tsx is the entry that imports CSS and wraps pages
+        '/src/app/layout.tsx',
+        '/src/app/layout.jsx',
+        '/app/layout.tsx',
+        '/app/layout.jsx',
+        // Fallback to page if no layout
+        '/src/app/page.tsx',
+        '/src/app/page.jsx',
+        '/app/page.tsx',
+        '/app/page.jsx',
+        '/app/page.ts',
+        '/app/page.js',
+        // Pages Router
+        '/pages/_app.tsx',
+        '/pages/_app.jsx',
+        '/pages/index.tsx',
+        '/pages/index.jsx',
+        '/pages/index.ts',
+        '/pages/index.js',
+      ];
+      for (const candidate of nextAppCandidates) {
+        if (files.has(candidate)) {
+          return candidate;
+        }
+      }
+    }
+
+    // Default candidates for React/Preact/Vanilla
     const candidates = [
       '/src/main.tsx',
       '/src/main.ts',
@@ -546,15 +630,74 @@ export class WorkbenchStore {
       }
     }
 
-    // Return first TSX/TS file found in /src directory
+    // Return first TSX/TS file found in /src directory (excluding data files)
     for (const path of files.keys()) {
-      if (path.startsWith('/src/') && (path.endsWith('.tsx') || path.endsWith('.ts'))) {
+      if (path.startsWith('/src/') &&
+          !path.includes('/data/') &&
+          !path.includes('/utils/') &&
+          !path.includes('/lib/') &&
+          (path.endsWith('.tsx') || path.endsWith('.ts'))) {
+        return path;
+      }
+    }
+
+    // Fallback: Return first TSX/TS file found in /app directory (Next.js App Router)
+    for (const path of files.keys()) {
+      if (path.startsWith('/app/') &&
+          !path.includes('/api/') &&
+          (path.endsWith('.tsx') || path.endsWith('.ts') || path.endsWith('.jsx') || path.endsWith('.js'))) {
+        return path;
+      }
+    }
+
+    // Fallback: Return first TSX/TS file found in /pages directory (Next.js Pages Router)
+    for (const path of files.keys()) {
+      if (path.startsWith('/pages/') &&
+          !path.includes('/api/') &&
+          (path.endsWith('.tsx') || path.endsWith('.ts') || path.endsWith('.jsx') || path.endsWith('.js'))) {
+        return path;
+      }
+    }
+
+    // For Astro: find any .astro page file
+    for (const path of files.keys()) {
+      if (path.includes('/pages/') && path.endsWith('.astro')) {
         return path;
       }
     }
 
     // No suitable entry point found
     return null;
+  }
+
+  /**
+   * Detect framework from package.json or file extensions
+   */
+  #detectFrameworkFromFiles(files: Map<string, string>): string {
+    // Check package.json first
+    const pkgJson = files.get('/package.json');
+    if (pkgJson) {
+      try {
+        const pkg = JSON.parse(pkgJson);
+        const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+        if (deps['astro']) return 'astro';
+        if (deps['vue'] || deps['@vue/compiler-sfc']) return 'vue';
+        if (deps['svelte']) return 'svelte';
+        if (deps['preact']) return 'preact';
+        if (deps['react'] || deps['react-dom']) return 'react';
+      } catch (e) {
+        // Ignore JSON parse errors
+      }
+    }
+
+    // Check file extensions
+    for (const path of files.keys()) {
+      if (path.endsWith('.astro')) return 'astro';
+      if (path.endsWith('.vue')) return 'vue';
+      if (path.endsWith('.svelte')) return 'svelte';
+    }
+
+    return 'react'; // Default to React
   }
 
   get previews() {

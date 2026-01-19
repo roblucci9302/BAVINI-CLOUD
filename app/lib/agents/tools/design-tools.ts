@@ -156,6 +156,7 @@ const DESIGN_PATTERNS: Record<string, DesignPattern> = {
       'Ajouter une section features avec icônes et descriptions courtes',
       'Prévoir une section pricing avec 3 tiers maximum',
       'Footer avec liens légaux et newsletter signup',
+      'Utiliser les composants Shadcn UI (Button, Card, Input) pour les formulaires',
     ],
   },
 
@@ -199,6 +200,7 @@ const DESIGN_PATTERNS: Record<string, DesignPattern> = {
       'Badge promotions et stock limité',
       'Panier persistant et visible',
       'Processus de checkout simplifié',
+      'Utiliser Shadcn UI (Button, Card, Badge, Input) pour les composants',
     ],
   },
 
@@ -286,6 +288,7 @@ const DESIGN_PATTERNS: Record<string, DesignPattern> = {
       'CTAs multiples tout au long de la page',
       'Testimonials avec photos et noms',
       'FAQ section en accordion',
+      'Utiliser Shadcn UI (Button, Card, Accordion) pour les composants',
     ],
   },
 
@@ -329,6 +332,7 @@ const DESIGN_PATTERNS: Record<string, DesignPattern> = {
       'Section about avec photo et bio',
       'Contact section simple et directe',
       'Cursor personnalisé et micro-interactions',
+      'Utiliser Shadcn UI (Button, Card, Dialog) pour les interactions',
     ],
   },
 
@@ -372,6 +376,7 @@ const DESIGN_PATTERNS: Record<string, DesignPattern> = {
       'Table des matières pour articles longs',
       'Estimated reading time',
       "Related posts en fin d'article",
+      'Utiliser Shadcn UI (Card, Badge, Separator) pour les articles',
     ],
   },
 
@@ -416,6 +421,7 @@ const DESIGN_PATTERNS: Record<string, DesignPattern> = {
       'Raccourcis clavier pour power users',
       'Responsive design mobile-first',
       'Accessibility (ARIA labels, focus states)',
+      'Utiliser Shadcn UI pour tous les formulaires et composants UI',
     ],
   },
 };
@@ -1391,11 +1397,23 @@ Quand l'utilisateur demande de créer un site/page, utilise TOUJOURS \`get_desig
 - "une page d'authentification" → template AuthModern
 - "une page 404" → template ErrorModern
 
+## 🎯 SHADCN UI - COMPOSANTS PRIORITAIRES
+Pour tout projet React ou Next.js, utiliser les composants Shadcn UI :
+- **Formulaires**: Button, Input, Label, Textarea, Select, Checkbox, Switch
+- **Conteneurs**: Card, Dialog, Sheet, Tabs, Accordion
+- **Feedback**: Badge, Alert, Toast, Tooltip
+- **Navigation**: DropdownMenu, NavigationMenu, Command
+- **Data**: Table, DataTable avec tri/filtrage
+
+**Installation**: \`npx shadcn-ui@latest init\` puis \`npx shadcn-ui@latest add [component]\`
+**Templates recommandés**: react-shadcn-ts, next-shadcn-ts
+
 ## ✅ Best Practices
 - Toujours utiliser des animations subtiles (pas trop flashy)
 - Préférer les effets de hover pour l'interactivité
 - Utiliser les gradients avec parcimonie
 - Assurer le contraste WCAG AA minimum
 - Supporter le dark mode
+- **PRIORITÉ**: Utiliser Shadcn UI pour tous les composants de formulaire et UI
 `;
 }

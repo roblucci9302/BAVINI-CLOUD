@@ -28,7 +28,7 @@ type IconButtonWithChildrenProps = {
   children: string | JSX.Element | JSX.Element[];
 } & BaseIconButtonProps;
 
-type IconButtonProps = IconButtonWithoutChildrenProps | IconButtonWithChildrenProps;
+export type IconButtonProps = IconButtonWithoutChildrenProps | IconButtonWithChildrenProps;
 
 export const IconButton = memo(
   ({

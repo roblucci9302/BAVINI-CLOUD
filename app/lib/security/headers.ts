@@ -43,9 +43,12 @@ export function getCSPDirectives(config: SecurityHeadersConfig): string {
   const wss = 'wss:';
 
   // Domaines tiers autorisés
-  const trustedDomains = ['https://fonts.googleapis.com', 'https://fonts.gstatic.com', 'https://cdn.jsdelivr.net'].join(
-    ' ',
-  );
+  const trustedDomains = [
+    'https://fonts.googleapis.com',
+    'https://fonts.gstatic.com',
+    'https://cdn.jsdelivr.net',
+    'https://esm.sh', // For Tailwind JIT and npm packages
+  ].join(' ');
 
   // Domaines WebContainer (StackBlitz)
   const webContainerDomains =

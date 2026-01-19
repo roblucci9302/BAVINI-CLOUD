@@ -26,6 +26,14 @@ import type {
   BuildWarning,
 } from '../types';
 import { createScopedLogger } from '~/utils/logger';
+import {
+  loadCompiler,
+  hasCompilerFor,
+  detectFramework,
+  getJsxConfig,
+  type FrameworkType,
+} from './compilers/compiler-registry';
+import type { TailwindCompiler, ContentFile } from './compilers/tailwind-compiler';
 
 const logger = createScopedLogger('BrowserBuildAdapter');
 
@@ -145,7 +153,7 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
   readonly supportsShell = false;
   readonly supportsNodeServer = false;
   readonly isBrowserOnly = true;
-  readonly supportedFrameworks = ['react', 'vue', 'svelte', 'vanilla', 'preact'];
+  readonly supportedFrameworks = ['react', 'vue', 'svelte', 'vanilla', 'preact', 'astro'];
 
   /**
    * SECURITY: Allowed file extensions for the virtual file system.
@@ -157,8 +165,12 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
     '.html', '.md', '.txt', '.svg', '.xml',
     '.vue', '.svelte', '.astro',
     '.yaml', '.yml', '.toml',
-    '.env', '.env.local', '.env.development', '.env.production',
+    '.env', '.env.local', '.env.development', '.env.production', '.env.example',
     '.gitignore', '.npmrc', '.prettierrc', '.eslintrc',
+    '.example', // For .env.example and other example files
+    '.local', // For compound extensions like .env.local (extracted as .local)
+    // Image files (stored as base64/data URLs in virtual fs)
+    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.ico', '.bmp', '.avif',
   ]);
 
   /**
@@ -173,6 +185,7 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
   private _esbuildInitialized = false;
   private _previewIframe: HTMLIFrameElement | null = null;
   private _blobUrl: string | null = null;
+  private _detectedFramework: FrameworkType = 'vanilla';
 
   get status(): RuntimeStatus {
     return this._status;
@@ -422,6 +435,10 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
     this.emitBuildProgress('starting', 0);
 
     try {
+      // Detect framework from project files
+      this._detectedFramework = detectFramework(this._files);
+      logger.info(`Detected framework: ${this._detectedFramework}`);
+
       // Check entry point exists
       const entryPoint = this.normalizePath(options.entryPoint);
       const foundEntry = this.findFile(entryPoint);
@@ -452,6 +469,9 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
 
       this.emitBuildProgress('bundling', 20);
 
+      // Get JSX configuration for the detected framework
+      const jsxConfig = getJsxConfig(this._detectedFramework);
+
       // Build with esbuild
       const result = await esbuild.build({
         stdin: {
@@ -469,8 +489,8 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
           'process.env.NODE_ENV': `"${options.mode}"`,
           ...options.define,
         },
-        jsx: 'automatic',
-        jsxImportSource: 'react',
+        jsx: jsxConfig.jsx,
+        jsxImportSource: jsxConfig.jsxImportSource,
         // virtual-fs first to handle local files and path aliases (@/) before esm-sh
         // esm-sh will handle remaining bare imports (npm packages)
         plugins: [this.createVirtualFsPlugin(), this.createEsmShPlugin()],
@@ -632,6 +652,22 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
       case 'txt':
       case 'md':
         return 'text';
+      // Framework-specific files are compiled to JS before reaching esbuild
+      case 'astro':
+      case 'vue':
+      case 'svelte':
+        return 'js';
+      // Image files - use dataurl loader for inline embedding
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+      case 'webp':
+      case 'ico':
+      case 'bmp':
+      case 'avif':
+      case 'svg':
+        return 'dataurl';
       default:
         return 'tsx';
     }
@@ -825,7 +861,7 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
           };
         });
 
-        // Resolve @/ path aliases (e.g., @/components/Header -> /src/components/Header)
+        // Resolve @/ path aliases (e.g., @/components/Header -> /src/components/Header or /components/Header)
         // This MUST be handled BEFORE esm-sh plugin tries to resolve as npm package
         build.onResolve({ filter: /^@\// }, (args) => {
           // Skip if coming from esm-sh namespace
@@ -833,11 +869,31 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
             return null;
           }
 
-          // Convert @/path to /src/path
-          const virtualPath = args.path.replace(/^@\//, '/src/');
+          const pathWithoutAlias = args.path.replace(/^@\//, '');
+
+          // Try multiple paths in order of preference:
+          // 1. /src/path (standard Vite/Next.js convention)
+          // 2. /path (root level, common in Next.js App Router)
+          const pathsToTry = [
+            `/src/${pathWithoutAlias}`,
+            `/${pathWithoutAlias}`,
+          ];
+
+          for (const tryPath of pathsToTry) {
+            // Check if file exists (with common extensions)
+            const foundPath = this.findFile(tryPath);
+            if (foundPath) {
+              const resolveDir = foundPath.substring(0, foundPath.lastIndexOf('/')) || '/';
+              logger.debug(`Resolving @/ alias: ${args.path} -> ${foundPath}`);
+              return { path: foundPath, namespace: 'virtual-fs', pluginData: { resolveDir } };
+            }
+          }
+
+          // Fallback to /src/ path even if not found (will produce helpful error)
+          const virtualPath = `/src/${pathWithoutAlias}`;
           const resolveDir = virtualPath.substring(0, virtualPath.lastIndexOf('/')) || '/';
 
-          logger.debug(`Resolving @/ alias: ${args.path} -> ${virtualPath}`);
+          logger.debug(`Resolving @/ alias (fallback): ${args.path} -> ${virtualPath}`);
 
           return { path: virtualPath, namespace: 'virtual-fs', pluginData: { resolveDir } };
         });
@@ -866,6 +922,8 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
 
           const resolvedPath = this.resolveRelativePath(basePath, args.path);
 
+          // eslint-disable-next-line no-console
+          console.log(`[ESBUILD-RESOLVE] Relative: ${args.path} from ${basePath} -> ${resolvedPath}`);
           logger.debug(`Resolving relative import: ${args.path} from ${basePath} -> ${resolvedPath}`);
 
           // Return with resolveDir so bare imports in loaded files can be resolved by esm-sh
@@ -891,7 +949,10 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
         });
 
         // Load from virtual filesystem
-        build.onLoad({ filter: /.*/, namespace: 'virtual-fs' }, (args) => {
+        build.onLoad({ filter: /.*/, namespace: 'virtual-fs' }, async (args) => {
+          // eslint-disable-next-line no-console
+          console.log(`[ESBUILD-ONLOAD] Called for: ${args.path}, namespace: ${args.namespace}`);
+
           const foundPath = this.findFile(args.path);
 
           if (!foundPath) {
@@ -901,32 +962,240 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
           }
 
           const content = this._files.get(foundPath)!;
-          const loader = this.getLoader(foundPath);
+          const ext = foundPath.split('.').pop()?.toLowerCase();
 
           // Set resolveDir so bare imports (like 'react') can be resolved by esm-sh plugin
           const resolveDir = foundPath.substring(0, foundPath.lastIndexOf('/')) || '/';
 
-          // For CSS files, we inject them as a JS module that adds a style tag
+          // Handle framework-specific files with their compilers
+          // IMPORTANT: CSS files need special handling - the compiled output is CSS, not JS
+          if (ext && hasCompilerFor(ext)) {
+            try {
+              // Special case for CSS files (Tailwind compilation)
+              if (ext === 'css') {
+                // eslint-disable-next-line no-console
+                console.log(`[CSS-COMPILER] Compiling CSS file: ${foundPath}`);
+
+                const compiler = await loadCompiler('css') as TailwindCompiler;
+
+                // Provide content files for Tailwind class extraction
+                const contentFiles: ContentFile[] = Array.from(this._files.entries())
+                  .filter(([path]) => /\.(tsx?|jsx?|vue|svelte|html|astro)$/.test(path))
+                  .map(([path, fileContent]) => ({ path, content: fileContent }));
+
+                compiler.setContentFiles(contentFiles);
+
+                const result = await compiler.compile(content, foundPath);
+
+                // eslint-disable-next-line no-console
+                console.log(`[CSS-COMPILER] Compilation done, CSS length: ${result.code.length}`);
+
+                // CSS compiler returns CSS, we need to wrap it in a JS injector
+                const cssInjector = `(function(){if(typeof document!=='undefined'){var s=document.createElement('style');s.setAttribute('data-source',${JSON.stringify(foundPath)});s.textContent=${JSON.stringify(result.code)};document.head.appendChild(s);}})();`;
+
+                // eslint-disable-next-line no-console
+                console.log(`[CSS-COMPILER] Created JS injector, length: ${cssInjector.length}`);
+
+                return {
+                  contents: cssInjector,
+                  loader: 'js' as const,
+                  resolveDir,
+                };
+              }
+
+              // Standard compiler handling (Vue, Svelte, Astro, etc.)
+              const compiler = await loadCompiler(ext);
+              const result = await compiler.compile(content, foundPath);
+
+              // If the compiler produced CSS, inject it as a side effect
+              let compiledCode = result.code;
+
+              if (result.css) {
+                const escapedCSS = result.css
+                  .replace(/\\/g, '\\\\')
+                  .replace(/`/g, '\\`')
+                  .replace(/\$/g, '\\$');
+
+                compiledCode = `
+// Injected CSS from ${foundPath}
+(function() {
+  if (typeof document !== 'undefined') {
+    const style = document.createElement('style');
+    style.textContent = \`${escapedCSS}\`;
+    document.head.appendChild(style);
+  }
+})();
+
+${result.code}`;
+              }
+
+              // Log any warnings
+              if (result.warnings && result.warnings.length > 0) {
+                result.warnings.forEach((w) => logger.warn(`[${ext}] ${w}`));
+              }
+
+              return {
+                contents: compiledCode,
+                loader: 'js',
+                resolveDir,
+              };
+            } catch (error) {
+              const errorMsg = error instanceof Error ? error.message : String(error);
+              logger.error(`Failed to compile ${foundPath}:`, error);
+
+              // For CSS files, return fallback instead of error
+              if (ext === 'css') {
+                // eslint-disable-next-line no-console
+                console.log(`[CSS-COMPILER] Compilation failed, using fallback: ${errorMsg}`);
+                const fallbackCSS = `/* Tailwind compilation failed: ${errorMsg} */\n:root { --background: 0 0% 100%; --foreground: 222.2 84% 4.9%; }`;
+                const fallbackInjector = `(function(){if(typeof document!=='undefined'){var s=document.createElement('style');s.setAttribute('data-source',${JSON.stringify(foundPath)});s.textContent=${JSON.stringify(fallbackCSS)};document.head.appendChild(s);}})();`;
+
+                return {
+                  contents: fallbackInjector,
+                  loader: 'js' as const,
+                  resolveDir,
+                };
+              }
+
+              return { errors: [{ text: `Compilation failed for ${foundPath}: ${errorMsg}` }] };
+            }
+          }
+
+          const loader = this.getLoader(foundPath);
+
+          // DEBUG: Log what we're processing
+          // eslint-disable-next-line no-console
+          console.log(`[ESBUILD-DEBUG] Processing ${foundPath}, loader: ${loader}`);
+
+          // For CSS files, we ALWAYS inject them as a JS module that adds a style tag
+          // This ensures esbuild never tries to parse CSS directly
           if (loader === 'css') {
-            const escapedCSS = content
-              .replace(/\\/g, '\\\\')
-              .replace(/`/g, '\\`')
-              .replace(/\$/g, '\\$');
+            // eslint-disable-next-line no-console
+            console.log(`[CSS-FLOW] Step 1: Entering CSS handler for ${foundPath}`);
 
-            const cssInjector = `
-              (function() {
-                if (typeof document !== 'undefined') {
-                  const style = document.createElement('style');
-                  style.textContent = \`${escapedCSS}\`;
-                  document.head.appendChild(style);
+            // Wrap EVERYTHING in try-catch to ensure we always return with loader: 'js'
+            try {
+              let cssContent = content;
+
+              // Check if CSS has Tailwind directives and needs compilation
+              const hasTailwindDirectives =
+                content.includes('@tailwind') ||
+                content.includes('@apply') ||
+                content.includes('@layer');
+
+              // eslint-disable-next-line no-console
+              console.log(`[CSS-FLOW] Step 2: hasTailwindDirectives=${hasTailwindDirectives}`);
+
+              if (hasTailwindDirectives) {
+                try {
+                  // eslint-disable-next-line no-console
+                  console.log(`[CSS-FLOW] Step 3: About to load Tailwind compiler`);
+
+                  const compiler = await loadCompiler('css') as TailwindCompiler;
+
+                  // eslint-disable-next-line no-console
+                  console.log(`[CSS-FLOW] Step 4: Compiler loaded, setting content files`);
+
+                  // Provide content files for Tailwind class extraction
+                  const contentFiles: ContentFile[] = Array.from(this._files.entries())
+                    .filter(([path]) => /\.(tsx?|jsx?|vue|svelte|html|astro)$/.test(path))
+                    .map(([path, fileContent]) => ({ path, content: fileContent }));
+
+                  compiler.setContentFiles(contentFiles);
+
+                  // eslint-disable-next-line no-console
+                  console.log(`[CSS-FLOW] Step 5: Compiling CSS`);
+
+                  const result = await compiler.compile(content, foundPath);
+                  cssContent = result.code;
+
+                  // eslint-disable-next-line no-console
+                  console.log(`[CSS-FLOW] Step 6: Compilation done, CSS length: ${cssContent.length}`);
+
+                  if (result.warnings && result.warnings.length > 0) {
+                    result.warnings.forEach((w) => logger.warn(`[Tailwind] ${w}`));
+                  }
+                } catch (compileError) {
+                  // eslint-disable-next-line no-console
+                  console.log(`[CSS-FLOW] Step 3-ERROR: Tailwind compilation failed:`, compileError);
+                  logger.warn(`Tailwind compilation failed for ${foundPath}:`, compileError);
+
+                  // Use minimal fallback - just strip @tailwind directives
+                  cssContent = `/* Tailwind compilation failed - using CDN fallback */
+:root { --background: 0 0% 100%; --foreground: 222.2 84% 4.9%; }`;
                 }
-              })();
-            `;
+              }
 
+              // Create JS injector - this MUST succeed
+              // eslint-disable-next-line no-console
+              console.log(`[CSS-FLOW] Step 7: Creating JS injector`);
+
+              const cssInjector = `(function(){if(typeof document!=='undefined'){var s=document.createElement('style');s.setAttribute('data-source',${JSON.stringify(foundPath)});s.textContent=${JSON.stringify(cssContent)};document.head.appendChild(s);}})();`;
+
+              // eslint-disable-next-line no-console
+              console.log(`[CSS-FLOW] Step 8: Returning with loader: js, injector length: ${cssInjector.length}`);
+
+              return {
+                contents: cssInjector,
+                loader: 'js' as const,
+                resolveDir,
+              };
+            } catch (cssError) {
+              // Ultimate fallback - return empty JS module
+              // eslint-disable-next-line no-console
+              console.error(`[CSS-FLOW] CRITICAL ERROR in CSS handling:`, cssError);
+              logger.error(`Critical error handling CSS ${foundPath}:`, cssError);
+
+              return {
+                contents: `/* CSS error: ${foundPath} */`,
+                loader: 'js' as const,
+                resolveDir,
+              };
+            }
+          }
+
+          // For image files, export as a module with the path or placeholder
+          if (loader === 'dataurl') {
+            const imageExt = foundPath.split('.').pop()?.toLowerCase();
+            const mimeTypes: Record<string, string> = {
+              'jpg': 'image/jpeg',
+              'jpeg': 'image/jpeg',
+              'png': 'image/png',
+              'gif': 'image/gif',
+              'webp': 'image/webp',
+              'svg': 'image/svg+xml',
+              'ico': 'image/x-icon',
+              'bmp': 'image/bmp',
+              'avif': 'image/avif',
+            };
+            const mimeType = mimeTypes[imageExt || ''] || 'application/octet-stream';
+
+            // If content looks like base64 or is SVG, use it directly
+            if (imageExt === 'svg' || content.startsWith('<')) {
+              // SVG can be used as data URL directly
+              const encoded = btoa(unescape(encodeURIComponent(content)));
+              return {
+                contents: `export default "data:${mimeType};base64,${encoded}";`,
+                loader: 'js',
+                resolveDir,
+              };
+            }
+
+            // For other images, check if content is already base64
+            if (content.startsWith('data:')) {
+              return {
+                contents: `export default "${content}";`,
+                loader: 'js',
+                resolveDir,
+              };
+            }
+
+            // Return a placeholder URL for images that can't be embedded
+            // In browser-only mode, we use the path as a fallback
             return {
-              contents: cssInjector,
+              contents: `export default "${foundPath}";`,
               loader: 'js',
-              resolveDir, // Critical: allows bare imports in generated JS to be resolved
+              resolveDir,
             };
           }
 
@@ -949,8 +1218,8 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
       return path;
     }
 
-    // Try with common extensions
-    const extensions = ['.tsx', '.ts', '.jsx', '.js', '.json', '.css', '.mjs'];
+    // Try with common extensions (including framework-specific)
+    const extensions = ['.tsx', '.ts', '.jsx', '.js', '.vue', '.svelte', '.astro', '.json', '.css', '.mjs'];
 
     for (const ext of extensions) {
       const pathWithExt = path + ext;
@@ -960,8 +1229,11 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
       }
     }
 
-    // Try index files
-    const indexFiles = ['/index.tsx', '/index.ts', '/index.jsx', '/index.js'];
+    // Try index files (including framework-specific)
+    const indexFiles = [
+      '/index.tsx', '/index.ts', '/index.jsx', '/index.js',
+      '/index.vue', '/index.svelte', '/index.astro'
+    ];
 
     for (const indexFile of indexFiles) {
       const indexPath = path + indexFile;
@@ -1155,10 +1427,30 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
   }
 
   /**
-   * Create a bootstrap entry that mounts React with the app
-   * This handles Next.js-style layouts and pages, as well as standard React entry files
+   * Create a bootstrap entry that mounts the app based on the detected framework
+   * This handles React, Vue, Svelte, Astro, and Next.js-style layouts
    */
   private createBootstrapEntry(entryPath: string): string {
+    // Dispatch to framework-specific bootstrap creation
+    switch (this._detectedFramework) {
+      case 'vue':
+        return this.createVueBootstrapEntry(entryPath);
+      case 'svelte':
+        return this.createSvelteBootstrapEntry(entryPath);
+      case 'astro':
+        return this.createAstroBootstrapEntry(entryPath);
+      case 'preact':
+        return this.createPreactBootstrapEntry(entryPath);
+      case 'react':
+      default:
+        return this.createReactBootstrapEntry(entryPath);
+    }
+  }
+
+  /**
+   * Create React bootstrap entry
+   */
+  private createReactBootstrapEntry(entryPath: string): string {
     // Get the content of the entry file to analyze it
     const entryContent = this._files.get(entryPath) || '';
 
@@ -1174,7 +1466,8 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
     }
 
     // Find the main page component (for Next.js style apps)
-    const pagePath = this.findFile('/src/app/page');
+    // Check both /app/page (Next.js App Router) and /src/app/page
+    const pagePath = this.findFile('/app/page') || this.findFile('/src/app/page');
 
     // Build import statements based on what files exist
     const imports: string[] = [
@@ -1216,7 +1509,7 @@ function App() {
 }`;
       } else {
         // Fallback: try to find the main App component file
-        const appFilePath = this.findFile('/src/App');
+        const appFilePath = this.findFile('/src/App') || this.findFile('/App') || this.findFile('/components/App');
         if (appFilePath) {
           const appContent = this._files.get(appFilePath) || '';
           const appHasDefault = /export\s+default\s+/.test(appContent);
@@ -1256,6 +1549,168 @@ if (container) {
       <App />
     </React.StrictMode>
   );
+} else {
+  console.error('Root element not found');
+}
+`;
+  }
+
+  /**
+   * Create Vue bootstrap entry
+   */
+  private createVueBootstrapEntry(entryPath: string): string {
+    const entryContent = this._files.get(entryPath) || '';
+
+    // Check if this is already a mounting entry file
+    if (entryContent.includes('createApp') && entryContent.includes('.mount(')) {
+      logger.debug(`Entry ${entryPath} is a Vue mounting file, importing for side effects`);
+      return `import '${entryPath.replace(/\.(ts|js|vue)$/, '')}';`;
+    }
+
+    // Find main App.vue if entry is not a .vue file
+    let appPath = entryPath;
+    if (!entryPath.endsWith('.vue')) {
+      const appVue = this.findFile('/src/App.vue') || this.findFile('/App.vue');
+      if (appVue) {
+        appPath = appVue;
+      }
+    }
+
+    return `
+import { createApp } from 'vue';
+import App from '${appPath.replace(/\.vue$/, '')}';
+
+// Mount the Vue app
+const container = document.getElementById('root') || document.getElementById('app');
+if (container) {
+  const app = createApp(App);
+  app.mount(container);
+} else {
+  console.error('Root element not found');
+}
+`;
+  }
+
+  /**
+   * Create Svelte bootstrap entry
+   */
+  private createSvelteBootstrapEntry(entryPath: string): string {
+    const entryContent = this._files.get(entryPath) || '';
+
+    // Check if this is already a mounting entry file
+    if (entryContent.includes('new ') && entryContent.includes('target:')) {
+      logger.debug(`Entry ${entryPath} is a Svelte mounting file, importing for side effects`);
+      return `import '${entryPath.replace(/\.(ts|js|svelte)$/, '')}';`;
+    }
+
+    // Find main App.svelte if entry is not a .svelte file
+    let appPath = entryPath;
+    if (!entryPath.endsWith('.svelte')) {
+      const appSvelte = this.findFile('/src/App.svelte') || this.findFile('/App.svelte');
+      if (appSvelte) {
+        appPath = appSvelte;
+      }
+    }
+
+    return `
+import App from '${appPath.replace(/\.svelte$/, '')}';
+
+// Mount the Svelte app
+const container = document.getElementById('root') || document.getElementById('app');
+if (container) {
+  const app = new App({
+    target: container,
+    props: {}
+  });
+} else {
+  console.error('Root element not found');
+}
+`;
+  }
+
+  /**
+   * Create Astro bootstrap entry
+   * Note: Astro is primarily SSG/SSR, so we render static HTML for preview
+   */
+  private createAstroBootstrapEntry(entryPath: string): string {
+    // Find the main page or layout
+    let mainPage = entryPath;
+    if (!entryPath.endsWith('.astro')) {
+      const indexAstro = this.findFile('/src/pages/index.astro') ||
+                         this.findFile('/src/pages/index') ||
+                         this.findFile('/index.astro');
+      if (indexAstro) {
+        mainPage = indexAstro;
+      }
+    }
+
+    // For Astro, we render the component and inject its output as static HTML
+    // This is a simplified approach - full Astro requires SSR
+    return `
+import Component from '${mainPage.replace(/\.astro$/, '')}';
+
+// Render Astro component
+async function renderAstro() {
+  const container = document.getElementById('root') || document.getElementById('app');
+  if (!container) {
+    console.error('Root element not found');
+    return;
+  }
+
+  try {
+    // Astro components compile to functions that return HTML
+    if (typeof Component === 'function') {
+      const result = await Component({});
+      // Handle Astro's render result
+      if (typeof result === 'string') {
+        container.innerHTML = result;
+      } else if (result && typeof result.toString === 'function') {
+        container.innerHTML = result.toString();
+      } else if (result && result.html) {
+        container.innerHTML = result.html;
+      } else {
+        console.log('Astro component rendered:', result);
+      }
+    } else {
+      console.log('Astro component loaded:', Component);
+    }
+  } catch (error) {
+    console.error('Failed to render Astro component:', error);
+    container.innerHTML = '<div style="color: red; padding: 20px;">Error rendering Astro component. Check console for details.</div>';
+  }
+}
+
+renderAstro();
+`;
+  }
+
+  /**
+   * Create Preact bootstrap entry
+   */
+  private createPreactBootstrapEntry(entryPath: string): string {
+    const entryContent = this._files.get(entryPath) || '';
+
+    // Check if this is already a mounting entry file
+    if (entryContent.includes('render(') && entryContent.includes('preact')) {
+      logger.debug(`Entry ${entryPath} is a Preact mounting file, importing for side effects`);
+      return `import '${entryPath.replace(/\.tsx?$/, '')}';`;
+    }
+
+    // Find main App component
+    let appPath = entryPath;
+    const appFile = this.findFile('/src/App') || this.findFile('/App');
+    if (appFile) {
+      appPath = appFile;
+    }
+
+    return `
+import { h, render } from 'preact';
+import App from '${appPath.replace(/\.tsx?$/, '')}';
+
+// Mount the Preact app
+const container = document.getElementById('root') || document.getElementById('app');
+if (container) {
+  render(h(App, {}), container);
 } else {
   console.error('Root element not found');
 }
@@ -1376,9 +1831,55 @@ if (container) {
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: system-ui, -apple-system, sans-serif; }
+
+    /* Shadcn UI CSS Variables */
+    :root {
+      --background: 0 0% 100%;
+      --foreground: 222.2 84% 4.9%;
+      --card: 0 0% 100%;
+      --card-foreground: 222.2 84% 4.9%;
+      --popover: 0 0% 100%;
+      --popover-foreground: 222.2 84% 4.9%;
+      --primary: 222.2 47.4% 11.2%;
+      --primary-foreground: 210 40% 98%;
+      --secondary: 210 40% 96.1%;
+      --secondary-foreground: 222.2 47.4% 11.2%;
+      --muted: 210 40% 96.1%;
+      --muted-foreground: 215.4 16.3% 46.9%;
+      --accent: 210 40% 96.1%;
+      --accent-foreground: 222.2 47.4% 11.2%;
+      --destructive: 0 84.2% 60.2%;
+      --destructive-foreground: 210 40% 98%;
+      --border: 214.3 31.8% 91.4%;
+      --input: 214.3 31.8% 91.4%;
+      --ring: 222.2 84% 4.9%;
+      --radius: 0.5rem;
+    }
+
+    .dark {
+      --background: 222.2 84% 4.9%;
+      --foreground: 210 40% 98%;
+      --card: 222.2 84% 4.9%;
+      --card-foreground: 210 40% 98%;
+      --popover: 222.2 84% 4.9%;
+      --popover-foreground: 210 40% 98%;
+      --primary: 210 40% 98%;
+      --primary-foreground: 222.2 47.4% 11.2%;
+      --secondary: 217.2 32.6% 17.5%;
+      --secondary-foreground: 210 40% 98%;
+      --muted: 217.2 32.6% 17.5%;
+      --muted-foreground: 215 20.2% 65.1%;
+      --accent: 217.2 32.6% 17.5%;
+      --accent-foreground: 210 40% 98%;
+      --destructive: 0 62.8% 30.6%;
+      --destructive-foreground: 210 40% 98%;
+      --border: 217.2 32.6% 17.5%;
+      --input: 217.2 32.6% 17.5%;
+      --ring: 212.7 26.8% 83.9%;
+    }
   </style>
 </head>
-<body>
+<body class="bg-background text-foreground">
   <div id="root"></div>
   <!-- BAVINI_BUNDLE -->
 </body>
@@ -1389,7 +1890,66 @@ if (container) {
    * Inject bundle into HTML
    */
   private injectBundle(html: string, code: string, css: string): string {
-    // Inject CSS
+    // Inject Tailwind CSS via SYNCHRONOUS link tag (loads BEFORE JavaScript executes)
+    // This ensures CSS is available when React renders components
+    const tailwindCSS = `
+<link rel="stylesheet" href="https://unpkg.com/tailwindcss@3.4.1/dist/tailwind.min.css" crossorigin="anonymous">
+<style>
+  /* Shadcn UI CSS Variables */
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.5rem;
+  }
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+  }
+  /* Base styles */
+  body {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+</style>`;
+
+    // Inject Tailwind CSS link SYNCHRONOUSLY in head (before any scripts)
+    html = html.replace('<head>', `<head>\n${tailwindCSS}`);
+
+    // Inject CSS (additional custom styles)
     if (css) {
       const styleTag = `<style>${css}</style>`;
       html = html.replace('</head>', `${styleTag}\n</head>`);

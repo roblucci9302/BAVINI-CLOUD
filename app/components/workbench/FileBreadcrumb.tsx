@@ -1,10 +1,10 @@
 'use client';
 
-import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu';
 import { AnimatePresence, motion, type Variants } from 'framer-motion';
 import { memo, useEffect, useRef, useState } from 'react';
 import type { FileMap } from '~/lib/stores/files';
-import { classNames } from '~/utils/classNames';
+import { cn } from '~/lib/utils';
 import { WORK_DIR } from '~/utils/constants';
 import { cubicEasingFn } from '~/utils/easings';
 import { renderLogger } from '~/utils/logger';
@@ -86,11 +86,11 @@ export const FileBreadcrumb = memo<FileBreadcrumbProps>(({ files, pathSegments =
 
         return (
           <div key={index} className="relative flex items-center">
-            <DropdownMenu.Root open={isActive} modal={false}>
-              <DropdownMenu.Trigger asChild>
+            <DropdownMenuPrimitive.Root open={isActive} modal={false}>
+              <DropdownMenuPrimitive.Trigger asChild>
                 <span
                   ref={(ref) => { segmentRefs.current[index] = ref; }}
-                  className={classNames('flex items-center gap-1.5 cursor-pointer shrink-0', {
+                  className={cn('flex items-center gap-1.5 cursor-pointer shrink-0', {
                     'text-bolt-elements-textTertiary hover:text-bolt-elements-textPrimary': !isActive,
                     'text-bolt-elements-textPrimary underline': isActive,
                     'pr-4': isLast,
@@ -100,12 +100,12 @@ export const FileBreadcrumb = memo<FileBreadcrumbProps>(({ files, pathSegments =
                   {isLast && <div className="i-ph:file-duotone" />}
                   {segment}
                 </span>
-              </DropdownMenu.Trigger>
+              </DropdownMenuPrimitive.Trigger>
               {index > 0 && !isLast && <span className="i-ph:caret-right inline-block mx-1" />}
               <AnimatePresence>
                 {isActive && (
-                  <DropdownMenu.Portal>
-                    <DropdownMenu.Content
+                  <DropdownMenuPrimitive.Portal>
+                    <DropdownMenuPrimitive.Content
                       className="z-file-tree-breadcrumb"
                       asChild
                       align="start"
@@ -135,13 +135,13 @@ export const FileBreadcrumb = memo<FileBreadcrumbProps>(({ files, pathSegments =
                             />
                           </div>
                         </div>
-                        <DropdownMenu.Arrow className="fill-bolt-elements-borderColor" />
+                        <DropdownMenuPrimitive.Arrow className="fill-bolt-elements-borderColor" />
                       </motion.div>
-                    </DropdownMenu.Content>
-                  </DropdownMenu.Portal>
+                    </DropdownMenuPrimitive.Content>
+                  </DropdownMenuPrimitive.Portal>
                 )}
               </AnimatePresence>
-            </DropdownMenu.Root>
+            </DropdownMenuPrimitive.Root>
           </div>
         );
       })}

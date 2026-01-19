@@ -7,7 +7,7 @@ import { classNames } from '~/utils/classNames';
 import { cubicEasingFn } from '~/utils/easings';
 import { IconButton } from './IconButton';
 
-export { Close as DialogClose, Root as DialogRoot } from '@radix-ui/react-dialog';
+export { Close as DialogClose, Root as DialogRoot, Trigger as DialogTrigger, Portal as DialogPortal } from '@radix-ui/react-dialog';
 
 const transition = {
   duration: 0.15,

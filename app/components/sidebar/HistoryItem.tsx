@@ -1,8 +1,8 @@
 'use client';
 
-import * as Dialog from '@radix-ui/react-dialog';
 import { useEffect, useRef, useState } from 'react';
 import { type ChatHistoryItem } from '~/lib/persistence';
+import { DialogTrigger } from '~/components/ui/Dialog';
 
 interface HistoryItemProps {
   item: ChatHistoryItem;
@@ -47,7 +47,7 @@ export function HistoryItem({ item, onDelete }: HistoryItemProps) {
         <div className="absolute right-0 z-1 top-0 bottom-0 bg-gradient-to-l from-bolt-elements-background-depth-2 group-hover:from-bolt-elements-background-depth-3 to-transparent w-10 flex justify-end group-hover:w-15 group-hover:from-45%">
           {hovering && (
             <div className="flex items-center p-1 text-bolt-elements-textSecondary hover:text-bolt-elements-item-contentDanger">
-              <Dialog.Trigger asChild>
+              <DialogTrigger asChild>
                 <button
                   className="i-ph:trash scale-110"
                   title="Supprimer la conversation"
@@ -58,7 +58,7 @@ export function HistoryItem({ item, onDelete }: HistoryItemProps) {
                     onDelete?.(event);
                   }}
                 />
-              </Dialog.Trigger>
+              </DialogTrigger>
             </div>
           )}
         </div>

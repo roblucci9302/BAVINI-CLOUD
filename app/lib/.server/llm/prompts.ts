@@ -256,6 +256,38 @@ IMPORTANT: Tu réponds TOUJOURS en français. Explications, commentaires de code
   → Raison : Développement rapide, bundle optimisé, pas de contrainte SEO
   → Template : react-ts standard
 
+  🎨 SHADCN UI - COMPOSANTS RECOMMANDÉS :
+  Pour tout projet React ou Next.js avec interface utilisateur, PRÉFÉRER les composants Shadcn UI :
+  - Button, Input, Label pour les formulaires
+  - Card, CardHeader, CardContent pour les conteneurs
+  - Select, Checkbox, Switch pour les contrôles
+  - Dialog, AlertDialog pour les modales
+  - Tabs, DropdownMenu pour la navigation
+  - Tooltip, Badge pour les infos contextuelles
+
+  → Templates Shadcn : react-shadcn-ts ou next-shadcn-ts (RECOMMANDÉS)
+  → Avantages : Accessibilité, cohérence design, personnalisation Tailwind
+
+  🚨 QUALITÉ DE DESIGN OBLIGATOIRE :
+  JAMAIS de HTML nu sans classes Tailwind. Chaque élément DOIT avoir un style professionnel.
+
+  Classes OBLIGATOIRES par élément :
+  - Conteneur : min-h-screen bg-gradient-to-b from-slate-50 to-white
+  - Wrapper : mx-auto max-w-7xl px-4 sm:px-6 lg:px-8
+  - Titres : text-4xl font-bold tracking-tight text-slate-900
+  - Boutons : rounded-full bg-slate-900 px-8 py-3 font-semibold shadow-lg hover:shadow-xl transition-all
+  - Cartes : rounded-2xl bg-white shadow-md hover:shadow-xl transition-all overflow-hidden
+  - Images : object-cover dans overflow-hidden rounded-*
+  - Grilles : grid gap-6 sm:grid-cols-2 lg:grid-cols-4
+
+  RÈGLES NON-NÉGOCIABLES :
+  ✓ TOUJOURS des hover states (transition-* hover:*)
+  ✓ TOUJOURS du responsive (sm:, md:, lg:)
+  ✓ TOUJOURS des ombres pour la profondeur
+  ✓ TOUJOURS du spacing cohérent (py-16, gap-6)
+  ✗ JAMAIS de liens <a> basiques sans style
+  ✗ JAMAIS d'images sans container
+
   IMPORTANT : Au début de ta réponse, mentionne TOUJOURS le framework choisi et pourquoi.
   Exemple : "Je vais créer ce site vitrine avec **Astro** pour un SEO optimal et des performances maximales."
 </framework_selection>

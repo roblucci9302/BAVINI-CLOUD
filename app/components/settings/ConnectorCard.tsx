@@ -12,9 +12,13 @@ import {
   disconnectOAuthConnector,
 } from '~/lib/stores/connectors';
 import { validateConnector, hasValidator } from '~/lib/connectors';
-import { classNames } from '~/utils/classNames';
+import { cn } from '~/lib/utils';
 import { cubicEasingFn } from '~/utils/easings';
 import { ConnectorIcon } from './ConnectorIcon';
+// Shadcn UI Components
+import { Button } from '~/components/ui/Button';
+import { Input } from '~/components/ui/Input';
+import { Label } from '~/components/ui/Label';
 import { Spinner } from '~/components/ui/Spinner';
 
 const transition = { duration: 0.2, ease: cubicEasingFn };
@@ -95,7 +99,7 @@ export const ConnectorCard = memo(({ connector, isConnected = false }: Connector
 
   return (
     <div
-      className={classNames(
+      className={cn(
         'border rounded-lg overflow-hidden transition-colors',
         isConnected
           ? 'border-green-500/30 bg-green-500/5'
@@ -114,7 +118,7 @@ export const ConnectorCard = memo(({ connector, isConnected = false }: Connector
         </div>
 
         <button
-          className={classNames(
+          className={cn(
             'px-2.5 py-1 text-xs rounded-md transition-colors flex items-center gap-1.5',
             isConnected
               ? 'text-bolt-elements-textTertiary hover:text-red-400'
@@ -149,18 +153,18 @@ export const ConnectorCard = memo(({ connector, isConnected = false }: Connector
                 {connector.fields.map((field) => {
                   const inputId = `connector-${connector.id}-${field.key}`;
                   return (
-                    <div key={field.key}>
-                      <label htmlFor={inputId} className="block text-xs text-bolt-elements-textSecondary mb-1">
+                    <div key={field.key} className="space-y-1">
+                      <Label htmlFor={inputId} className="text-xs">
                         {field.label}
                         {field.required && <span className="text-red-400 ml-0.5">*</span>}
-                      </label>
-                      <input
+                      </Label>
+                      <Input
                         id={inputId}
                         type={field.type === 'password' ? 'password' : 'text'}
                         value={formData[field.key] || ''}
                         onChange={(e) => handleInputChange(field.key, e.target.value)}
                         placeholder={field.placeholder}
-                        className="w-full px-2.5 py-1.5 text-sm bg-bolt-elements-background-depth-1 border border-bolt-elements-borderColor rounded-md text-bolt-elements-textPrimary placeholder-bolt-elements-textTertiary focus:outline-none focus:border-accent-500 transition-colors"
+                        className="h-8 text-sm"
                         required={field.required}
                       />
                     </div>
@@ -185,20 +189,23 @@ export const ConnectorCard = memo(({ connector, isConnected = false }: Connector
               </AnimatePresence>
 
               <div className="flex gap-2 justify-end">
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => setIsExpanded(false)}
-                  className="px-2.5 py-1 text-xs rounded-md text-bolt-elements-textTertiary hover:text-bolt-elements-textSecondary transition-colors"
                 >
                   Annuler
-                </button>
-                <button
+                </Button>
+                <Button
                   type="submit"
+                  variant="primary"
+                  size="sm"
                   disabled={isSubmitting}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-bolt-elements-sidebar-buttonBackgroundDefault text-bolt-elements-sidebar-buttonText hover:bg-bolt-elements-sidebar-buttonBackgroundHover rounded-md transition-theme disabled:opacity-50 text-xs font-medium"
+                  isLoading={isSubmitting}
                 >
-                  {isSubmitting ? <Spinner size="sm" /> : 'Connecter'}
-                </button>
+                  Connecter
+                </Button>
               </div>
             </form>
           </motion.div>

@@ -3,7 +3,7 @@
 import { memo } from 'react';
 import { classNames } from '~/utils/classNames';
 
-interface PanelHeaderButtonProps {
+export interface PanelHeaderButtonProps {
   className?: string;
   disabledClassName?: string;
   disabled?: boolean;

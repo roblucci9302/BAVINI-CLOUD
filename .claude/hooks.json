@@ -1,0 +1,89 @@
+{
+  "$schema": "https://claude.ai/schemas/hooks.json",
+  "description": "BAVINI Claude Code Hooks",
+
+  "hooks": {
+    "PreToolUse": [
+      {
+        "name": "dev-server-reminder",
+        "description": "Rappel d'utiliser tmux pour les serveurs de dev",
+        "matcher": "Bash && command =~ (pnpm|npm|yarn|bun)\\s+(dev|start)",
+        "action": {
+          "type": "message",
+          "content": "💡 Conseil: Lancez les serveurs de dev dans tmux pour garder les logs accessibles:\n  tmux new-session -d -s dev 'pnpm dev'"
+        }
+      },
+      {
+        "name": "git-push-review",
+        "description": "Rappel de review avant push",
+        "matcher": "Bash && command =~ git\\s+push",
+        "action": {
+          "type": "confirm",
+          "message": "Avez-vous vérifié les changements avant de push?\n- pnpm typecheck\n- pnpm test\n- Pas de secrets dans le code"
+        }
+      },
+      {
+        "name": "prevent-force-push-main",
+        "description": "Bloquer force push sur main",
+        "matcher": "Bash && command =~ git\\s+push.*--force.*main",
+        "action": {
+          "type": "block",
+          "message": "⛔ Force push sur main est interdit!"
+        }
+      }
+    ],
+
+    "PostToolUse": [
+      {
+        "name": "typecheck-on-edit",
+        "description": "Vérification TypeScript après édition",
+        "matcher": "(Edit || Write) && file_path =~ \\.(ts|tsx)$",
+        "action": {
+          "type": "command",
+          "command": "pnpm typecheck --noEmit 2>&1 | head -20",
+          "silent": false,
+          "on_error": "warn"
+        }
+      },
+      {
+        "name": "console-log-warning",
+        "description": "Alerter sur console.log dans le code",
+        "matcher": "(Edit || Write) && file_path =~ \\.(ts|tsx)$ && content =~ console\\.log",
+        "action": {
+          "type": "message",
+          "content": "⚠️ console.log détecté. Utilisez createScopedLogger() pour la production."
+        }
+      },
+      {
+        "name": "security-check-api-routes",
+        "description": "Rappel sécurité pour les routes API",
+        "matcher": "(Edit || Write) && file_path =~ app/routes/api",
+        "action": {
+          "type": "message",
+          "content": "🔒 Route API modifiée. Vérifiez:\n- Input validation (Zod)\n- Authentication\n- Rate limiting\n- Error handling"
+        }
+      },
+      {
+        "name": "test-reminder",
+        "description": "Rappel de tests après modification de lib/",
+        "matcher": "(Edit || Write) && file_path =~ app/lib/.*\\.(ts|tsx)$ && !(file_path =~ \\.spec\\.)",
+        "action": {
+          "type": "message",
+          "content": "📝 N'oubliez pas d'ajouter/mettre à jour les tests pour ce fichier."
+        }
+      }
+    ],
+
+    "Stop": [
+      {
+        "name": "final-checks",
+        "description": "Vérifications finales avant fin de session",
+        "action": {
+          "type": "command",
+          "command": "echo '🔍 Vérifications finales...' && git diff --name-only 2>/dev/null | head -10",
+          "silent": false
+        }
+      }
+    ]
+  }
+}

@@ -79,6 +79,71 @@ Chaque template inclut :
 - **Effects**: TextGradientAnimated, CursorGlow, ScrollReveal
 - **Forms**: InputFloatingLabel
 
+### 🎨 SHADCN UI - COMPOSANTS RECOMMANDÉS (PRIORITAIRE)
+
+⭐ **PRÉFÉRER SHADCN UI** pour tous les composants de formulaire et UI de base.
+
+**Pourquoi Shadcn UI ?**
+- Composants accessibles (a11y) par défaut
+- Design professionnel et cohérent
+- Facile à personnaliser via Tailwind
+- Support dark mode intégré
+
+**Composants Shadcn UI à utiliser :**
+| Besoin | Composant Shadcn | Import |
+|--------|------------------|--------|
+| Boutons | Button | \`@/components/ui/button\` |
+| Champs texte | Input | \`@/components/ui/input\` |
+| Labels | Label | \`@/components/ui/label\` |
+| Cartes | Card, CardHeader, CardContent | \`@/components/ui/card\` |
+| Sélecteur | Select, SelectTrigger, SelectContent | \`@/components/ui/select\` |
+| Cases à cocher | Checkbox | \`@/components/ui/checkbox\` |
+| Boutons toggle | Switch | \`@/components/ui/switch\` |
+| Onglets | Tabs, TabsList, TabsTrigger | \`@/components/ui/tabs\` |
+| Infobulles | Tooltip | \`@/components/ui/tooltip\` |
+| Modales | Dialog | \`@/components/ui/dialog\` |
+| Menus déroulants | DropdownMenu | \`@/components/ui/dropdown-menu\` |
+| Alertes | Alert, AlertDialog | \`@/components/ui/alert\` |
+| Badges | Badge | \`@/components/ui/badge\` |
+| Séparateurs | Separator | \`@/components/ui/separator\` |
+
+**Exemple d'utilisation Shadcn UI :**
+\`\`\`tsx
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+
+export function LoginForm() {
+  return (
+    <Card className="w-[400px]">
+      <CardHeader>
+        <CardTitle>Connexion</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="email">Email</Label>
+          <Input id="email" type="email" placeholder="email@exemple.com" />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="password">Mot de passe</Label>
+          <Input id="password" type="password" />
+        </div>
+        <Button className="w-full">Se connecter</Button>
+      </CardContent>
+    </Card>
+  )
+}
+\`\`\`
+
+**Installation Shadcn UI (si pas déjà présent) :**
+\`\`\`bash
+npx shadcn@latest init
+npx shadcn@latest add button input label card
+\`\`\`
+
+⚠️ **RÈGLE SHADCN UI** : Pour les projets React/Next.js avec UI, TOUJOURS proposer d'utiliser Shadcn UI sauf si l'utilisateur demande explicitement autre chose.
+
 ⚠️ RÈGLES DE DESIGN :
 - TOUJOURS utiliser Tailwind CSS pour le styling
 - TOUJOURS ajouter framer-motion pour les animations
@@ -86,6 +151,105 @@ Chaque template inclut :
 - Utiliser des micro-animations subtiles (pas flashy)
 - Assurer le contraste WCAG AA minimum
 - Créer des designs MODERNES et PROFESSIONNELS, pas basiques
+
+## 🚨 QUALITÉ DE DESIGN OBLIGATOIRE - CODE PROFESSIONNEL VS AMATEUR
+
+### ❌ CE QUE TU NE DOIS JAMAIS GÉNÉRER (AMATEUR) :
+\`\`\`tsx
+// ❌ INTERDIT - Code amateur sans style
+<div>
+  <h1>Bienvenue</h1>
+  <a href="/products">Voir les produits</a>
+  <div>
+    <img src="product.jpg" />
+    <span>T-shirt</span>
+    <span>29€</span>
+  </div>
+</div>
+\`\`\`
+
+### ✅ CE QUE TU DOIS TOUJOURS GÉNÉRER (PROFESSIONNEL) :
+\`\`\`tsx
+// ✅ OBLIGATOIRE - Code professionnel avec Tailwind
+<div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
+  {/* Hero Section */}
+  <section className="relative overflow-hidden px-4 py-20 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-7xl">
+      <div className="text-center">
+        <h1 className="text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl lg:text-6xl">
+          Collection Été 2026
+        </h1>
+        <p className="mx-auto mt-4 max-w-2xl text-lg text-slate-600">
+          Découvrez nos dernières tendances mode
+        </p>
+        <div className="mt-8 flex justify-center gap-4">
+          <button className="rounded-full bg-slate-900 px-8 py-3 text-sm font-semibold text-white shadow-lg transition-all hover:bg-slate-800 hover:shadow-xl">
+            Voir la collection
+          </button>
+          <button className="rounded-full border border-slate-300 px-8 py-3 text-sm font-semibold text-slate-900 transition-all hover:border-slate-400 hover:bg-slate-50">
+            En savoir plus
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {/* Products Grid */}
+  <section className="px-4 py-16 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-7xl">
+      <h2 className="text-2xl font-bold text-slate-900">Produits populaires</h2>
+      <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        {products.map((product) => (
+          <div key={product.id} className="group relative overflow-hidden rounded-2xl bg-white shadow-md transition-all hover:shadow-xl">
+            <div className="aspect-square overflow-hidden">
+              <img
+                src={product.image}
+                alt={product.name}
+                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+              />
+            </div>
+            <div className="p-4">
+              <h3 className="font-medium text-slate-900">{product.name}</h3>
+              <p className="mt-1 text-lg font-semibold text-slate-900">{product.price}€</p>
+            </div>
+            <button className="absolute bottom-4 right-4 rounded-full bg-slate-900 p-2 text-white opacity-0 transition-opacity group-hover:opacity-100">
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+</div>
+\`\`\`
+
+### 📋 CHECKLIST DESIGN OBLIGATOIRE (À VÉRIFIER AVANT CHAQUE RÉPONSE) :
+
+| Élément | Classes Tailwind OBLIGATOIRES |
+|---------|-------------------------------|
+| **Conteneur principal** | \`min-h-screen\`, \`bg-*\` ou \`bg-gradient-*\` |
+| **Wrapper contenu** | \`mx-auto max-w-7xl px-4 sm:px-6 lg:px-8\` |
+| **Titres** | \`text-2xl/3xl/4xl font-bold tracking-tight\` |
+| **Texte secondaire** | \`text-slate-600\` ou \`text-muted-foreground\` |
+| **Boutons primaires** | \`rounded-* bg-* px-6 py-3 font-semibold shadow-* hover:*\` |
+| **Cartes** | \`rounded-xl/2xl bg-white shadow-md hover:shadow-xl transition-all\` |
+| **Images** | \`rounded-* object-cover\` dans container \`overflow-hidden\` |
+| **Grilles** | \`grid gap-* sm:grid-cols-2 lg:grid-cols-3/4\` |
+| **Espacement sections** | \`py-12/16/20\` entre sections |
+| **Hover states** | \`transition-* hover:*\` sur TOUS les éléments interactifs |
+
+### 🎯 RÈGLES DE QUALITÉ NON-NÉGOCIABLES :
+
+1. **JAMAIS de HTML nu** - Chaque élément DOIT avoir des classes Tailwind
+2. **JAMAIS de liens <a> basiques** - Utiliser des boutons stylisés
+3. **JAMAIS d'images sans container** - Toujours \`overflow-hidden rounded-*\`
+4. **TOUJOURS des transitions** - \`transition-all\` ou \`transition-colors\`
+5. **TOUJOURS du responsive** - \`sm:\`, \`md:\`, \`lg:\` pour les breakpoints
+6. **TOUJOURS des hover states** - Animation au survol sur les éléments cliquables
+7. **TOUJOURS du spacing cohérent** - Utiliser la scale Tailwind (4, 6, 8, 12, 16, 20)
+8. **TOUJOURS des ombres** - \`shadow-sm/md/lg/xl\` pour la profondeur
 
 ⚠️ RÈGLES NEXT.JS / REACT SERVER COMPONENTS :
 - TOUJOURS ajouter \`'use client';\` en PREMIÈRE LIGNE des fichiers qui utilisent :
