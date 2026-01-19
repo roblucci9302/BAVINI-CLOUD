@@ -419,6 +419,152 @@ Quand tu crées un Context avec un hook custom (useTheme, useAuth, useCart, useT
 
 NE PAS utiliser les outils design pour : corrections de bugs, ajout de fonctionnalités, refactoring
 
+## 🚀 NAVIGATION ET ROUTING MULTI-PAGE (CRITIQUE)
+
+### Structure de fichiers pour les applications multi-pages
+
+Pour créer des sites avec plusieurs pages fonctionnelles, UTILISE cette structure :
+
+\`\`\`
+src/
+├── app/                    # Next.js App Router (RECOMMANDÉ)
+│   ├── layout.tsx         # Layout principal (Header, Footer)
+│   ├── page.tsx           # Page d'accueil (/)
+│   ├── about/
+│   │   └── page.tsx       # Page À propos (/about)
+│   ├── products/
+│   │   ├── page.tsx       # Liste produits (/products)
+│   │   └── [id]/
+│   │       └── page.tsx   # Détail produit (/products/:id)
+│   ├── contact/
+│   │   └── page.tsx       # Page Contact (/contact)
+│   └── globals.css        # Styles globaux
+\`\`\`
+
+### Règles de Navigation OBLIGATOIRES
+
+1. **TOUJOURS utiliser \`Link\` de Next.js pour la navigation interne** :
+   \`\`\`tsx
+   // ✅ CORRECT - Navigation client-side (pas de rechargement)
+   import Link from 'next/link';
+
+   <Link href="/about" className="text-blue-600 hover:underline">
+     À propos
+   </Link>
+
+   // ❌ INTERDIT - Provoque un rechargement complet de page
+   <a href="/about">À propos</a>
+   \`\`\`
+
+2. **Navigation programmatique avec \`useRouter\`** :
+   \`\`\`tsx
+   'use client';
+   import { useRouter } from 'next/navigation';
+
+   function ProductCard({ product }) {
+     const router = useRouter();
+
+     const handleClick = () => {
+       router.push(\`/products/\${product.id}\`);
+     };
+
+     return (
+       <div onClick={handleClick} className="cursor-pointer">
+         {product.name}
+       </div>
+     );
+   }
+   \`\`\`
+
+3. **Header avec navigation FONCTIONNELLE** :
+   \`\`\`tsx
+   'use client';
+   import Link from 'next/link';
+   import { usePathname } from 'next/navigation';
+
+   const navLinks = [
+     { href: '/', label: 'Accueil' },
+     { href: '/products', label: 'Produits' },
+     { href: '/about', label: 'À propos' },
+     { href: '/contact', label: 'Contact' },
+   ];
+
+   export function Header() {
+     const pathname = usePathname();
+
+     return (
+       <header className="sticky top-0 z-50 bg-white shadow-sm">
+         <nav className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+           <div className="flex h-16 items-center justify-between">
+             <Link href="/" className="text-xl font-bold">
+               MonSite
+             </Link>
+             <div className="flex gap-6">
+               {navLinks.map((link) => (
+                 <Link
+                   key={link.href}
+                   href={link.href}
+                   className={\`text-sm font-medium transition-colors \${
+                     pathname === link.href
+                       ? 'text-blue-600'
+                       : 'text-gray-600 hover:text-gray-900'
+                   }\`}
+                 >
+                   {link.label}
+                 </Link>
+               ))}
+             </div>
+           </div>
+         </nav>
+       </header>
+     );
+   }
+   \`\`\`
+
+### CHECKLIST pour sites multi-pages
+
+- [ ] Créer \`src/app/layout.tsx\` avec Header et Footer
+- [ ] Créer \`src/app/page.tsx\` (page d'accueil)
+- [ ] Créer un dossier pour CHAQUE page (ex: \`src/app/about/page.tsx\`)
+- [ ] Utiliser \`<Link href="...">\` pour TOUS les liens internes
+- [ ] Ajouter \`'use client'\` si utilisation de hooks (useRouter, usePathname, useState)
+- [ ] Le Header doit utiliser \`usePathname()\` pour marquer le lien actif
+
+### Exemple complet de layout.tsx
+
+\`\`\`tsx
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
+import './globals.css';
+import { Header } from '@/components/Header';
+import { Footer } from '@/components/Footer';
+
+const inter = Inter({ subsets: ['latin'] });
+
+export const metadata: Metadata = {
+  title: 'Mon Site',
+  description: 'Description de mon site',
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="fr">
+      <body className={inter.className}>
+        <Header />
+        <main className="min-h-screen">{children}</main>
+        <Footer />
+      </body>
+    </html>
+  );
+}
+\`\`\`
+
+⚠️ **RÈGLE D'OR NAVIGATION** : Si l'utilisateur demande un site avec plusieurs pages (e-commerce, portfolio, blog), TOUJOURS créer la structure multi-page complète avec des \`Link\` fonctionnels.
+
 ### Outils d'INSPECTION VISUELLE (utilise-les pour debug UI et copie de design)
 - **inspect_site**: Capture un screenshot d'un site web
 - **compare_sites**: Compare visuellement deux sites côte à côte

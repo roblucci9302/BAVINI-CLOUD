@@ -34,6 +34,12 @@ import {
   type FrameworkType,
 } from './compilers/compiler-registry';
 import type { TailwindCompiler, ContentFile } from './compilers/tailwind-compiler';
+import {
+  detectRoutingNeeds,
+  detectRoutesFromFiles,
+  type RouteDefinition,
+  type RouterConfig,
+} from './plugins/router-plugin';
 
 const logger = createScopedLogger('BrowserBuildAdapter');
 
@@ -742,17 +748,59 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
       export default Image;
     `,
     'next/link': `
-      // Browser shim for next/link
+      // Browser shim for next/link - Uses HASH-BASED routing for Blob URL compatibility
       import React from 'react';
 
-      function Link({ href, children, className, style, onClick, ...props }) {
+      // Get current path from hash (for Blob URL routing)
+      function getHashPath() {
+        const hash = window.location.hash || '#/';
+        return hash.startsWith('#') ? hash.slice(1) || '/' : '/';
+      }
+
+      // Global navigation handler using hash routing
+      window.__BAVINI_NAVIGATE__ = window.__BAVINI_NAVIGATE__ || ((url, options = {}) => {
+        const newHash = '#' + (url.startsWith('/') ? url : '/' + url);
+        if (options.replace) {
+          window.location.replace(newHash);
+        } else {
+          window.location.hash = newHash;
+        }
+        // Dispatch custom event for listeners
+        window.dispatchEvent(new CustomEvent('bavini-navigate', { detail: { path: url } }));
+      });
+
+      function Link({ href, children, className, style, onClick, prefetch, replace, scroll, ...props }) {
+        const resolvedHref = typeof href === 'object' ? href.pathname + (href.search || '') + (href.hash || '') : href;
+
         const handleClick = (e) => {
+          // Allow default behavior for external links or modified clicks
+          if (
+            e.defaultPrevented ||
+            e.button !== 0 ||
+            e.metaKey ||
+            e.ctrlKey ||
+            e.shiftKey ||
+            e.altKey ||
+            (resolvedHref && (resolvedHref.startsWith('http') || resolvedHref.startsWith('mailto:') || resolvedHref.startsWith('tel:')))
+          ) {
+            return;
+          }
+
+          e.preventDefault();
           if (onClick) onClick(e);
-          // For browser preview, just use normal anchor behavior
+
+          // Use hash-based navigation (works in Blob URLs)
+          window.__BAVINI_NAVIGATE__(resolvedHref, { replace: !!replace });
+
+          // Scroll to top if needed
+          if (scroll !== false) {
+            window.scrollTo(0, 0);
+          }
         };
 
+        // Display href as normal path, but navigate via hash
         return React.createElement('a', {
-          href: typeof href === 'object' ? href.pathname : href,
+          href: '#' + (resolvedHref.startsWith('/') ? resolvedHref : '/' + resolvedHref),
           className,
           style,
           onClick: handleClick,
@@ -763,50 +811,120 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
       export default Link;
     `,
     'next/navigation': `
-      // Browser shim for next/navigation
+      // Browser shim for next/navigation - HASH-BASED routing for Blob URL compatibility
+      import { useState, useEffect, useSyncExternalStore, useCallback } from 'react';
+
+      // Get current path from hash
+      function getHashPath() {
+        const hash = window.location.hash || '#/';
+        const path = hash.startsWith('#') ? hash.slice(1) : '/';
+        // Parse path and search params
+        const [pathname, search] = path.split('?');
+        return { pathname: pathname || '/', search: search ? '?' + search : '' };
+      }
+
+      // Navigation state store
+      const listeners = new Set();
+
+      function subscribe(listener) {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      }
+
+      function notifyListeners() {
+        listeners.forEach(listener => listener());
+      }
+
+      // Listen for hash changes and custom navigation events
+      if (typeof window !== 'undefined') {
+        window.addEventListener('hashchange', notifyListeners);
+        window.addEventListener('bavini-navigate', notifyListeners);
+
+        // Set global navigation handler using hash routing
+        window.__BAVINI_NAVIGATE__ = window.__BAVINI_NAVIGATE__ || ((url, options = {}) => {
+          const newHash = '#' + (url.startsWith('/') ? url : '/' + url);
+          if (options.replace) {
+            window.location.replace(newHash);
+          } else {
+            window.location.hash = newHash;
+          }
+          notifyListeners();
+        });
+      }
+
       export function useRouter() {
+        const navigate = useCallback((url, options = {}) => {
+          if (typeof window !== 'undefined' && window.__BAVINI_NAVIGATE__) {
+            window.__BAVINI_NAVIGATE__(url, options);
+          }
+        }, []);
+
         return {
-          push: (url) => { window.location.href = url; },
-          replace: (url) => { window.location.replace(url); },
+          push: (url, options) => navigate(url, { ...options, replace: false }),
+          replace: (url, options) => navigate(url, { ...options, replace: true }),
           back: () => { window.history.back(); },
           forward: () => { window.history.forward(); },
-          refresh: () => { window.location.reload(); },
+          refresh: () => { notifyListeners(); },
           prefetch: () => Promise.resolve(),
         };
       }
 
       export function usePathname() {
-        return typeof window !== 'undefined' ? window.location.pathname : '/';
+        return useSyncExternalStore(
+          subscribe,
+          () => typeof window !== 'undefined' ? getHashPath().pathname : '/',
+          () => '/'
+        );
       }
 
       export function useSearchParams() {
-        const params = typeof window !== 'undefined'
-          ? new URLSearchParams(window.location.search)
-          : new URLSearchParams();
-        return {
-          get: (key) => params.get(key),
-          getAll: (key) => params.getAll(key),
-          has: (key) => params.has(key),
-          keys: () => params.keys(),
-          values: () => params.values(),
-          entries: () => params.entries(),
-          forEach: (fn) => params.forEach(fn),
-          toString: () => params.toString(),
-        };
+        const [params, setParams] = useState(() => {
+          if (typeof window === 'undefined') return new URLSearchParams();
+          const { search } = getHashPath();
+          return new URLSearchParams(search);
+        });
+
+        useEffect(() => {
+          const unsubscribe = subscribe(() => {
+            const { search } = getHashPath();
+            setParams(new URLSearchParams(search));
+          });
+          return unsubscribe;
+        }, []);
+
+        return params;
       }
 
       export function useParams() {
-        return {};
+        // Get route params set by BaviniRouter
+        const [params, setParams] = useState(() =>
+          typeof window !== 'undefined' && window.__BAVINI_ROUTE_PARAMS__
+            ? window.__BAVINI_ROUTE_PARAMS__
+            : {}
+        );
+
+        useEffect(() => {
+          const unsubscribe = subscribe(() => {
+            setParams(window.__BAVINI_ROUTE_PARAMS__ || {});
+          });
+          return unsubscribe;
+        }, []);
+
+        return params;
       }
 
       export function notFound() {
-        throw new Error('Not Found');
+        throw new Error('NEXT_NOT_FOUND');
       }
 
-      export function redirect(url) {
-        if (typeof window !== 'undefined') {
-          window.location.href = url;
+      export function redirect(url, type = 'replace') {
+        if (typeof window !== 'undefined' && window.__BAVINI_NAVIGATE__) {
+          window.__BAVINI_NAVIGATE__(url, { replace: type === 'replace' });
         }
+      }
+
+      export function permanentRedirect(url) {
+        redirect(url, 'replace');
       }
     `,
     'next': `
@@ -1213,33 +1331,40 @@ ${result.code}`;
    * Find a file in the virtual filesystem, trying various extensions
    */
   private findFile(path: string): string | null {
-    // Try exact path first
-    if (this._files.has(path)) {
-      return path;
+    // Normalize paths - files might be stored with or without leading /
+    const pathsToTry = [path];
+
+    // Also try without leading slash
+    if (path.startsWith('/')) {
+      pathsToTry.push(path.slice(1));
+    } else {
+      pathsToTry.push('/' + path);
     }
 
     // Try with common extensions (including framework-specific)
-    const extensions = ['.tsx', '.ts', '.jsx', '.js', '.vue', '.svelte', '.astro', '.json', '.css', '.mjs'];
+    const extensions = ['', '.tsx', '.ts', '.jsx', '.js', '.vue', '.svelte', '.astro', '.json', '.css', '.mjs'];
 
-    for (const ext of extensions) {
-      const pathWithExt = path + ext;
+    for (const basePath of pathsToTry) {
+      for (const ext of extensions) {
+        const pathWithExt = basePath + ext;
 
-      if (this._files.has(pathWithExt)) {
-        return pathWithExt;
+        if (this._files.has(pathWithExt)) {
+          return pathWithExt;
+        }
       }
-    }
 
-    // Try index files (including framework-specific)
-    const indexFiles = [
-      '/index.tsx', '/index.ts', '/index.jsx', '/index.js',
-      '/index.vue', '/index.svelte', '/index.astro'
-    ];
+      // Try index files (including framework-specific)
+      const indexFiles = [
+        '/index.tsx', '/index.ts', '/index.jsx', '/index.js',
+        '/index.vue', '/index.svelte', '/index.astro'
+      ];
 
-    for (const indexFile of indexFiles) {
-      const indexPath = path + indexFile;
+      for (const indexFile of indexFiles) {
+        const indexPath = basePath + indexFile;
 
-      if (this._files.has(indexPath)) {
-        return indexPath;
+        if (this._files.has(indexPath)) {
+          return indexPath;
+        }
       }
     }
 
@@ -1448,39 +1573,207 @@ ${result.code}`;
   }
 
   /**
-   * Create React bootstrap entry
+   * Create React bootstrap entry with routing support
    */
   private createReactBootstrapEntry(entryPath: string): string {
     // Get the content of the entry file to analyze it
     const entryContent = this._files.get(entryPath) || '';
 
     // Check if this is already a mounting entry file (contains ReactDOM.render or createRoot)
-    // These files don't export components - they just execute and mount the app
     const isMountingEntry = this.isMountingEntryFile(entryContent);
 
     if (isMountingEntry) {
-      // For mounting entry files, just import them for side effects
-      // The file will handle its own ReactDOM.createRoot().render() call
       logger.debug(`Entry ${entryPath} is a mounting file, importing for side effects`);
       return `import '${entryPath.replace(/\.tsx?$/, '')}';`;
     }
 
-    // Find the main page component (for Next.js style apps)
-    // Check both /app/page (Next.js App Router) and /src/app/page
-    const pagePath = this.findFile('/app/page') || this.findFile('/src/app/page');
+    // Detect routes from file structure
+    const filesList = Array.from(this._files.keys());
+    const detectedRoutes = detectRoutesFromFiles(filesList, this._files);
+    const hasMultiplePages = detectedRoutes.length > 1;
 
-    // Build import statements based on what files exist
+    // Check if project already has a router configured
+    const allContent = Array.from(this._files.values()).join('\n');
+    const hasExistingRouter =
+      allContent.includes('react-router-dom') ||
+      allContent.includes('BrowserRouter') ||
+      allContent.includes('@tanstack/react-router');
+
+    logger.debug('Bootstrap routing detection:', {
+      detectedRoutes: detectedRoutes.length,
+      hasMultiplePages,
+      hasExistingRouter,
+    });
+
+    // Find layout and page files
+    const layoutPath = entryPath;
+    const homePage = this.findFile('/app/page') || this.findFile('/src/app/page');
+
+    // Build import statements
     const imports: string[] = [
-      `import React from 'react';`,
+      `import React, { useState, useEffect, Suspense, lazy } from 'react';`,
       `import { createRoot } from 'react-dom/client';`,
     ];
 
     let appComponent = '';
+    let routerWrapper = '';
 
-    if (pagePath) {
-      // We have both layout and page (Next.js style)
-      imports.push(`import RootLayout from '${entryPath.replace(/\.tsx?$/, '')}';`);
-      imports.push(`import HomePage from '${pagePath.replace(/\.tsx?$/, '')}';`);
+    // Generate routing-aware bootstrap if multiple pages detected
+    if (hasMultiplePages && !hasExistingRouter) {
+      // Create route imports and components
+      const routeImports: string[] = [];
+      const routeComponents: string[] = [];
+
+      // Import layout if it exists
+      if (layoutPath && layoutPath.includes('layout')) {
+        imports.push(`import RootLayout from '${layoutPath.replace(/\.tsx?$/, '')}';`);
+      }
+
+      // Generate lazy imports for each page
+      detectedRoutes.forEach((route, index) => {
+        const componentName = `Page${index}`;
+        const importPath = route.component.replace(/\.tsx?$/, '');
+        routeImports.push(`const ${componentName} = lazy(() => import('${importPath}'));`);
+        routeComponents.push(`    { path: '${route.path}', component: ${componentName} }`);
+      });
+
+      imports.push(...routeImports);
+
+      // Create the router component with HASH-BASED routing for Blob URL compatibility
+      routerWrapper = `
+// BAVINI Client-Side Router - Hash-based for Blob URL support
+const routes = [
+${routeComponents.join(',\n')}
+];
+
+// Get path from hash (e.g., #/about -> /about)
+function getHashPath() {
+  const hash = window.location.hash || '#/';
+  const path = hash.startsWith('#') ? hash.slice(1) : '/';
+  return path.split('?')[0] || '/';
+}
+
+function BaviniRouter({ children, Layout }) {
+  const [currentPath, setCurrentPath] = useState(getHashPath);
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      setCurrentPath(getHashPath());
+    };
+
+    const handleNavigate = () => {
+      setCurrentPath(getHashPath());
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    window.addEventListener('bavini-navigate', handleNavigate);
+
+    // Override global navigation handler with hash routing
+    window.__BAVINI_NAVIGATE__ = (url, options = {}) => {
+      const newHash = '#' + (url.startsWith('/') ? url : '/' + url);
+      if (options.replace) {
+        window.location.replace(newHash);
+      } else {
+        window.location.hash = newHash;
+      }
+      setCurrentPath(url.split('?')[0].split('#')[0] || '/');
+    };
+
+    // Set initial hash if not present
+    if (!window.location.hash || window.location.hash === '#') {
+      window.location.hash = '#/';
+    }
+
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange);
+      window.removeEventListener('bavini-navigate', handleNavigate);
+    };
+  }, []);
+
+  // Find matching route
+  const matchRoute = (path) => {
+    const normalizedPath = path || '/';
+
+    // Exact match first
+    let match = routes.find(r => r.path === normalizedPath);
+    if (match) return { route: match, params: {} };
+
+    // Dynamic route matching (e.g., /products/:id)
+    for (const route of routes) {
+      if (route.path.includes(':')) {
+        const routeParts = route.path.split('/');
+        const pathParts = normalizedPath.split('/');
+
+        if (routeParts.length === pathParts.length) {
+          const params = {};
+          let isMatch = true;
+
+          for (let i = 0; i < routeParts.length; i++) {
+            if (routeParts[i].startsWith(':')) {
+              params[routeParts[i].slice(1)] = pathParts[i];
+            } else if (routeParts[i] !== pathParts[i]) {
+              isMatch = false;
+              break;
+            }
+          }
+
+          if (isMatch) {
+            return { route, params };
+          }
+        }
+      }
+    }
+
+    // Fallback to index route
+    return { route: routes.find(r => r.path === '/') || routes[0], params: {} };
+  };
+
+  const { route: currentRoute, params } = matchRoute(currentPath);
+  const PageComponent = currentRoute?.component;
+
+  // Store params globally for useParams hook
+  window.__BAVINI_ROUTE_PARAMS__ = params;
+
+  const content = PageComponent ? (
+    <Suspense fallback={<div style={{ padding: '20px', textAlign: 'center' }}>Loading...</div>}>
+      <PageComponent />
+    </Suspense>
+  ) : children;
+
+  if (Layout) {
+    return <Layout>{content}</Layout>;
+  }
+
+  return content;
+}
+`;
+
+      // Create the App component with router
+      if (layoutPath && layoutPath.includes('layout')) {
+        appComponent = `
+function App() {
+  return (
+    <BaviniRouter Layout={RootLayout}>
+      {/* Fallback content if no routes match */}
+      <div>Loading...</div>
+    </BaviniRouter>
+  );
+}`;
+      } else {
+        appComponent = `
+function App() {
+  return (
+    <BaviniRouter>
+      {/* Fallback content if no routes match */}
+      <div>Loading...</div>
+    </BaviniRouter>
+  );
+}`;
+      }
+    } else if (homePage) {
+      // Simple Next.js style: layout + single page (no routing needed yet)
+      imports.push(`import RootLayout from '${layoutPath.replace(/\.tsx?$/, '')}';`);
+      imports.push(`import HomePage from '${homePage.replace(/\.tsx?$/, '')}';`);
 
       appComponent = `
 function App() {
@@ -1491,7 +1784,7 @@ function App() {
   );
 }`;
     } else {
-      // Check if the entry exports a default or named component
+      // Standard single component app
       const hasDefaultExport = /export\s+default\s+/.test(entryContent);
       const hasNamedAppExport = /export\s+(function|const|class)\s+App/.test(entryContent);
 
@@ -1508,7 +1801,6 @@ function App() {
   return <MainComponent />;
 }`;
       } else {
-        // Fallback: try to find the main App component file
         const appFilePath = this.findFile('/src/App') || this.findFile('/App') || this.findFile('/components/App');
         if (appFilePath) {
           const appContent = this._files.get(appFilePath) || '';
@@ -1523,7 +1815,6 @@ function App() {
             imports.push(`import MainComponent from '${appFilePath.replace(/\.tsx?$/, '')}';`);
           }
         } else {
-          // Last resort: try default import
           imports.push(`import MainComponent from '${entryPath.replace(/\.tsx?$/, '')}';`);
         }
 
@@ -1537,7 +1828,7 @@ function App() {
     // Generate the bootstrap code
     return `
 ${imports.join('\n')}
-
+${routerWrapper}
 ${appComponent}
 
 // Mount the app
@@ -1827,6 +2118,7 @@ if (container) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base href="/">
   <title>BAVINI Preview</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
