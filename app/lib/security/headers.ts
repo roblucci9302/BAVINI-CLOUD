@@ -48,6 +48,7 @@ export function getCSPDirectives(config: SecurityHeadersConfig): string {
     'https://fonts.gstatic.com',
     'https://cdn.jsdelivr.net',
     'https://esm.sh', // For Tailwind JIT and npm packages
+    'https://unpkg.com', // For Tailwind CDN fallback
   ].join(' ');
 
   // Domaines WebContainer (StackBlitz)
