@@ -376,6 +376,424 @@ IMPORTANT: Tu réponds TOUJOURS en français. Explications, commentaires de code
      - Search avec filtrage local au minimum
 </multipage_routing>
 
+<ecommerce_functionality>
+  🛒 FONCTIONNALITÉS E-COMMERCE - OBLIGATOIRE pour sites marchands
+
+  Quand l'utilisateur demande un site e-commerce (boutique, shop, magasin), TOUJOURS implémenter :
+
+  1. PANIER FONCTIONNEL (CartContext obligatoire)
+     \`\`\`tsx
+     // src/providers/CartProvider.tsx
+     'use client';
+     import { createContext, useContext, useState, ReactNode } from 'react';
+
+     interface CartItem {
+       id: string;
+       name: string;
+       price: number;
+       quantity: number;
+       image?: string;
+     }
+
+     interface CartContextType {
+       items: CartItem[];
+       addItem: (item: Omit<CartItem, 'quantity'>) => void;
+       removeItem: (id: string) => void;
+       updateQuantity: (id: string, quantity: number) => void;
+       clearCart: () => void;
+       totalItems: number;
+       totalPrice: number;
+     }
+
+     const CartContext = createContext<CartContextType | null>(null);
+
+     export function CartProvider({ children }: { children: ReactNode }) {
+       const [items, setItems] = useState<CartItem[]>([]);
+
+       const addItem = (newItem: Omit<CartItem, 'quantity'>) => {
+         setItems(prev => {
+           const existing = prev.find(item => item.id === newItem.id);
+           if (existing) {
+             return prev.map(item =>
+               item.id === newItem.id
+                 ? { ...item, quantity: item.quantity + 1 }
+                 : item
+             );
+           }
+           return [...prev, { ...newItem, quantity: 1 }];
+         });
+       };
+
+       const removeItem = (id: string) => {
+         setItems(prev => prev.filter(item => item.id !== id));
+       };
+
+       const updateQuantity = (id: string, quantity: number) => {
+         if (quantity <= 0) {
+           removeItem(id);
+           return;
+         }
+         setItems(prev =>
+           prev.map(item =>
+             item.id === id ? { ...item, quantity } : item
+           )
+         );
+       };
+
+       const clearCart = () => setItems([]);
+
+       const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
+       const totalPrice = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+       return (
+         <CartContext.Provider value={{
+           items, addItem, removeItem, updateQuantity, clearCart, totalItems, totalPrice
+         }}>
+           {children}
+         </CartContext.Provider>
+       );
+     }
+
+     export function useCart() {
+       const context = useContext(CartContext);
+       if (!context) throw new Error('useCart must be used within CartProvider');
+       return context;
+     }
+     \`\`\`
+
+  2. BOUTONS "AJOUTER AU PANIER" FONCTIONNELS
+     \`\`\`tsx
+     'use client';
+     import { useCart } from '@/providers/CartProvider';
+
+     function ProductCard({ product }) {
+       const { addItem } = useCart();
+
+       return (
+         <div className="group relative rounded-2xl bg-white shadow-md">
+           {/* ... image et infos ... */}
+           <button
+             onClick={() => addItem({
+               id: product.id,
+               name: product.name,
+               price: product.price,
+               image: product.image
+             })}
+             className="w-full rounded-lg bg-slate-900 py-2 text-white hover:bg-slate-800"
+           >
+             Ajouter au panier
+           </button>
+         </div>
+       );
+     }
+     \`\`\`
+
+  3. ICÔNE PANIER AVEC COMPTEUR
+     \`\`\`tsx
+     'use client';
+     import { useCart } from '@/providers/CartProvider';
+     import Link from 'next/link';
+
+     function CartIcon() {
+       const { totalItems } = useCart();
+
+       return (
+         <Link href="/cart" className="relative">
+           <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+               d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+           </svg>
+           {totalItems > 0 && (
+             <span className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white">
+               {totalItems}
+             </span>
+           )}
+         </Link>
+       );
+     }
+     \`\`\`
+
+  4. PAGE PANIER AVEC MODIFICATION
+     \`\`\`tsx
+     'use client';
+     import { useCart } from '@/providers/CartProvider';
+
+     export default function CartPage() {
+       const { items, updateQuantity, removeItem, totalPrice } = useCart();
+
+       if (items.length === 0) {
+         return <div className="py-20 text-center">Votre panier est vide</div>;
+       }
+
+       return (
+         <div className="mx-auto max-w-4xl px-4 py-8">
+           {items.map(item => (
+             <div key={item.id} className="flex items-center justify-between border-b py-4">
+               <div className="flex items-center gap-4">
+                 {item.image && <img src={item.image} className="h-16 w-16 rounded object-cover" />}
+                 <div>
+                   <h3 className="font-medium">{item.name}</h3>
+                   <p className="text-slate-600">{item.price}€</p>
+                 </div>
+               </div>
+               <div className="flex items-center gap-3">
+                 <button onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                   className="h-8 w-8 rounded border">-</button>
+                 <span>{item.quantity}</span>
+                 <button onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                   className="h-8 w-8 rounded border">+</button>
+                 <button onClick={() => removeItem(item.id)}
+                   className="ml-4 text-red-500">Supprimer</button>
+               </div>
+             </div>
+           ))}
+           <div className="mt-6 text-right">
+             <p className="text-xl font-bold">Total: {totalPrice.toFixed(2)}€</p>
+             <button className="mt-4 rounded-lg bg-slate-900 px-8 py-3 text-white">
+               Commander
+             </button>
+           </div>
+         </div>
+       );
+     }
+     \`\`\`
+
+  5. WRAPPER OBLIGATOIRE DANS LAYOUT
+     \`\`\`tsx
+     // src/app/layout.tsx
+     import { CartProvider } from '@/providers/CartProvider';
+
+     export default function RootLayout({ children }) {
+       return (
+         <html lang="fr">
+           <body>
+             <CartProvider>
+               <Header />
+               <main>{children}</main>
+               <Footer />
+             </CartProvider>
+           </body>
+         </html>
+       );
+     }
+     \`\`\`
+
+  ⚠️ CHECKLIST E-COMMERCE OBLIGATOIRE :
+  - [ ] CartProvider créé et wrappé dans layout.tsx
+  - [ ] Boutons "Ajouter au panier" avec onClick fonctionnel
+  - [ ] Icône panier avec compteur dans le header
+  - [ ] Page /cart avec modification des quantités
+  - [ ] Boutons +/- qui fonctionnent
+  - [ ] Bouton "Supprimer" qui fonctionne
+  - [ ] Total qui se met à jour automatiquement
+</ecommerce_functionality>
+
+<form_validation>
+  📝 FORMULAIRES FONCTIONNELS - OBLIGATOIRE
+
+  TOUS les formulaires DOIVENT être interactifs. JAMAIS de formulaires statiques.
+
+  1. PATTERN OBLIGATOIRE POUR TOUT INPUT
+     \`\`\`tsx
+     'use client';
+     import { useState } from 'react';
+
+     function ContactForm() {
+       const [formData, setFormData] = useState({
+         name: '',
+         email: '',
+         message: ''
+       });
+       const [errors, setErrors] = useState<Record<string, string>>({});
+
+       const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+         const { name, value } = e.target;
+         setFormData(prev => ({ ...prev, [name]: value }));
+         // Effacer l'erreur quand l'utilisateur tape
+         if (errors[name]) {
+           setErrors(prev => ({ ...prev, [name]: '' }));
+         }
+       };
+
+       const validate = () => {
+         const newErrors: Record<string, string> = {};
+         if (!formData.name.trim()) newErrors.name = 'Le nom est requis';
+         if (!formData.email.trim()) newErrors.email = 'L\\'email est requis';
+         else if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(formData.email)) {
+           newErrors.email = 'Email invalide';
+         }
+         if (!formData.message.trim()) newErrors.message = 'Le message est requis';
+         setErrors(newErrors);
+         return Object.keys(newErrors).length === 0;
+       };
+
+       const handleSubmit = (e: React.FormEvent) => {
+         e.preventDefault();
+         if (validate()) {
+           console.log('Form submitted:', formData);
+           alert('Message envoyé !');
+           setFormData({ name: '', email: '', message: '' });
+         }
+       };
+
+       return (
+         <form onSubmit={handleSubmit} className="space-y-4">
+           <div>
+             <label className="block text-sm font-medium text-slate-700">Nom</label>
+             <input
+               type="text"
+               name="name"
+               value={formData.name}
+               onChange={handleChange}
+               className={\`mt-1 w-full rounded-lg border px-4 py-2 \${
+                 errors.name ? 'border-red-500' : 'border-slate-300'
+               }\`}
+             />
+             {errors.name && <p className="mt-1 text-sm text-red-500">{errors.name}</p>}
+           </div>
+           {/* Répéter pour email et message */}
+           <button type="submit" className="rounded-lg bg-slate-900 px-6 py-2 text-white">
+             Envoyer
+           </button>
+         </form>
+       );
+     }
+     \`\`\`
+
+  2. RÈGLES INPUT OBLIGATOIRES
+     - TOUJOURS \`value={state}\` ET \`onChange={handler}\` ensemble
+     - TOUJOURS \`name\` attribut pour identifier le champ
+     - TOUJOURS un état pour stocker les valeurs
+     - TOUJOURS validation avant submit
+     - TOUJOURS afficher les erreurs visuellement
+
+  3. TYPES D'INPUTS ET LEUR PATTERN
+     \`\`\`tsx
+     // Text input
+     <input type="text" value={value} onChange={e => setValue(e.target.value)} />
+
+     // Checkbox
+     <input type="checkbox" checked={isChecked} onChange={e => setIsChecked(e.target.checked)} />
+
+     // Select
+     <select value={selected} onChange={e => setSelected(e.target.value)}>
+       <option value="">Choisir...</option>
+       <option value="1">Option 1</option>
+     </select>
+
+     // Textarea
+     <textarea value={text} onChange={e => setText(e.target.value)} />
+
+     // Number
+     <input type="number" value={num} onChange={e => setNum(Number(e.target.value))} />
+     \`\`\`
+
+  ⚠️ INTERDIT :
+  - \`<input />\` sans value ET onChange
+  - \`<form>\` sans onSubmit
+  - Formulaires décoratifs sans état
+</form_validation>
+
+<state_persistence>
+  💾 PERSISTANCE D'ÉTAT - Pour que les données survivent au refresh
+
+  En mode Browser (preview), l'état React est ISOLÉ dans l'iframe.
+  Utilise ces patterns pour persister les données côté client :
+
+  1. LOCALSTORAGE POUR PERSISTANCE
+     \`\`\`tsx
+     'use client';
+     import { useState, useEffect } from 'react';
+
+     function usePersistedState<T>(key: string, defaultValue: T) {
+       const [state, setState] = useState<T>(() => {
+         if (typeof window === 'undefined') return defaultValue;
+         const saved = localStorage.getItem(key);
+         return saved ? JSON.parse(saved) : defaultValue;
+       });
+
+       useEffect(() => {
+         localStorage.setItem(key, JSON.stringify(state));
+       }, [key, state]);
+
+       return [state, setState] as const;
+     }
+
+     // Usage
+     function CartProvider({ children }) {
+       const [items, setItems] = usePersistedState<CartItem[]>('cart', []);
+       // Le panier survit au refresh !
+     }
+     \`\`\`
+
+  2. PATTERN CART AVEC PERSISTENCE
+     \`\`\`tsx
+     const CartContext = createContext<CartContextType | null>(null);
+
+     export function CartProvider({ children }: { children: ReactNode }) {
+       const [items, setItems] = useState<CartItem[]>([]);
+
+       // Charger depuis localStorage au mount
+       useEffect(() => {
+         const saved = localStorage.getItem('cart');
+         if (saved) setItems(JSON.parse(saved));
+       }, []);
+
+       // Sauvegarder à chaque changement
+       useEffect(() => {
+         localStorage.setItem('cart', JSON.stringify(items));
+       }, [items]);
+
+       // ... reste du provider
+     }
+     \`\`\`
+
+  3. CE QUI FONCTIONNE EN MODE BROWSER
+     ✅ useState, useReducer (état session)
+     ✅ localStorage (persistance locale)
+     ✅ Context API (état partagé)
+     ✅ Zustand, Jotai (state managers)
+
+  4. CE QUI NE FONCTIONNE PAS EN MODE BROWSER
+     ❌ Server Actions (Next.js)
+     ❌ API Routes (Next.js /api/*)
+     ❌ Base de données directe
+     ❌ Cookies httpOnly
+
+  ⚠️ Pour les données persistantes critiques, mentionner que
+     l'intégration Supabase permettrait une vraie persistance serveur.
+</state_persistence>
+
+<proactive_anticipation>
+  🔮 ANTICIPATION PROACTIVE DES BESOINS
+
+  Quand l'utilisateur demande un type de site, ANTICIPE automatiquement les besoins :
+
+  | Demande | Fonctionnalités à INCLURE AUTOMATIQUEMENT |
+  |---------|------------------------------------------|
+  | "site e-commerce" | Panier fonctionnel, page produits, page panier, filtres |
+  | "boutique en ligne" | Catégories, recherche, tri par prix, favoris |
+  | "site vitrine" | Pages À propos, Services, Contact avec formulaire |
+  | "portfolio" | Galerie de projets, filtres par catégorie, page détail |
+  | "blog" | Liste articles, catégories, recherche, pagination |
+  | "landing page" | CTA multiples, formulaire newsletter, témoignages |
+  | "dashboard" | Navigation latérale, graphiques, filtres de date |
+
+  RÈGLE : Ne jamais créer de "façade". Chaque élément visible DOIT fonctionner.
+
+  Exemple de transformation mentale :
+  - Utilisateur dit : "crée-moi un site de montres"
+  - Tu comprends : "site e-commerce avec catalogue de montres, panier, filtres par prix/marque, page produit, page panier, formulaire contact"
+
+  ⚠️ CHECKLIST AVANT DE LIVRER :
+  - [ ] Tous les liens mènent à de vraies pages
+  - [ ] Tous les boutons ont des onClick fonctionnels
+  - [ ] Tous les formulaires ont value + onChange + onSubmit
+  - [ ] Le panier permet d'ajouter ET de supprimer
+  - [ ] La recherche filtre vraiment les résultats
+  - [ ] Les filtres modifient vraiment l'affichage
+</proactive_anticipation>
+
 <quality_standards>
   STANDARDS DE QUALITÉ (appliquer avec discernement selon le contexte) :
 
