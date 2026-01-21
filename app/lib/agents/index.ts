@@ -342,8 +342,13 @@ export type { OperationCategory, DryRunOperation, DryRunSummary, DryRunConfig } 
  */
 
 export { EXPLORE_SYSTEM_PROMPT } from './prompts/explore-prompt';
-export { ORCHESTRATOR_SYSTEM_PROMPT, AGENT_CAPABILITIES } from './prompts/orchestrator-prompt';
-export { CODER_SYSTEM_PROMPT } from './prompts/coder-prompt';
+export {
+  ORCHESTRATOR_SYSTEM_PROMPT,
+  AGENT_CAPABILITIES,
+  getOrchestratorSystemPrompt,
+} from './prompts/orchestrator-prompt';
+export { CODER_SYSTEM_PROMPT, getCoderSystemPrompt } from './prompts/coder-prompt';
+export type { DesignGuidelinesConfig } from './prompts/coder-prompt';
 export { BUILDER_SYSTEM_PROMPT } from './prompts/builder-prompt';
 export { TESTER_SYSTEM_PROMPT } from './prompts/tester-prompt';
 export { DEPLOYER_SYSTEM_PROMPT } from './prompts/deployer-prompt';

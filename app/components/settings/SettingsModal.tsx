@@ -6,6 +6,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import * as RadixDialog from '@radix-ui/react-dialog';
 import { settingsModalOpen, activeSettingsTab, closeSettingsModal } from '~/lib/stores/connectors';
 import { interfaceSettingsStore, buildSettingsStore, setBuildEngine, type BuildEngineType } from '~/lib/stores/settings';
+import {
+  designGuidelinesEnabledStore,
+  guidelinesLevelStore,
+  setDesignGuidelinesEnabled,
+  setGuidelinesLevel,
+  getGuidelinesLevelDescription,
+  getEstimatedTokens,
+  type GuidelinesLevel,
+} from '~/lib/stores/design-guidelines';
 import { classNames } from '~/utils/classNames';
 import { dialogBackdropVariants, dialogVariants } from '~/components/ui/Dialog';
 import { IconButton } from '~/components/ui/IconButton';
@@ -159,6 +168,8 @@ export const SettingsModal = memo(() => {
 const InterfacePanel = memo(() => {
   const interfaceSettings = useStore(interfaceSettingsStore);
   const buildSettings = useStore(buildSettingsStore);
+  const designGuidelinesEnabled = useStore(designGuidelinesEnabledStore);
+  const guidelinesLevel = useStore(guidelinesLevelStore);
 
   const handleToggleAgentBadge = useCallback(() => {
     interfaceSettingsStore.set({
@@ -172,7 +183,16 @@ const InterfacePanel = memo(() => {
     setBuildEngine(newEngine);
   }, [buildSettings.engine]);
 
+  const handleToggleDesignGuidelines = useCallback(() => {
+    setDesignGuidelinesEnabled(!designGuidelinesEnabled);
+  }, [designGuidelinesEnabled]);
+
+  const handleLevelChange = useCallback((level: GuidelinesLevel) => {
+    setGuidelinesLevel(level);
+  }, []);
+
   const isBrowserEngine = buildSettings.engine === 'browser';
+  const estimatedTokens = getEstimatedTokens(guidelinesLevel);
 
   return (
     <div className="space-y-6">
@@ -240,6 +260,104 @@ const InterfacePanel = memo(() => {
               )}
             />
           </button>
+        </div>
+
+        {/* Design Guidelines Section */}
+        <div className="mt-6 pt-6 border-t border-bolt-elements-borderColor">
+          <h3 className="text-sm font-medium text-bolt-elements-textPrimary mb-3 flex items-center gap-2">
+            <span className="i-ph:paint-brush text-lg" />
+            Design Guidelines (Plugin Anthropic)
+          </h3>
+
+          {/* Design Guidelines Toggle */}
+          <div className="flex items-center justify-between p-4 bg-bolt-elements-background-depth-3 rounded-lg">
+            <div className="flex items-center gap-3">
+              <span className="i-ph:palette text-xl text-bolt-elements-textSecondary" />
+              <div>
+                <p className="text-sm font-medium text-bolt-elements-textPrimary">Activer les guidelines</p>
+                <p className="text-xs text-bolt-elements-textSecondary mt-0.5">
+                  Injecte des règles de design pour des interfaces distinctives
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleToggleDesignGuidelines}
+              className={classNames(
+                'relative w-11 h-6 rounded-full transition-colors',
+                designGuidelinesEnabled ? 'bg-accent-500' : 'bg-bolt-elements-background-depth-4',
+              )}
+              role="switch"
+              aria-checked={designGuidelinesEnabled}
+              aria-label="Activer les design guidelines"
+            >
+              <span
+                className={classNames(
+                  'absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform shadow',
+                  designGuidelinesEnabled ? 'translate-x-5' : 'translate-x-0',
+                )}
+              />
+            </button>
+          </div>
+
+          {/* Guidelines Level Selector */}
+          {designGuidelinesEnabled && (
+            <div className="mt-3 p-4 bg-bolt-elements-background-depth-3 rounded-lg">
+              <p className="text-sm font-medium text-bolt-elements-textPrimary mb-3">Niveau de détail</p>
+              <div className="space-y-2">
+                {(['minimal', 'standard', 'full'] as GuidelinesLevel[]).map((level) => {
+                  const isSelected = guidelinesLevel === level;
+                  const tokens = getEstimatedTokens(level);
+                  const description = getGuidelinesLevelDescription(level);
+
+                  return (
+                    <button
+                      key={level}
+                      onClick={() => handleLevelChange(level)}
+                      className={classNames(
+                        'w-full flex items-center justify-between p-3 rounded-lg transition-colors text-left',
+                        isSelected
+                          ? 'bg-accent-500/20 border border-accent-500'
+                          : 'bg-bolt-elements-background-depth-4 border border-transparent hover:border-bolt-elements-borderColor',
+                      )}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={classNames(
+                            'w-4 h-4 rounded-full border-2 flex items-center justify-center',
+                            isSelected ? 'border-accent-500' : 'border-bolt-elements-textTertiary',
+                          )}
+                        >
+                          {isSelected && <span className="w-2 h-2 rounded-full bg-accent-500" />}
+                        </span>
+                        <div>
+                          <p
+                            className={classNames(
+                              'text-sm font-medium',
+                              isSelected ? 'text-accent-500' : 'text-bolt-elements-textPrimary',
+                            )}
+                          >
+                            {level.charAt(0).toUpperCase() + level.slice(1)}
+                          </p>
+                          <p className="text-xs text-bolt-elements-textSecondary">{description}</p>
+                        </div>
+                      </div>
+                      {tokens > 0 && (
+                        <span className="text-xs text-bolt-elements-textTertiary">~{tokens} tokens</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Token usage info */}
+              <div className="mt-3 flex items-center gap-2 text-xs text-bolt-elements-textTertiary">
+                <span className="i-ph:info" />
+                <span>
+                  Les tokens sont ajoutés au prompt système pour chaque requête UI.
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

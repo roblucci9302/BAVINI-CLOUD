@@ -15,7 +15,7 @@ import { validateConnector, hasValidator } from '~/lib/connectors';
 import { cn } from '~/lib/utils';
 import { cubicEasingFn } from '~/utils/easings';
 import { ConnectorIcon } from './ConnectorIcon';
-// Shadcn UI Components
+// BAVINI UI Components
 import { Button } from '~/components/ui/Button';
 import { Input } from '~/components/ui/Input';
 import { Label } from '~/components/ui/Label';

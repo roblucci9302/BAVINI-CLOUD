@@ -107,10 +107,42 @@ interface VueCompilerError {
 const VUE_COMPILER_CDN = 'https://esm.sh/@vue/compiler-sfc@3.5.13';
 
 /**
- * Vue Compiler implementation
+ * Vue Single File Component (SFC) Compiler
+ *
+ * Compiles `.vue` files to JavaScript using `@vue/compiler-sfc` loaded from CDN.
+ * Supports Vue 3 features including:
+ * - `<script setup>` syntax
+ * - Scoped CSS with automatic scope ID generation
+ * - TypeScript in `<script lang="ts">`
+ *
+ * @example
+ * ```typescript
+ * const compiler = new VueCompiler();
+ * await compiler.init();
+ *
+ * const result = await compiler.compile(`
+ *   <template>
+ *     <button @click="count++">{{ count }}</button>
+ *   </template>
+ *   <script setup>
+ *   import { ref } from 'vue';
+ *   const count = ref(0);
+ *   </script>
+ *   <style scoped>
+ *   button { color: blue; }
+ *   </style>
+ * `, 'Counter.vue');
+ *
+ * console.log(result.code); // Compiled JavaScript
+ * console.log(result.css);  // Scoped CSS
+ * ```
+ *
+ * @implements {FrameworkCompiler}
  */
 export class VueCompiler implements FrameworkCompiler {
+  /** Compiler display name */
   name = 'Vue';
+  /** Supported file extensions */
   extensions = ['.vue'];
 
   private _compiler: VueCompilerSFC | null = null;
@@ -118,7 +150,16 @@ export class VueCompiler implements FrameworkCompiler {
   private _idCounter = 0;
 
   /**
-   * Initialize the Vue compiler
+   * Initialize the Vue compiler by loading `@vue/compiler-sfc` from CDN.
+   * Must be called before `compile()`.
+   *
+   * @throws {Error} If the compiler fails to load from CDN
+   *
+   * @example
+   * ```typescript
+   * const compiler = new VueCompiler();
+   * await compiler.init(); // Loads compiler from esm.sh
+   * ```
    */
   async init(): Promise<void> {
     if (this._initialized) {
@@ -143,14 +184,47 @@ export class VueCompiler implements FrameworkCompiler {
   }
 
   /**
-   * Check if this compiler can handle a file
+   * Check if this compiler can handle a given file based on its extension.
+   *
+   * @param filename - The filename to check (can include full path)
+   * @returns `true` if the file has a `.vue` extension
+   *
+   * @example
+   * ```typescript
+   * compiler.canHandle('App.vue');           // true
+   * compiler.canHandle('/src/Button.vue');   // true
+   * compiler.canHandle('component.tsx');     // false
+   * ```
    */
   canHandle(filename: string): boolean {
     return filename.endsWith('.vue');
   }
 
   /**
-   * Compile a Vue SFC to JavaScript
+   * Compile a Vue Single File Component to JavaScript.
+   *
+   * Processes the SFC by:
+   * 1. Parsing `<template>`, `<script>`, and `<style>` blocks
+   * 2. Compiling `<script setup>` with inlined template
+   * 3. Processing scoped styles with unique scope IDs
+   * 4. Assembling the final component code
+   *
+   * @param source - The Vue SFC source code
+   * @param filename - The filename (used for error messages and source maps)
+   * @returns Compilation result with code, CSS, and any warnings
+   *
+   * @throws {Error} If the compiler is not initialized
+   * @throws {Error} If the SFC has parsing errors
+   *
+   * @example
+   * ```typescript
+   * const result = await compiler.compile(vueSource, 'MyComponent.vue');
+   *
+   * // result.code - Compiled JavaScript (ES module)
+   * // result.css - Compiled CSS with scoped selectors
+   * // result.warnings - Array of warning messages
+   * // result.cssMetadata - Metadata for CSS aggregation
+   * ```
    */
   async compile(source: string, filename: string): Promise<CompilationResult> {
     if (!this._compiler || !this._initialized) {
@@ -257,6 +331,8 @@ export class VueCompiler implements FrameworkCompiler {
         code,
         css,
         warnings,
+        // CSS metadata for aggregation - CSS will be injected by the build adapter
+        cssMetadata: css ? { type: 'component' as const, scopeId: id } : undefined,
       };
     } catch (error) {
       logger.error(`Failed to compile ${filename}:`, error);
@@ -281,41 +357,17 @@ export class VueCompiler implements FrameworkCompiler {
       // Just ensure we have the runtime imports
       const imports = `import { h, createApp, defineComponent, ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue';\n`;
 
-      // Inject CSS via JS
-      const cssInjection = css
-        ? `
-// Inject component styles
-(function() {
-  if (typeof document !== 'undefined') {
-    const style = document.createElement('style');
-    style.setAttribute('${scopeId}', '');
-    style.textContent = ${JSON.stringify(css)};
-    document.head.appendChild(style);
-  }
-})();
-`
-        : '';
+      // NOTE: CSS injection removed - CSS is now aggregated by CSSAggregator
+      // and injected once in the HTML by browser-build-adapter
 
-      return `${imports}${cssInjection}${scriptCode}`;
+      return `${imports}${scriptCode}`;
     }
 
     // Fallback: assemble from parts
+    // NOTE: CSS injection removed - CSS is now aggregated by CSSAggregator
+    // and injected once in the HTML by browser-build-adapter
     return `
 import { h, createApp, defineComponent, ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue';
-
-// Inject component styles
-${
-  css
-    ? `(function() {
-  if (typeof document !== 'undefined') {
-    const style = document.createElement('style');
-    style.setAttribute('${scopeId}', '');
-    style.textContent = ${JSON.stringify(css)};
-    document.head.appendChild(style);
-  }
-})();`
-    : ''
-}
 
 ${templateCode ? `${templateCode}\n` : ''}
 

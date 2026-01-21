@@ -102,17 +102,61 @@ interface SveltePreprocessor {
 const SVELTE_COMPILER_CDN = 'https://esm.sh/svelte@4.2.19/compiler';
 
 /**
- * Svelte Compiler implementation
+ * Svelte Component Compiler
+ *
+ * Compiles `.svelte` files to JavaScript using the Svelte compiler loaded from CDN.
+ * Supports Svelte 4 features including:
+ * - Reactive declarations (`$:`)
+ * - Stores and bindings
+ * - Transitions and animations
+ * - Scoped CSS (automatically generated class names)
+ *
+ * @example
+ * ```typescript
+ * const compiler = new SvelteCompiler();
+ * await compiler.init();
+ *
+ * const result = await compiler.compile(`
+ *   <script>
+ *     let count = 0;
+ *     $: doubled = count * 2;
+ *   </script>
+ *
+ *   <button on:click={() => count++}>
+ *     Count: {count}, Doubled: {doubled}
+ *   </button>
+ *
+ *   <style>
+ *     button { background: #ff3e00; color: white; }
+ *   </style>
+ * `, 'Counter.svelte');
+ *
+ * console.log(result.code); // Compiled JavaScript
+ * console.log(result.css);  // Scoped CSS
+ * ```
+ *
+ * @implements {FrameworkCompiler}
  */
 export class SvelteCompiler implements FrameworkCompiler {
+  /** Compiler display name */
   name = 'Svelte';
+  /** Supported file extensions */
   extensions = ['.svelte'];
 
   private _compiler: SvelteCompilerModule | null = null;
   private _initialized = false;
 
   /**
-   * Initialize the Svelte compiler
+   * Initialize the Svelte compiler by loading from CDN.
+   * Must be called before `compile()`.
+   *
+   * @throws {Error} If the compiler fails to load from CDN
+   *
+   * @example
+   * ```typescript
+   * const compiler = new SvelteCompiler();
+   * await compiler.init(); // Loads Svelte 4 compiler from esm.sh
+   * ```
    */
   async init(): Promise<void> {
     if (this._initialized) {
@@ -137,14 +181,47 @@ export class SvelteCompiler implements FrameworkCompiler {
   }
 
   /**
-   * Check if this compiler can handle a file
+   * Check if this compiler can handle a given file based on its extension.
+   *
+   * @param filename - The filename to check (can include full path)
+   * @returns `true` if the file has a `.svelte` extension
+   *
+   * @example
+   * ```typescript
+   * compiler.canHandle('App.svelte');           // true
+   * compiler.canHandle('/src/Button.svelte');   // true
+   * compiler.canHandle('component.vue');        // false
+   * ```
    */
   canHandle(filename: string): boolean {
     return filename.endsWith('.svelte');
   }
 
   /**
-   * Compile a Svelte component to JavaScript
+   * Compile a Svelte component to JavaScript.
+   *
+   * The compilation process:
+   * 1. Parses the Svelte component syntax
+   * 2. Generates reactive JavaScript code
+   * 3. Extracts and processes CSS with scoped class names
+   * 4. Post-processes imports to use CDN URLs
+   *
+   * @param source - The Svelte component source code
+   * @param filename - The filename (used for error messages and source maps)
+   * @returns Compilation result with code, CSS, source map, and warnings
+   *
+   * @throws {Error} If the compiler is not initialized
+   * @throws {Error} If the component has syntax errors
+   *
+   * @example
+   * ```typescript
+   * const result = await compiler.compile(svelteSource, 'Button.svelte');
+   *
+   * // result.code - Compiled JavaScript (ES module)
+   * // result.css - Scoped CSS with generated class names
+   * // result.map - Source map for debugging
+   * // result.warnings - Svelte warnings (e.g., a11y issues)
+   * ```
    */
   async compile(source: string, filename: string): Promise<CompilationResult> {
     if (!this._compiler || !this._initialized) {
@@ -192,6 +269,8 @@ export class SvelteCompiler implements FrameworkCompiler {
         css: result.css?.code || undefined,
         map: typeof result.js.map === 'string' ? result.js.map : JSON.stringify(result.js.map),
         warnings,
+        // CSS metadata for aggregation - CSS will be injected by the build adapter
+        cssMetadata: result.css?.code ? { type: 'component' as const } : undefined,
       };
     } catch (error) {
       logger.error(`Failed to compile ${filename}:`, error);

@@ -48,7 +48,8 @@ export function getCSPDirectives(config: SecurityHeadersConfig): string {
     'https://fonts.gstatic.com',
     'https://cdn.jsdelivr.net',
     'https://esm.sh', // For Tailwind JIT and npm packages
-    'https://unpkg.com', // For Tailwind CDN fallback
+    'https://unpkg.com', // For npm packages fallback
+    'https://cdn.tailwindcss.com', // Official Tailwind Play CDN
   ].join(' ');
 
   // Domaines WebContainer (StackBlitz)
@@ -83,7 +84,7 @@ export function getCSPDirectives(config: SecurityHeadersConfig): string {
       `frame-src ${self} ${blob} ${webContainerDomains}`,
       `object-src 'none'`,
       `base-uri ${self}`,
-      `form-action ${self}`,
+      `form-action ${self} ${blob}`,
     ].join('; ');
   }
 
@@ -100,7 +101,7 @@ export function getCSPDirectives(config: SecurityHeadersConfig): string {
     `frame-src ${self} ${blob} ${webContainerDomains}`,
     `object-src 'none'`,
     `base-uri ${self}`,
-    `form-action ${self}`,
+    `form-action ${self} ${blob}`,
     `frame-ancestors 'none'`,
     `upgrade-insecure-requests`,
   ].join('; ');

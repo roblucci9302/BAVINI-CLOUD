@@ -63,6 +63,7 @@ class BrowserBuildService {
             url: info.url,
             ready: info.ready,
             updatedAt: info.updatedAt,
+            srcdoc: info.srcdoc, // Pass srcdoc for iframe content
           });
           logger.info('Workbench store updated with preview');
         } catch (error) {

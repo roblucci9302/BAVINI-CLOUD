@@ -32,7 +32,9 @@ import {
   detectFramework,
   getJsxConfig,
   type FrameworkType,
+  type CSSMetadata,
 } from './compilers/compiler-registry';
+import { CSSAggregator, createCSSAggregator, type CSSType } from './css-aggregator';
 import type { TailwindCompiler, ContentFile } from './compilers/tailwind-compiler';
 import {
   detectRoutingNeeds,
@@ -40,8 +42,36 @@ import {
   type RouteDefinition,
   type RouterConfig,
 } from './plugins/router-plugin';
+import {
+  initPreviewServiceWorker,
+  setPreviewFiles,
+  isServiceWorkerReady,
+  getPreviewUrl,
+  PREVIEW_URL,
+} from '../preview-service-worker';
+import {
+  SSRBridge,
+  createSSRBridge,
+  type SSRMode,
+  type SSRBridgeConfig,
+} from '../quickjs/ssr-bridge';
 
 const logger = createScopedLogger('BrowserBuildAdapter');
+
+/**
+ * Flag to track if we're using Service Worker or Blob URL fallback
+ * DISABLED: Service Worker mode has iframe interception issues.
+ * Using srcdoc mode with keyboard event forwarding instead.
+ * TODO: Investigate SW iframe control issues and re-enable when fixed.
+ */
+let useServiceWorker = false;
+const SERVICE_WORKER_DISABLED = true; // Temporary disable flag
+
+/**
+ * Number of consecutive SW failures - after MAX_SW_FAILURES we give up
+ */
+let swFailureCount = 0;
+const MAX_SW_FAILURES = 3;
 
 /**
  * URL du WASM esbuild
@@ -192,9 +222,19 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
   private _previewIframe: HTMLIFrameElement | null = null;
   private _blobUrl: string | null = null;
   private _detectedFramework: FrameworkType = 'vanilla';
+  private _cssAggregator: CSSAggregator = createCSSAggregator();
+  private _ssrBridge: SSRBridge | null = null;
+  private _ssrEnabled = false;
 
   get status(): RuntimeStatus {
     return this._status;
+  }
+
+  /**
+   * Check if SSR is enabled and available
+   */
+  get isSSREnabled(): boolean {
+    return this._ssrEnabled && this._ssrBridge?.isEnabled === true;
   }
 
   /**
@@ -250,6 +290,9 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
       this.emitStatusChange('ready');
 
       logger.info('esbuild-wasm initialized successfully');
+
+      // Initialize Service Worker for preview (non-blocking)
+      this.initServiceWorker();
     } catch (error) {
       // Reset the Promise on failure to allow retry
       globalEsbuildPromise = null;
@@ -259,6 +302,28 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
       this.emitStatusChange('error');
       logger.error('Failed to initialize esbuild-wasm:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Initialize Service Worker for preview (non-blocking)
+   * Falls back to Blob URLs if Service Worker registration fails
+   */
+  private async initServiceWorker(): Promise<void> {
+    try {
+      logger.info('Initializing Preview Service Worker...');
+      const success = await initPreviewServiceWorker();
+
+      if (success) {
+        useServiceWorker = true;
+        logger.info('Preview Service Worker initialized - using SW mode');
+      } else {
+        useServiceWorker = false;
+        logger.warn('Service Worker init failed - falling back to Blob URLs');
+      }
+    } catch (error) {
+      useServiceWorker = false;
+      logger.warn('Service Worker initialization error, using Blob URL fallback:', error);
     }
   }
 
@@ -302,6 +367,16 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
       logger.warn('Failed to clear files:', error);
     }
 
+    // Cleanup SSR bridge
+    if (this._ssrBridge) {
+      try {
+        this._ssrBridge.destroy();
+      } catch (error) {
+        logger.warn('Failed to destroy SSR bridge:', error);
+      }
+      this._ssrBridge = null;
+    }
+
     this._preview = null;
     this._status = 'idle';
 
@@ -312,6 +387,75 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
     }
 
     // Note: esbuild doesn't have a cleanup method in browser
+  }
+
+  /**
+   * Enable SSR for preview rendering
+   * @param config - Optional SSR configuration
+   */
+  async enableSSR(config?: SSRBridgeConfig): Promise<void> {
+    if (!this._ssrBridge) {
+      this._ssrBridge = createSSRBridge(config);
+    }
+
+    try {
+      await this._ssrBridge.init();
+      this._ssrEnabled = true;
+      logger.info('SSR enabled for preview rendering');
+    } catch (error) {
+      logger.warn('Failed to enable SSR:', error);
+      this._ssrEnabled = false;
+    }
+  }
+
+  /**
+   * Disable SSR (use client-side only rendering)
+   */
+  disableSSR(): void {
+    this._ssrEnabled = false;
+    if (this._ssrBridge) {
+      this._ssrBridge.disable();
+    }
+    logger.info('SSR disabled');
+  }
+
+  /**
+   * Set SSR mode
+   * @param mode - 'disabled' | 'auto' | 'always'
+   */
+  setSSRMode(mode: SSRMode): void {
+    if (!this._ssrBridge) {
+      this._ssrBridge = createSSRBridge({ mode });
+    }
+
+    if (mode === 'disabled') {
+      this.disableSSR();
+    } else {
+      this._ssrEnabled = true;
+      logger.info(`SSR mode set to: ${mode}`);
+    }
+  }
+
+  /**
+   * Get SSR cache statistics
+   */
+  getSSRCacheStats(): { size: number; hitRate: number; hits: number; misses: number } | null {
+    return this._ssrBridge?.getCacheStats() ?? null;
+  }
+
+  /**
+   * Clear SSR cache
+   */
+  clearSSRCache(): void {
+    this._ssrBridge?.clearCache();
+  }
+
+  /**
+   * Invalidate SSR cache for a specific file
+   * @param filename - File path to invalidate
+   */
+  invalidateSSRCache(filename: string): void {
+    this._ssrBridge?.invalidateCache(filename);
   }
 
   /**
@@ -440,6 +584,9 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
     this.emitStatusChange('building');
     this.emitBuildProgress('starting', 0);
 
+    // Clear CSS aggregator for fresh build
+    this._cssAggregator.clear();
+
     try {
       // Detect framework from project files
       this._detectedFramework = detectFramework(this._files);
@@ -515,9 +662,26 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
       const cssOutput = result.outputFiles?.find((f) => f.path.endsWith('.css'));
 
       const code = jsOutput?.text || '';
-      const css = cssOutput?.text || '';
 
-      logger.debug(`Extracted code: ${code.length} chars, css: ${css.length} chars`);
+      // Aggregate CSS from the aggregator (Tailwind, Vue, Svelte, Astro components)
+      // and combine with any direct CSS output from esbuild
+      const aggregatedCss = this._cssAggregator.aggregate();
+      const esbuildCss = cssOutput?.text || '';
+      const css = aggregatedCss + (esbuildCss ? `\n\n/* esbuild output */\n${esbuildCss}` : '');
+
+      logger.info(`CSS Aggregation: ${this._cssAggregator.size} sources, ${aggregatedCss.length} chars`);
+
+      // Log bundle size in KB/MB for better diagnostics
+      const codeKB = (code.length / 1024).toFixed(1);
+      const cssKB = (css.length / 1024).toFixed(1);
+      const totalKB = ((code.length + css.length) / 1024).toFixed(1);
+      logger.info(`Bundle size: JS=${codeKB}KB, CSS=${cssKB}KB, Total=${totalKB}KB`);
+
+      // Warn if bundle is very large (potential performance issue)
+      const BUNDLE_SIZE_WARNING_KB = 1500; // 1.5MB
+      if (code.length / 1024 > BUNDLE_SIZE_WARNING_KB) {
+        logger.warn(`⚠️ Large bundle detected (${codeKB}KB). This may cause browser freeze. Consider using fewer external imports.`);
+      }
 
       // Convert esbuild errors/warnings
       const errors: BuildError[] = result.errors.map((e) => ({
@@ -688,43 +852,44 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
    */
   private readonly NEXTJS_SHIMS: Record<string, string> = {
     'next/font/google': `
-      // Browser shim for next/font/google
-      export function Inter(options) {
-        return {
-          className: 'font-inter',
-          variable: options?.variable || '--font-inter',
-          style: { fontFamily: 'Inter, system-ui, sans-serif' }
+      // Browser shim for next/font/google - Dynamic font generator
+      // Converts font name to CSS-friendly format (e.g., Space_Grotesk -> "Space Grotesk")
+      function createFontLoader(fontName) {
+        const cssName = fontName.replace(/_/g, ' ');
+        const varName = fontName.toLowerCase().replace(/_/g, '-');
+        return function(options) {
+          return {
+            className: 'font-' + varName,
+            variable: options?.variable || '--font-' + varName,
+            style: { fontFamily: '"' + cssName + '", system-ui, sans-serif' }
+          };
         };
       }
-      export function Roboto(options) {
-        return {
-          className: 'font-roboto',
-          variable: options?.variable || '--font-roboto',
-          style: { fontFamily: 'Roboto, system-ui, sans-serif' }
-        };
-      }
-      export function Open_Sans(options) {
-        return {
-          className: 'font-open-sans',
-          variable: options?.variable || '--font-open-sans',
-          style: { fontFamily: '"Open Sans", system-ui, sans-serif' }
-        };
-      }
-      export function Poppins(options) {
-        return {
-          className: 'font-poppins',
-          variable: options?.variable || '--font-poppins',
-          style: { fontFamily: 'Poppins, system-ui, sans-serif' }
-        };
-      }
-      // Default export for any font
-      export default function GoogleFont(options) {
-        return {
-          className: 'font-sans',
-          variable: '--font-sans',
-          style: { fontFamily: 'system-ui, sans-serif' }
-        };
-      }
+
+      // Export common fonts explicitly for direct imports
+      export const Inter = createFontLoader('Inter');
+      export const Roboto = createFontLoader('Roboto');
+      export const Open_Sans = createFontLoader('Open_Sans');
+      export const Poppins = createFontLoader('Poppins');
+      export const Space_Grotesk = createFontLoader('Space_Grotesk');
+      export const Playfair_Display = createFontLoader('Playfair_Display');
+      export const Montserrat = createFontLoader('Montserrat');
+      export const Lato = createFontLoader('Lato');
+      export const Oswald = createFontLoader('Oswald');
+      export const Raleway = createFontLoader('Raleway');
+      export const Nunito = createFontLoader('Nunito');
+      export const Source_Sans_3 = createFontLoader('Source_Sans_3');
+      export const Work_Sans = createFontLoader('Work_Sans');
+      export const DM_Sans = createFontLoader('DM_Sans');
+      export const Manrope = createFontLoader('Manrope');
+      export const Outfit = createFontLoader('Outfit');
+      export const Plus_Jakarta_Sans = createFontLoader('Plus_Jakarta_Sans');
+      export const Sora = createFontLoader('Sora');
+      export const Fira_Code = createFontLoader('Fira_Code');
+      export const JetBrains_Mono = createFontLoader('JetBrains_Mono');
+
+      // Default export for dynamic imports
+      export default createFontLoader;
     `,
     'next/image': `
       // Browser shim for next/image
@@ -823,11 +988,18 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
         return { pathname: pathname || '/', search: search ? '?' + search : '' };
       }
 
-      // Navigation state store
+      // Navigation state store - singleton pattern to prevent duplicate listeners
       const listeners = new Set();
+      let isListenerSetup = false;
 
       function subscribe(listener) {
         listeners.add(listener);
+        // Setup listeners only once, lazily
+        if (!isListenerSetup && typeof window !== 'undefined') {
+          isListenerSetup = true;
+          window.addEventListener('hashchange', notifyListeners);
+          window.addEventListener('bavini-navigate', notifyListeners);
+        }
         return () => listeners.delete(listener);
       }
 
@@ -835,13 +1007,9 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
         listeners.forEach(listener => listener());
       }
 
-      // Listen for hash changes and custom navigation events
-      if (typeof window !== 'undefined') {
-        window.addEventListener('hashchange', notifyListeners);
-        window.addEventListener('bavini-navigate', notifyListeners);
-
-        // Set global navigation handler using hash routing
-        window.__BAVINI_NAVIGATE__ = window.__BAVINI_NAVIGATE__ || ((url, options = {}) => {
+      // Set global navigation handler (without adding listeners here - BaviniRouter handles that)
+      if (typeof window !== 'undefined' && !window.__BAVINI_NAVIGATE__) {
+        window.__BAVINI_NAVIGATE__ = (url, options = {}) => {
           const newHash = '#' + (url.startsWith('/') ? url : '/' + url);
           if (options.replace) {
             window.location.replace(newHash);
@@ -849,7 +1017,7 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
             window.location.hash = newHash;
           }
           notifyListeners();
-        });
+        };
       }
 
       export function useRouter() {
@@ -904,10 +1072,13 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
         );
 
         useEffect(() => {
-          const unsubscribe = subscribe(() => {
+          // Listen specifically for params changes (more efficient than navigation events)
+          const handleParamsChange = () => {
             setParams(window.__BAVINI_ROUTE_PARAMS__ || {});
-          });
-          return unsubscribe;
+          };
+
+          window.addEventListener('bavini-params-change', handleParamsChange);
+          return () => window.removeEventListener('bavini-params-change', handleParamsChange);
         }, []);
 
         return params;
@@ -1040,8 +1211,6 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
 
           const resolvedPath = this.resolveRelativePath(basePath, args.path);
 
-          // eslint-disable-next-line no-console
-          console.log(`[ESBUILD-RESOLVE] Relative: ${args.path} from ${basePath} -> ${resolvedPath}`);
           logger.debug(`Resolving relative import: ${args.path} from ${basePath} -> ${resolvedPath}`);
 
           // Return with resolveDir so bare imports in loaded files can be resolved by esm-sh
@@ -1068,9 +1237,6 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
 
         // Load from virtual filesystem
         build.onLoad({ filter: /.*/, namespace: 'virtual-fs' }, async (args) => {
-          // eslint-disable-next-line no-console
-          console.log(`[ESBUILD-ONLOAD] Called for: ${args.path}, namespace: ${args.namespace}`);
-
           const foundPath = this.findFile(args.path);
 
           if (!foundPath) {
@@ -1091,9 +1257,6 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
             try {
               // Special case for CSS files (Tailwind compilation)
               if (ext === 'css') {
-                // eslint-disable-next-line no-console
-                console.log(`[CSS-COMPILER] Compiling CSS file: ${foundPath}`);
-
                 const compiler = await loadCompiler('css') as TailwindCompiler;
 
                 // Provide content files for Tailwind class extraction
@@ -1105,17 +1268,19 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
 
                 const result = await compiler.compile(content, foundPath);
 
-                // eslint-disable-next-line no-console
-                console.log(`[CSS-COMPILER] Compilation done, CSS length: ${result.code.length}`);
+                // Add compiled CSS to aggregator (type: tailwind for utility-first CSS)
+                if (result.code && result.code.trim()) {
+                  this._cssAggregator.addCSS({
+                    source: foundPath,
+                    css: result.code,
+                    type: 'tailwind',
+                  });
+                  logger.debug(`Added Tailwind CSS to aggregator: ${foundPath}`);
+                }
 
-                // CSS compiler returns CSS, we need to wrap it in a JS injector
-                const cssInjector = `(function(){if(typeof document!=='undefined'){var s=document.createElement('style');s.setAttribute('data-source',${JSON.stringify(foundPath)});s.textContent=${JSON.stringify(result.code)};document.head.appendChild(s);}})();`;
-
-                // eslint-disable-next-line no-console
-                console.log(`[CSS-COMPILER] Created JS injector, length: ${cssInjector.length}`);
-
+                // Return empty module - CSS is now in aggregator
                 return {
-                  contents: cssInjector,
+                  contents: `/* CSS aggregated: ${foundPath} */`,
                   loader: 'js' as const,
                   resolveDir,
                 };
@@ -1125,26 +1290,17 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
               const compiler = await loadCompiler(ext);
               const result = await compiler.compile(content, foundPath);
 
-              // If the compiler produced CSS, inject it as a side effect
-              let compiledCode = result.code;
-
-              if (result.css) {
-                const escapedCSS = result.css
-                  .replace(/\\/g, '\\\\')
-                  .replace(/`/g, '\\`')
-                  .replace(/\$/g, '\\$');
-
-                compiledCode = `
-// Injected CSS from ${foundPath}
-(function() {
-  if (typeof document !== 'undefined') {
-    const style = document.createElement('style');
-    style.textContent = \`${escapedCSS}\`;
-    document.head.appendChild(style);
-  }
-})();
-
-${result.code}`;
+              // If the compiler produced CSS, add it to the aggregator
+              // CSS will be injected once in the HTML by injectBundle()
+              if (result.css && result.css.trim()) {
+                const cssType: CSSType = result.cssMetadata?.type === 'tailwind' ? 'tailwind' : 'component';
+                this._cssAggregator.addCSS({
+                  source: foundPath,
+                  css: result.css,
+                  type: cssType,
+                  scopeId: result.cssMetadata?.scopeId,
+                });
+                logger.debug(`Added CSS to aggregator: ${foundPath} (${cssType})`);
               }
 
               // Log any warnings
@@ -1153,7 +1309,7 @@ ${result.code}`;
               }
 
               return {
-                contents: compiledCode,
+                contents: result.code,
                 loader: 'js',
                 resolveDir,
               };
@@ -1163,9 +1319,10 @@ ${result.code}`;
 
               // For CSS files, return fallback instead of error
               if (ext === 'css') {
-                // eslint-disable-next-line no-console
-                console.log(`[CSS-COMPILER] Compilation failed, using fallback: ${errorMsg}`);
-                const fallbackCSS = `/* Tailwind compilation failed: ${errorMsg} */\n:root { --background: 0 0% 100%; --foreground: 222.2 84% 4.9%; }`;
+                logger.warn(`CSS compilation failed, using fallback: ${errorMsg}`);
+                // Sanitize error message for CSS comment (prevent comment injection via */)
+                const sanitizedError = errorMsg.replace(/\*\//g, '* /').replace(/</g, '&lt;');
+                const fallbackCSS = `/* Tailwind compilation failed: ${sanitizedError} */\n:root { --background: 0 0% 100%; --foreground: 222.2 84% 4.9%; }`;
                 const fallbackInjector = `(function(){if(typeof document!=='undefined'){var s=document.createElement('style');s.setAttribute('data-source',${JSON.stringify(foundPath)});s.textContent=${JSON.stringify(fallbackCSS)};document.head.appendChild(s);}})();`;
 
                 return {
@@ -1181,17 +1338,9 @@ ${result.code}`;
 
           const loader = this.getLoader(foundPath);
 
-          // DEBUG: Log what we're processing
-          // eslint-disable-next-line no-console
-          console.log(`[ESBUILD-DEBUG] Processing ${foundPath}, loader: ${loader}`);
-
-          // For CSS files, we ALWAYS inject them as a JS module that adds a style tag
-          // This ensures esbuild never tries to parse CSS directly
+          // For CSS files, add to aggregator and return empty module
+          // CSS will be injected once in the HTML by injectBundle()
           if (loader === 'css') {
-            // eslint-disable-next-line no-console
-            console.log(`[CSS-FLOW] Step 1: Entering CSS handler for ${foundPath}`);
-
-            // Wrap EVERYTHING in try-catch to ensure we always return with loader: 'js'
             try {
               let cssContent = content;
 
@@ -1201,18 +1350,9 @@ ${result.code}`;
                 content.includes('@apply') ||
                 content.includes('@layer');
 
-              // eslint-disable-next-line no-console
-              console.log(`[CSS-FLOW] Step 2: hasTailwindDirectives=${hasTailwindDirectives}`);
-
               if (hasTailwindDirectives) {
                 try {
-                  // eslint-disable-next-line no-console
-                  console.log(`[CSS-FLOW] Step 3: About to load Tailwind compiler`);
-
                   const compiler = await loadCompiler('css') as TailwindCompiler;
-
-                  // eslint-disable-next-line no-console
-                  console.log(`[CSS-FLOW] Step 4: Compiler loaded, setting content files`);
 
                   // Provide content files for Tailwind class extraction
                   const contentFiles: ContentFile[] = Array.from(this._files.entries())
@@ -1221,21 +1361,13 @@ ${result.code}`;
 
                   compiler.setContentFiles(contentFiles);
 
-                  // eslint-disable-next-line no-console
-                  console.log(`[CSS-FLOW] Step 5: Compiling CSS`);
-
                   const result = await compiler.compile(content, foundPath);
                   cssContent = result.code;
-
-                  // eslint-disable-next-line no-console
-                  console.log(`[CSS-FLOW] Step 6: Compilation done, CSS length: ${cssContent.length}`);
 
                   if (result.warnings && result.warnings.length > 0) {
                     result.warnings.forEach((w) => logger.warn(`[Tailwind] ${w}`));
                   }
                 } catch (compileError) {
-                  // eslint-disable-next-line no-console
-                  console.log(`[CSS-FLOW] Step 3-ERROR: Tailwind compilation failed:`, compileError);
                   logger.warn(`Tailwind compilation failed for ${foundPath}:`, compileError);
 
                   // Use minimal fallback - just strip @tailwind directives
@@ -1244,24 +1376,24 @@ ${result.code}`;
                 }
               }
 
-              // Create JS injector - this MUST succeed
-              // eslint-disable-next-line no-console
-              console.log(`[CSS-FLOW] Step 7: Creating JS injector`);
+              // Add CSS to aggregator (tailwind if has directives, otherwise base)
+              if (cssContent && cssContent.trim()) {
+                this._cssAggregator.addCSS({
+                  source: foundPath,
+                  css: cssContent,
+                  type: hasTailwindDirectives ? 'tailwind' : 'base',
+                });
+                logger.debug(`Added CSS to aggregator: ${foundPath} (${hasTailwindDirectives ? 'tailwind' : 'base'})`);
+              }
 
-              const cssInjector = `(function(){if(typeof document!=='undefined'){var s=document.createElement('style');s.setAttribute('data-source',${JSON.stringify(foundPath)});s.textContent=${JSON.stringify(cssContent)};document.head.appendChild(s);}})();`;
-
-              // eslint-disable-next-line no-console
-              console.log(`[CSS-FLOW] Step 8: Returning with loader: js, injector length: ${cssInjector.length}`);
-
+              // Return empty module - CSS is now in aggregator
               return {
-                contents: cssInjector,
+                contents: `/* CSS aggregated: ${foundPath} */`,
                 loader: 'js' as const,
                 resolveDir,
               };
             } catch (cssError) {
               // Ultimate fallback - return empty JS module
-              // eslint-disable-next-line no-console
-              console.error(`[CSS-FLOW] CRITICAL ERROR in CSS handling:`, cssError);
               logger.error(`Critical error handling CSS ${foundPath}:`, cssError);
 
               return {
@@ -1428,6 +1560,10 @@ ${result.code}`;
           return { path: resolvedUrl.href, namespace: 'esm-sh' };
         });
 
+        // Track CDN fetch statistics
+        let cdnFetchCount = 0;
+        let cdnCacheHits = 0;
+
         // Load from esm.sh
         build.onLoad({ filter: /.*/, namespace: 'esm-sh' }, async (args) => {
           let url = args.path;
@@ -1439,11 +1575,13 @@ ${result.code}`;
 
           // Check cache
           if (moduleCache.has(url)) {
+            cdnCacheHits++;
             return { contents: moduleCache.get(url)!, loader: 'js' };
           }
 
           try {
-            logger.debug(`Fetching CDN: ${url}`);
+            cdnFetchCount++;
+            logger.debug(`Fetching CDN [${cdnFetchCount}]: ${url}`);
             const response = await fetch(url, {
               redirect: 'follow',
               headers: {
@@ -1610,8 +1748,10 @@ ${result.code}`;
     const homePage = this.findFile('/app/page') || this.findFile('/src/app/page');
 
     // Build import statements
+    // NOTE: We don't use lazy/Suspense for page components since blob URLs
+    // don't support code splitting - everything is bundled together
     const imports: string[] = [
-      `import React, { useState, useEffect, Suspense, lazy } from 'react';`,
+      `import React, { useState, useEffect, useRef, useMemo } from 'react';`,
       `import { createRoot } from 'react-dom/client';`,
     ];
 
@@ -1629,11 +1769,13 @@ ${result.code}`;
         imports.push(`import RootLayout from '${layoutPath.replace(/\.tsx?$/, '')}';`);
       }
 
-      // Generate lazy imports for each page
+      // Generate STATIC imports for each page
+      // NOTE: We use static imports instead of lazy() because code splitting
+      // doesn't work with blob URLs - everything must be in one bundle
       detectedRoutes.forEach((route, index) => {
         const componentName = `Page${index}`;
         const importPath = route.component.replace(/\.tsx?$/, '');
-        routeImports.push(`const ${componentName} = lazy(() => import('${importPath}'));`);
+        routeImports.push(`import ${componentName} from '${importPath}';`);
         routeComponents.push(`    { path: '${route.path}', component: ${componentName} }`);
       });
 
@@ -1653,22 +1795,73 @@ function getHashPath() {
   return path.split('?')[0] || '/';
 }
 
+// Memoized route matching function (defined outside component)
+function matchRouteImpl(path, routeList) {
+  const normalizedPath = path || '/';
+
+  // Exact match first (fast path)
+  const exactMatch = routeList.find(r => r.path === normalizedPath);
+  if (exactMatch) return { route: exactMatch, params: {} };
+
+  // Dynamic route matching (e.g., /products/:id)
+  for (const route of routeList) {
+    if (route.path.includes(':')) {
+      const routeParts = route.path.split('/');
+      const pathParts = normalizedPath.split('/');
+
+      if (routeParts.length === pathParts.length) {
+        const params = {};
+        let isMatch = true;
+
+        for (let i = 0; i < routeParts.length; i++) {
+          if (routeParts[i].startsWith(':')) {
+            params[routeParts[i].slice(1)] = pathParts[i];
+          } else if (routeParts[i] !== pathParts[i]) {
+            isMatch = false;
+            break;
+          }
+        }
+
+        if (isMatch) {
+          return { route, params };
+        }
+      }
+    }
+  }
+
+  // Fallback to index route
+  return { route: routeList.find(r => r.path === '/') || routeList[0], params: {} };
+}
+
 function BaviniRouter({ children, Layout }) {
   const [currentPath, setCurrentPath] = useState(getHashPath);
+  const prevParamsRef = useRef({});
 
   useEffect(() => {
-    const handleHashChange = () => {
+    // Use GLOBAL flag to prevent listener accumulation across component instances
+    // This fixes the freeze issue in complex projects with multiple remounts
+    if (window.__BAVINI_ROUTER_INITIALIZED__) {
+      // Listeners already setup by another instance, just sync state
+      const syncPath = () => setCurrentPath(getHashPath());
+      window.addEventListener('hashchange', syncPath);
+      window.addEventListener('bavini-navigate', syncPath);
+      return () => {
+        window.removeEventListener('hashchange', syncPath);
+        window.removeEventListener('bavini-navigate', syncPath);
+      };
+    }
+
+    // First instance - setup global listeners
+    window.__BAVINI_ROUTER_INITIALIZED__ = true;
+
+    const handlePathChange = () => {
       setCurrentPath(getHashPath());
     };
 
-    const handleNavigate = () => {
-      setCurrentPath(getHashPath());
-    };
+    window.addEventListener('hashchange', handlePathChange);
+    window.addEventListener('bavini-navigate', handlePathChange);
 
-    window.addEventListener('hashchange', handleHashChange);
-    window.addEventListener('bavini-navigate', handleNavigate);
-
-    // Override global navigation handler with hash routing
+    // Set global navigation handler with hash routing
     window.__BAVINI_NAVIGATE__ = (url, options = {}) => {
       const newHash = '#' + (url.startsWith('/') ? url : '/' + url);
       if (options.replace) {
@@ -1676,7 +1869,7 @@ function BaviniRouter({ children, Layout }) {
       } else {
         window.location.hash = newHash;
       }
-      setCurrentPath(url.split('?')[0].split('#')[0] || '/');
+      // Let hashchange event handle the state update - don't call setCurrentPath here
     };
 
     // Set initial hash if not present
@@ -1684,61 +1877,35 @@ function BaviniRouter({ children, Layout }) {
       window.location.hash = '#/';
     }
 
+    // NOTE: We intentionally do NOT reset __BAVINI_ROUTER_INITIALIZED__ on cleanup
+    // This prevents listener accumulation during hot reloads and remounts
     return () => {
-      window.removeEventListener('hashchange', handleHashChange);
-      window.removeEventListener('bavini-navigate', handleNavigate);
+      window.removeEventListener('hashchange', handlePathChange);
+      window.removeEventListener('bavini-navigate', handlePathChange);
     };
   }, []);
 
-  // Find matching route
-  const matchRoute = (path) => {
-    const normalizedPath = path || '/';
-
-    // Exact match first
-    let match = routes.find(r => r.path === normalizedPath);
-    if (match) return { route: match, params: {} };
-
-    // Dynamic route matching (e.g., /products/:id)
-    for (const route of routes) {
-      if (route.path.includes(':')) {
-        const routeParts = route.path.split('/');
-        const pathParts = normalizedPath.split('/');
-
-        if (routeParts.length === pathParts.length) {
-          const params = {};
-          let isMatch = true;
-
-          for (let i = 0; i < routeParts.length; i++) {
-            if (routeParts[i].startsWith(':')) {
-              params[routeParts[i].slice(1)] = pathParts[i];
-            } else if (routeParts[i] !== pathParts[i]) {
-              isMatch = false;
-              break;
-            }
-          }
-
-          if (isMatch) {
-            return { route, params };
-          }
-        }
-      }
-    }
-
-    // Fallback to index route
-    return { route: routes.find(r => r.path === '/') || routes[0], params: {} };
-  };
-
-  const { route: currentRoute, params } = matchRoute(currentPath);
+  // Memoize route matching to prevent recalculation on every render
+  const { route: currentRoute, params } = useMemo(
+    () => matchRouteImpl(currentPath, routes),
+    [currentPath]
+  );
   const PageComponent = currentRoute?.component;
 
-  // Store params globally for useParams hook
-  window.__BAVINI_ROUTE_PARAMS__ = params;
+  // Update global params only when they actually change
+  useEffect(() => {
+    const paramsStr = JSON.stringify(params);
+    const prevParamsStr = JSON.stringify(prevParamsRef.current);
+    if (paramsStr !== prevParamsStr) {
+      prevParamsRef.current = params;
+      window.__BAVINI_ROUTE_PARAMS__ = params;
+      // Dispatch event to notify useParams hooks
+      window.dispatchEvent(new CustomEvent('bavini-params-change'));
+    }
+  }, [params]);
 
-  const content = PageComponent ? (
-    <Suspense fallback={<div style={{ padding: '20px', textAlign: 'center' }}>Loading...</div>}>
-      <PageComponent />
-    </Suspense>
-  ) : children;
+  // No Suspense needed since we use static imports (no lazy loading)
+  const content = PageComponent ? <PageComponent /> : children;
 
   if (Layout) {
     return <Layout>{content}</Layout>;
@@ -1826,6 +1993,7 @@ function App() {
     }
 
     // Generate the bootstrap code
+    // NOTE: StrictMode removed to avoid double renders that can cause performance issues
     return `
 ${imports.join('\n')}
 ${routerWrapper}
@@ -1834,12 +2002,23 @@ ${appComponent}
 // Mount the app
 const container = document.getElementById('root');
 if (container) {
-  const root = createRoot(container);
-  root.render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>
-  );
+  try {
+    const root = createRoot(container);
+    root.render(<App />);
+  } catch (error) {
+    console.error('[BAVINI] Failed to render application:', error);
+    // XSS-safe error display using textContent
+    const errorDiv = document.createElement('div');
+    errorDiv.style.cssText = 'padding:20px;color:#dc3545;font-family:system-ui;';
+    const title = document.createElement('h2');
+    title.textContent = 'Render Error';
+    const pre = document.createElement('pre');
+    pre.style.overflow = 'auto';
+    pre.textContent = error.message || String(error);
+    errorDiv.appendChild(title);
+    errorDiv.appendChild(pre);
+    container.appendChild(errorDiv);
+  }
 } else {
   console.error('Root element not found');
 }
@@ -1936,38 +2115,158 @@ if (container) {
     }
 
     // For Astro, we render the component and inject its output as static HTML
-    // This is a simplified approach - full Astro requires SSR
+    // Astro's compiled output is complex - it uses async generators and $render functions
     return `
 import Component from '${mainPage.replace(/\.astro$/, '')}';
+
+// Helper to collect async iterator/generator output
+async function collectAsyncOutput(gen) {
+  if (!gen) return '';
+
+  // If it's already a string, return it
+  if (typeof gen === 'string') return gen;
+
+  // CRITICAL: Detect Astro's template literal array format
+  // Format: ['string1', 'string2', ..., raw: Array(n)]
+  // The actual content is often in the array values, not the raw strings
+  if (Array.isArray(gen) && gen.raw !== undefined) {
+    console.log('[BAVINI Astro] Detected template literal array, processing...');
+    // This is a tagged template literal result
+    // The strings array contains the literal parts, values are interpolated
+    // But Astro often puts the HTML content in a specific pattern
+
+    // Try to find HTML content in the array
+    let html = '';
+    for (let i = 0; i < gen.length; i++) {
+      const part = gen[i];
+      if (typeof part === 'string') {
+        html += part;
+      } else if (part && typeof part === 'object') {
+        // Recursively process nested content
+        html += await collectAsyncOutput(part);
+      }
+    }
+
+    // If we got content, return it
+    if (html && html.trim()) {
+      return html;
+    }
+
+    // Fallback: try joining with empty string
+    return gen.join('');
+  }
+
+  // If it's a regular array (not template literal), process each element
+  if (Array.isArray(gen)) {
+    let html = '';
+    for (const item of gen) {
+      html += await collectAsyncOutput(item);
+    }
+    return html;
+  }
+
+  // If it has a toHTML method (Astro's Response-like object)
+  if (gen.toHTML) return await gen.toHTML();
+
+  // If it has toString that returns something useful
+  if (gen.toString && gen.toString() !== '[object Object]') {
+    const str = gen.toString();
+    if (str && str !== '[object Object]' && str !== '[object AsyncGenerator]') {
+      return str;
+    }
+  }
+
+  // If it's an async iterator/generator, collect all chunks
+  if (gen[Symbol.asyncIterator]) {
+    let html = '';
+    for await (const chunk of gen) {
+      if (typeof chunk === 'string') {
+        html += chunk;
+      } else if (chunk && chunk.toString) {
+        const chunkStr = await collectAsyncOutput(chunk);
+        html += chunkStr;
+      }
+    }
+    return html;
+  }
+
+  // If it's a regular iterator
+  if (gen[Symbol.iterator] && typeof gen !== 'string') {
+    let html = '';
+    for (const chunk of gen) {
+      if (typeof chunk === 'string') {
+        html += chunk;
+      } else if (chunk && chunk.toString) {
+        const chunkStr = await collectAsyncOutput(chunk);
+        html += chunkStr;
+      }
+    }
+    return html;
+  }
+
+  // If it's a promise, await it
+  if (gen.then) {
+    return await collectAsyncOutput(await gen);
+  }
+
+  // Last resort: try to get html property
+  if (gen.html) return gen.html;
+
+  return '';
+}
 
 // Render Astro component
 async function renderAstro() {
   const container = document.getElementById('root') || document.getElementById('app');
   if (!container) {
-    console.error('Root element not found');
+    console.error('[BAVINI Astro] Root element not found');
     return;
   }
 
+  console.log('[BAVINI Astro] Starting render, Component type:', typeof Component);
+
   try {
-    // Astro components compile to functions that return HTML
+    let html = '';
+
+    // Try different ways to render the Astro component
     if (typeof Component === 'function') {
+      console.log('[BAVINI Astro] Component is a function, calling it...');
       const result = await Component({});
-      // Handle Astro's render result
-      if (typeof result === 'string') {
-        container.innerHTML = result;
-      } else if (result && typeof result.toString === 'function') {
-        container.innerHTML = result.toString();
-      } else if (result && result.html) {
-        container.innerHTML = result.html;
-      } else {
-        console.log('Astro component rendered:', result);
-      }
+      console.log('[BAVINI Astro] Component result type:', typeof result, result);
+      html = await collectAsyncOutput(result);
+    } else if (Component && Component.default && typeof Component.default === 'function') {
+      console.log('[BAVINI Astro] Using Component.default');
+      const result = await Component.default({});
+      html = await collectAsyncOutput(result);
+    } else if (Component && typeof Component.render === 'function') {
+      console.log('[BAVINI Astro] Using Component.render');
+      const result = await Component.render({});
+      html = await collectAsyncOutput(result);
     } else {
-      console.log('Astro component loaded:', Component);
+      console.log('[BAVINI Astro] Component structure:', Object.keys(Component || {}));
+    }
+
+    console.log('[BAVINI Astro] Rendered HTML length:', html.length);
+
+    if (html) {
+      container.innerHTML = html;
+      console.log('[BAVINI Astro] HTML injected successfully');
+    } else {
+      container.innerHTML = '<div style="padding: 40px; text-align: center; color: #666;"><h2>Astro Preview</h2><p>Component rendered but produced no HTML output.</p><p>Check the console for details.</p></div>';
     }
   } catch (error) {
-    console.error('Failed to render Astro component:', error);
-    container.innerHTML = '<div style="color: red; padding: 20px;">Error rendering Astro component. Check console for details.</div>';
+    console.error('[BAVINI Astro] Failed to render:', error);
+    // XSS-safe error display using textContent
+    const errorDiv = document.createElement('div');
+    errorDiv.style.cssText = 'color: red; padding: 20px; font-family: monospace;';
+    const title = document.createElement('h3');
+    title.textContent = 'Astro Render Error';
+    const pre = document.createElement('pre');
+    pre.textContent = error.message || String(error);
+    errorDiv.appendChild(title);
+    errorDiv.appendChild(pre);
+    container.innerHTML = '';
+    container.appendChild(errorDiv);
   }
 }
 
@@ -2040,26 +2339,19 @@ if (container) {
   }
 
   /**
-   * Create preview with Blob URL
-   * Safe: handles errors and ensures blob URLs are properly cleaned up
+   * Create preview using Service Worker (preferred) or Blob URL (fallback)
+   *
+   * Service Worker mode:
+   * - Preview has normal origin (same as parent)
+   * - localStorage, form inputs, and all browser APIs work correctly
+   * - URL: /preview/index.html
+   *
+   * Blob URL fallback:
+   * - Preview has "null" origin
+   * - Some browser APIs may not work correctly
+   * - URL: blob:https://...
    */
   private async createPreview(code: string, css: string, options: BuildOptions): Promise<void> {
-    // Store old blob URL and clear reference first
-    const oldBlobUrl = this._blobUrl;
-    this._blobUrl = null;
-
-    // Revoke previous blob URL with error handling
-    if (oldBlobUrl) {
-      try {
-        URL.revokeObjectURL(oldBlobUrl);
-        logger.debug('Revoked previous blob URL');
-      } catch (e) {
-        logger.warn('Failed to revoke old blob URL:', e);
-      }
-    }
-
-    let newBlobUrl: string | null = null;
-
     try {
       // Find HTML template
       let htmlTemplate = this._files.get('/index.html') || this._files.get('/public/index.html');
@@ -2069,109 +2361,366 @@ if (container) {
         htmlTemplate = this.generateDefaultHtml(options);
       }
 
-      // Inject bundle into HTML
-      const html = this.injectBundle(htmlTemplate, code, css);
+      // Try SSR if enabled and available
+      let ssrContent: { html: string; css: string; head: string } | null = null;
 
-      // Create blob URL
-      const blob = new Blob([html], { type: 'text/html' });
-      newBlobUrl = URL.createObjectURL(blob);
-
-      // Create preview object
-      const preview: PreviewInfo = {
-        url: newBlobUrl,
-        ready: true,
-        updatedAt: Date.now(),
-      };
-
-      // Only assign to instance properties AFTER all operations succeed
-      this._blobUrl = newBlobUrl;
-      this._preview = preview;
-
-      logger.info('Emitting preview ready event:', this._blobUrl);
-      logger.debug('Callbacks registered:', Object.keys(this.callbacks));
-
-      this.emitPreviewReady(this._preview);
-
-      logger.info('Preview created and callback emitted:', this._blobUrl);
-    } catch (error) {
-      // Clean up the new blob URL if it was created but something failed
-      if (newBlobUrl) {
-        try {
-          URL.revokeObjectURL(newBlobUrl);
-          logger.debug('Cleaned up blob URL after error');
-        } catch (e) {
-          logger.warn('Failed to cleanup blob URL after error:', e);
-        }
+      if (this._ssrEnabled && this._ssrBridge) {
+        ssrContent = await this.trySSRRender(options);
       }
 
+      // Inject bundle into HTML (with SSR content if available)
+      const html = this.injectBundleWithSSR(htmlTemplate, code, css, ssrContent);
+
+      // Strategy: Use srcdoc mode (most reliable)
+      // Service Worker mode is disabled due to iframe interception issues
+      // Keyboard input is handled via event forwarding in Preview.tsx
+      if (!SERVICE_WORKER_DISABLED && useServiceWorker && isServiceWorkerReady() && swFailureCount < MAX_SW_FAILURES) {
+        logger.info(`Attempting Service Worker mode for preview (failures: ${swFailureCount}/${MAX_SW_FAILURES})`);
+        const swSuccess = await this.createPreviewWithServiceWorker(html);
+
+        if (swSuccess) {
+          logger.info('Preview created via Service Worker - keyboard input should work');
+          return;
+        }
+
+        logger.warn(`Service Worker mode failed (${swFailureCount}/${MAX_SW_FAILURES}), falling back to srcdoc`);
+      } else if (SERVICE_WORKER_DISABLED) {
+        logger.debug('Service Worker mode disabled, using srcdoc');
+      } else if (swFailureCount >= MAX_SW_FAILURES) {
+        logger.info('Service Worker disabled after multiple failures, using srcdoc');
+      }
+
+      // Fallback to srcdoc mode
+      logger.info('Creating preview with srcdoc mode');
+      await this.createPreviewWithSrcdoc(html);
+    } catch (error) {
       logger.error('Failed to create preview:', error);
       throw error;
     }
   }
 
   /**
+   * Try to render SSR content for eligible files
+   * Returns null if SSR is not applicable or fails
+   */
+  private async trySSRRender(options: BuildOptions): Promise<{ html: string; css: string; head: string } | null> {
+    if (!this._ssrBridge) {
+      return null;
+    }
+
+    // Find SSR-eligible files (Astro, Vue, Svelte pages)
+    const ssrEligibleExtensions = ['.astro', '.vue', '.svelte'];
+    const pagePatterns = ['/src/pages/', '/pages/', '/src/app/', '/app/'];
+
+    for (const [filePath, content] of this._files.entries()) {
+      // Check if file is SSR-eligible
+      const isEligible = ssrEligibleExtensions.some((ext) => filePath.endsWith(ext));
+      const isPage = pagePatterns.some((pattern) => filePath.includes(pattern)) ||
+                     filePath.includes('index') ||
+                     filePath.includes('App');
+
+      if (!isEligible) {
+        continue;
+      }
+
+      // Check if SSR should be used for this file
+      const decision = this._ssrBridge.shouldUseSSR(filePath, content);
+
+      if (!decision.shouldSSR) {
+        logger.debug(`SSR skipped for ${filePath}: ${decision.reason}`);
+        continue;
+      }
+
+      logger.info(`Attempting SSR render for ${filePath} (${decision.framework})`);
+
+      try {
+        const result = await this._ssrBridge.render(content, filePath);
+
+        if (result && result.html) {
+          logger.info(`SSR render successful for ${filePath}: ${result.html.length} chars`);
+
+          return {
+            html: result.html,
+            css: result.css || '',
+            head: result.head || '',
+          };
+        }
+      } catch (error) {
+        logger.warn(`SSR render failed for ${filePath}:`, error);
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Inject bundle into HTML with optional SSR content
+   */
+  private injectBundleWithSSR(
+    html: string,
+    code: string,
+    css: string,
+    ssrContent: { html: string; css: string; head: string } | null,
+  ): string {
+    // If no SSR content, use standard injection
+    if (!ssrContent) {
+      return this.injectBundle(html, code, css);
+    }
+
+    logger.info('Injecting SSR content into preview');
+
+    // Combine CSS (SSR CSS + aggregated CSS)
+    const combinedCss = ssrContent.css ? `${ssrContent.css}\n${css}` : css;
+
+    // First inject normal bundle
+    let result = this.injectBundle(html, code, combinedCss);
+
+    // Inject SSR head content if available
+    if (ssrContent.head) {
+      result = result.replace('</head>', `${ssrContent.head}\n</head>`);
+    }
+
+    // Inject SSR HTML content into body
+    // Replace #root or #app content, or add before script
+    if (ssrContent.html) {
+      // Try to inject into #root or #app
+      const rootPatterns = [
+        /(<div\s+id="root"[^>]*>)(<\/div>)/,
+        /(<div\s+id="app"[^>]*>)(<\/div>)/,
+        /(<div\s+id="__next"[^>]*>)(<\/div>)/,
+      ];
+
+      let injected = false;
+
+      for (const pattern of rootPatterns) {
+        if (pattern.test(result)) {
+          result = result.replace(pattern, `$1${ssrContent.html}$2`);
+          injected = true;
+          logger.debug('SSR content injected into root element');
+          break;
+        }
+      }
+
+      // Fallback: add as first element in body
+      if (!injected) {
+        result = result.replace(
+          '<body>',
+          `<body>\n<div id="ssr-content">${ssrContent.html}</div>`,
+        );
+        logger.debug('SSR content injected as new element');
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Create preview using Service Worker
+   * This gives the preview a normal origin, fixing issues with localStorage, inputs, etc.
+   * Returns false if SW fails, so caller can fallback to srcdoc
+   */
+  private async createPreviewWithServiceWorker(html: string): Promise<boolean> {
+    const buildId = Date.now().toString();
+
+    // Send the HTML to the Service Worker and wait for confirmation
+    const files: Record<string, string> = {
+      'index.html': html,
+    };
+
+    const success = await setPreviewFiles(files, buildId);
+
+    if (!success) {
+      logger.warn('Service Worker failed to store files, will fallback to srcdoc');
+      swFailureCount++;
+      return false;
+    }
+
+    // Use the Service Worker URL
+    const previewUrl = getPreviewUrl();
+    const fullUrl = `${previewUrl}?t=${buildId}`;
+
+    // NOTE: We skip fetch verification because it fails due to SW scope limitations.
+    // The SW only intercepts requests from pages WITHIN its scope (/preview/).
+    // A fetch from the main page (/) won't be intercepted, but the iframe WILL work
+    // because it loads a page within the SW scope.
+    // We trust the SW since setPreviewFiles confirmed the files are stored.
+
+    // Reset failure count on success
+    swFailureCount = 0;
+
+    // Create preview object with a cache-busting query param
+    const preview: PreviewInfo = {
+      url: fullUrl,
+      ready: true,
+      updatedAt: Date.now(),
+    };
+
+    this._preview = preview;
+
+    logger.info('Preview created via Service Worker:', preview.url);
+    this.emitPreviewReady(this._preview);
+    return true;
+  }
+
+  /**
+   * Verify that the Service Worker is actually serving content
+   * Makes a test fetch to ensure the SW intercepts the request
+   */
+  private async verifyServiceWorkerServing(url: string): Promise<boolean> {
+    try {
+      // Use a short timeout - if SW works, it should respond very fast
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+      const response = await fetch(url, {
+        signal: controller.signal,
+        cache: 'no-store', // Don't use browser cache
+      });
+
+      clearTimeout(timeoutId);
+
+      // Check if we got a valid response
+      if (!response.ok) {
+        logger.warn(`SW verification failed: status ${response.status}`);
+        return false;
+      }
+
+      // Check if response came from our Service Worker
+      const servedBy = response.headers.get('X-Served-By');
+      if (!servedBy || !servedBy.includes('BAVINI-Preview-SW')) {
+        logger.warn('SW verification failed: response not from our Service Worker');
+        return false;
+      }
+
+      // Check that we got actual content
+      const text = await response.text();
+      if (text.length < 100) {
+        logger.warn('SW verification failed: response too short');
+        return false;
+      }
+
+      logger.info('Service Worker verification passed');
+      return true;
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        logger.warn('SW verification timed out');
+      } else {
+        logger.warn('SW verification error:', error);
+      }
+      return false;
+    }
+  }
+
+  /**
+   * Create preview using srcdoc (recommended - avoids blob URL origin issues)
+   *
+   * Using srcdoc instead of blob URL because:
+   * - Blob URLs have a "null" origin which breaks form inputs, localStorage, etc.
+   * - srcdoc with allow-same-origin sandbox gives the iframe the parent's origin
+   * - This is more reliable than Service Worker which can fail to initialize
+   */
+  private async createPreviewWithSrcdoc(html: string): Promise<void> {
+    // Revoke any previous blob URL (cleanup from old mode)
+    if (this._blobUrl) {
+      try {
+        URL.revokeObjectURL(this._blobUrl);
+        this._blobUrl = null;
+        logger.debug('Revoked previous blob URL (switching to srcdoc mode)');
+      } catch (e) {
+        logger.warn('Failed to revoke old blob URL:', e);
+      }
+    }
+
+    // Create preview object with srcdoc
+    // URL is set to 'about:srcdoc' as a marker for the Preview component
+    const preview: PreviewInfo = {
+      url: 'about:srcdoc',
+      ready: true,
+      updatedAt: Date.now(),
+      srcdoc: html,
+    };
+
+    this._preview = preview;
+
+    logger.info('Preview created via srcdoc (recommended mode)');
+    this.emitPreviewReady(this._preview);
+  }
+
+  /**
    * Generate default HTML template
    */
   private generateDefaultHtml(options: BuildOptions): string {
+    // NOTE: Do NOT use <base href="/"> - it's blocked by CSP in Blob URLs
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <base href="/">
   <title>BAVINI Preview</title>
+  <!-- BAVINI: localStorage protection for blob URLs -->
+  <script>
+  (function() {
+    // Wrap localStorage/sessionStorage to prevent errors in blob URL context
+    try {
+      // Test if localStorage works
+      localStorage.setItem('__bavini_test__', '1');
+      localStorage.removeItem('__bavini_test__');
+    } catch (e) {
+      // localStorage doesn't work in this context, provide a memory fallback
+      console.warn('[BAVINI] localStorage not available, using memory fallback');
+      var memoryStorage = {};
+      window.localStorage = {
+        getItem: function(k) { return memoryStorage[k] || null; },
+        setItem: function(k, v) { memoryStorage[k] = String(v); },
+        removeItem: function(k) { delete memoryStorage[k]; },
+        clear: function() { memoryStorage = {}; },
+        get length() { return Object.keys(memoryStorage).length; },
+        key: function(i) { return Object.keys(memoryStorage)[i] || null; }
+      };
+    }
+  })();
+  </script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: system-ui, -apple-system, sans-serif; }
 
-    /* Shadcn UI CSS Variables */
+    /* BAVINI Design System - Default CSS Variables */
     :root {
-      --background: 0 0% 100%;
-      --foreground: 222.2 84% 4.9%;
-      --card: 0 0% 100%;
-      --card-foreground: 222.2 84% 4.9%;
-      --popover: 0 0% 100%;
-      --popover-foreground: 222.2 84% 4.9%;
-      --primary: 222.2 47.4% 11.2%;
-      --primary-foreground: 210 40% 98%;
-      --secondary: 210 40% 96.1%;
-      --secondary-foreground: 222.2 47.4% 11.2%;
-      --muted: 210 40% 96.1%;
-      --muted-foreground: 215.4 16.3% 46.9%;
-      --accent: 210 40% 96.1%;
-      --accent-foreground: 222.2 47.4% 11.2%;
-      --destructive: 0 84.2% 60.2%;
-      --destructive-foreground: 210 40% 98%;
-      --border: 214.3 31.8% 91.4%;
-      --input: 214.3 31.8% 91.4%;
-      --ring: 222.2 84% 4.9%;
-      --radius: 0.5rem;
+      --color-primary: #6366f1;
+      --color-primary-light: #818cf8;
+      --color-primary-dark: #4f46e5;
+      --color-secondary: #f1f5f9;
+      --color-accent: #06b6d4;
+      --color-background: #fafbfc;
+      --color-background-alt: #f1f5f9;
+      --color-surface: #ffffff;
+      --color-text: #1a1f36;
+      --color-text-muted: #64748b;
+      --color-success: #10b981;
+      --color-warning: #f59e0b;
+      --color-error: #ef4444;
+      --color-border: #e2e8f0;
+      --font-heading: system-ui, sans-serif;
+      --font-body: system-ui, sans-serif;
+      --radius-lg: 0.75rem;
+      --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+      /* Legacy aliases */
+      --bavini-bg: var(--color-background);
+      --bavini-fg: var(--color-text);
+      --bavini-primary: var(--color-primary);
     }
 
     .dark {
-      --background: 222.2 84% 4.9%;
-      --foreground: 210 40% 98%;
-      --card: 222.2 84% 4.9%;
-      --card-foreground: 210 40% 98%;
-      --popover: 222.2 84% 4.9%;
-      --popover-foreground: 210 40% 98%;
-      --primary: 210 40% 98%;
-      --primary-foreground: 222.2 47.4% 11.2%;
-      --secondary: 217.2 32.6% 17.5%;
-      --secondary-foreground: 210 40% 98%;
-      --muted: 217.2 32.6% 17.5%;
-      --muted-foreground: 215 20.2% 65.1%;
-      --accent: 217.2 32.6% 17.5%;
-      --accent-foreground: 210 40% 98%;
-      --destructive: 0 62.8% 30.6%;
-      --destructive-foreground: 210 40% 98%;
-      --border: 217.2 32.6% 17.5%;
-      --input: 217.2 32.6% 17.5%;
-      --ring: 212.7 26.8% 83.9%;
+      --color-primary: #818cf8;
+      --color-background: #0f172a;
+      --color-surface: #1e293b;
+      --color-text: #f1f5f9;
+      --color-text-muted: #94a3b8;
+      --color-border: #334155;
     }
   </style>
 </head>
-<body class="bg-background text-foreground">
+<body style="background: var(--color-background); color: var(--color-text);">
   <div id="root"></div>
   <!-- BAVINI_BUNDLE -->
 </body>
@@ -2182,69 +2731,207 @@ if (container) {
    * Inject bundle into HTML
    */
   private injectBundle(html: string, code: string, css: string): string {
-    // Inject Tailwind CSS via SYNCHRONOUS link tag (loads BEFORE JavaScript executes)
-    // This ensures CSS is available when React renders components
-    const tailwindCSS = `
-<link rel="stylesheet" href="https://unpkg.com/tailwindcss@3.4.1/dist/tailwind.min.css" crossorigin="anonymous">
+    // NOTE: We don't use Tailwind CDN because COEP headers block it
+    // Instead, TailwindCompiler JIT compiles CSS which is passed via the 'css' parameter
+    //
+    // CSS Variable Strategy:
+    // 1. Default CSS variables provide sensible fallbacks
+    // 2. Claude can override these with project-specific values
+    // 3. Legacy --bavini-* variables kept for backwards compatibility
+    const baseStyles = `
 <style>
-  /* Shadcn UI CSS Variables */
+  /* ===== BAVINI DESIGN SYSTEM - DEFAULT CSS VARIABLES ===== */
+  /* Claude can override these with creative, project-specific values */
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --radius: 0.5rem;
+    /* Color palette (defaults) */
+    --color-primary: #6366f1;
+    --color-primary-light: #818cf8;
+    --color-primary-dark: #4f46e5;
+    --color-secondary: #f1f5f9;
+    --color-secondary-light: #f8fafc;
+    --color-secondary-dark: #e2e8f0;
+    --color-accent: #06b6d4;
+    --color-accent-light: #22d3ee;
+    --color-accent-dark: #0891b2;
+    --color-background: #fafbfc;
+    --color-background-alt: #f1f5f9;
+    --color-surface: #ffffff;
+    --color-surface-hover: #f8fafc;
+    --color-text: #1a1f36;
+    --color-text-muted: #64748b;
+    --color-text-inverse: #ffffff;
+    --color-success: #10b981;
+    --color-warning: #f59e0b;
+    --color-error: #ef4444;
+    --color-info: #3b82f6;
+    --color-border: #e2e8f0;
+    --color-border-hover: #cbd5e1;
+
+    /* Typography defaults */
+    --font-heading: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-body: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+    /* Spacing defaults */
+    --container-max-width: 1280px;
+    --container-padding: 1.5rem;
+    --section-padding-y: 6rem;
+    --grid-gap: 1.5rem;
+
+    /* Effects defaults */
+    --radius-sm: 0.25rem;
+    --radius-base: 0.375rem;
+    --radius-md: 0.5rem;
+    --radius-lg: 0.75rem;
+    --radius-xl: 1rem;
+    --radius-2xl: 1.5rem;
+    --radius-full: 9999px;
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-base: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+    --transition-fast: 150ms ease;
+    --transition-base: 200ms ease;
+    --transition-slow: 300ms ease;
+
+    /* Legacy BAVINI variables (for backwards compatibility) */
+    --bavini-bg: var(--color-background);
+    --bavini-fg: var(--color-text);
+    --bavini-primary: var(--color-primary);
+    --bavini-primary-hover: var(--color-primary-dark);
+    --bavini-secondary: var(--color-secondary);
+    --bavini-accent: var(--color-accent);
+    --bavini-success: var(--color-success);
+    --bavini-warning: var(--color-warning);
+    --bavini-error: var(--color-error);
+    --bavini-border: var(--color-border);
+    --bavini-muted: var(--color-text-muted);
+    --bavini-card: var(--color-surface);
+    --bavini-radius: var(--radius-lg);
+    --bavini-shadow: var(--shadow-md);
   }
+
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --color-primary: #818cf8;
+    --color-primary-light: #a5b4fc;
+    --color-primary-dark: #6366f1;
+    --color-secondary: #1e293b;
+    --color-secondary-light: #334155;
+    --color-secondary-dark: #0f172a;
+    --color-accent: #22d3ee;
+    --color-accent-light: #67e8f9;
+    --color-accent-dark: #06b6d4;
+    --color-background: #0f172a;
+    --color-background-alt: #1e293b;
+    --color-surface: #1e293b;
+    --color-surface-hover: #334155;
+    --color-text: #f1f5f9;
+    --color-text-muted: #94a3b8;
+    --color-text-inverse: #0f172a;
+    --color-success: #34d399;
+    --color-warning: #fbbf24;
+    --color-error: #f87171;
+    --color-info: #60a5fa;
+    --color-border: #334155;
+    --color-border-hover: #475569;
   }
+
   /* Base styles */
   body {
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: var(--font-body);
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background: var(--color-background);
+    color: var(--color-text);
+    line-height: 1.5;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+    line-height: 1.25;
+  }
+
+  a {
+    color: var(--color-primary);
+    transition: color var(--transition-fast);
+  }
+
+  a:hover {
+    color: var(--color-primary-dark);
   }
 </style>`;
 
-    // Inject Tailwind CSS link SYNCHRONOUSLY in head (before any scripts)
-    html = html.replace('<head>', `<head>\n${tailwindCSS}`);
+    // Inject base styles (CSS variables, reset) in head
+    html = html.replace('<head>', `<head>\n${baseStyles}`);
 
     // Inject CSS (additional custom styles)
     if (css) {
       const styleTag = `<style>${css}</style>`;
       html = html.replace('</head>', `${styleTag}\n</head>`);
+    }
+
+    // FALLBACK: Add Tailwind Play CDN ONLY when:
+    // 1. No compiled CSS is available, OR
+    // 2. CSS contains "Tailwind compilation failed" (JIT explicitly failed)
+    // NOTE: Don't add CDN just because there's a tailwind.config - JIT should handle it
+    // This prevents CSS duplication (JIT CSS + CDN CSS both being applied)
+    const jitFailed = css?.includes('Tailwind compilation failed');
+    const needsTailwindCdn = !css || css.length < 100 || jitFailed;
+
+    if (needsTailwindCdn) {
+      // Extract custom theme from tailwind.config.js if present
+      let customTheme = '';
+      const configContent = this._files.get('/tailwind.config.js') || this._files.get('/tailwind.config.ts');
+
+      if (configContent) {
+        // Extract color definitions from config (handles both direct and extend patterns)
+        // Pattern 1: theme: { colors: { ... } }
+        // Pattern 2: theme: { extend: { colors: { ... } } }
+        const colorPatterns = [
+          /theme\s*:\s*\{[^]*?extend\s*:\s*\{[^]*?colors\s*:\s*\{([^}]+)\}/,
+          /theme\s*:\s*\{[^]*?colors\s*:\s*\{([^}]+)\}/,
+          /colors\s*:\s*\{([^}]+)\}/,
+        ];
+
+        let colorsStr = '';
+
+        for (const pattern of colorPatterns) {
+          const match = configContent.match(pattern);
+
+          if (match) {
+            colorsStr = match[1];
+            break;
+          }
+        }
+
+        if (colorsStr) {
+          const colorDefs: string[] = [];
+
+          // Match simple color: value pairs (handles 'name': 'value' and name: 'value')
+          const simpleColorRegex = /['"]?(\w+)['"]?\s*:\s*['"]([^'"]+)['"]/g;
+          let match;
+
+          while ((match = simpleColorRegex.exec(colorsStr)) !== null) {
+            const [, name, value] = match;
+            colorDefs.push(`--color-${name}: ${value};`);
+          }
+
+          if (colorDefs.length > 0) {
+            customTheme = colorDefs.join('\n      ');
+            logger.debug(`Extracted ${colorDefs.length} custom colors from tailwind.config`);
+          }
+        }
+      }
+
+      const tailwindCdnScript = `
+<script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+<style type="text/tailwindcss">
+  @theme {
+    ${customTheme || '/* Using Tailwind default theme */'}
+  }
+</style>`;
+      html = html.replace('</head>', `${tailwindCdnScript}\n</head>`);
+      logger.info(`Injected Tailwind CDN fallback (reason: ${!css ? 'no CSS' : css.length < 100 ? 'CSS too short' : 'JIT failed'})`);
     }
 
     // Inject JS
@@ -2257,45 +2944,130 @@ if (container) {
       html = html.replace('</body>', `${scriptTag}\n</body>`);
     }
 
-    // Add console capture with secure origin
-    // SECURITY FIX: Use ancestorOrigins when available, fallback to '*' for blob: URLs
-    // The origin is passed at build time to avoid cross-origin access issues
-    const parentOrigin = typeof window !== 'undefined' ? window.location.origin : '*';
-    const consoleCapture = `
+    // TEMPORARILY DISABLED: Console capture for debugging input freeze issue
+    // TODO: Re-enable once input freeze is fixed
+    // The console capture was intercepting console.log and sending via postMessage
+    // We're disabling it to test if postMessage/console interception causes the freeze
+
+    // html = html.replace('<head>', `<head>\n${consoleCapture}`);
+
+    // Keyboard event forwarding script
+    // This script receives keyboard events forwarded from the parent window
+    // and applies them to the currently focused element in the iframe
+    const keyboardForwardingScript = `
 <script>
 (function() {
-  // SECURITY: Use specific origin instead of '*' when possible
-  // ancestorOrigins is the safest way to get parent origin from a blob: URL
-  const PARENT_ORIGIN = window.location.ancestorOrigins?.[0] || '${parentOrigin}';
+  console.log('[BAVINI] Keyboard forwarding helper loaded');
 
-  const originalConsole = { ...console };
-  ['log', 'warn', 'error', 'info', 'debug'].forEach(type => {
-    console[type] = (...args) => {
-      originalConsole[type](...args);
-      try {
-        window.parent.postMessage({
-          type: 'console',
-          payload: { type, args: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)), timestamp: Date.now() }
-        }, PARENT_ORIGIN);
-      } catch (e) {
-        // Silently fail if postMessage fails (origin mismatch)
+  var currentFocusedElement = null;
+
+  // Track the currently focused element
+  document.addEventListener('focus', function(e) {
+    currentFocusedElement = e.target;
+    var tag = e.target.tagName;
+    var isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable;
+
+    if (isInput) {
+      console.log('[BAVINI] Input focused:', tag, e.target.type || '', e.target.name || '');
+      // Notify parent that we have focus on an input
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: 'bavini-input-focused', target: tag }, '*');
       }
-    };
-  });
-  window.onerror = (msg, src, line, col, err) => {
-    try {
-      window.parent.postMessage({
-        type: 'error',
-        payload: { message: msg, filename: src, lineno: line, colno: col, stack: err?.stack }
-      }, PARENT_ORIGIN);
-    } catch (e) {
-      // Silently fail if postMessage fails
     }
-  };
+  }, true);
+
+  document.addEventListener('blur', function(e) {
+    if (e.target === currentFocusedElement) {
+      // Notify parent that input lost focus
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: 'bavini-input-blurred' }, '*');
+      }
+    }
+  }, true);
+
+  // Listen for forwarded keyboard events from parent
+  window.addEventListener('message', function(e) {
+    if (!e.data || e.data.type !== 'bavini-keyboard-event') return;
+
+    var payload = e.data.payload;
+    var target = currentFocusedElement || document.activeElement;
+
+    if (!target) return;
+
+    var tag = target.tagName;
+    var isInput = tag === 'INPUT' || tag === 'TEXTAREA';
+    var isEditable = target.isContentEditable;
+
+    console.log('[BAVINI] Received keyboard event:', payload.key, 'for', tag);
+
+    // For text inputs, directly manipulate the value
+    if (isInput && payload.eventType === 'keydown') {
+      var inputType = target.type || 'text';
+      var isTextInput = ['text', 'email', 'password', 'search', 'tel', 'url', 'number'].includes(inputType);
+
+      if (isTextInput || tag === 'TEXTAREA') {
+        var currentValue = target.value || '';
+        var selStart = target.selectionStart || currentValue.length;
+        var selEnd = target.selectionEnd || currentValue.length;
+        var newValue = currentValue;
+        var newCursorPos = selStart;
+
+        if (payload.key === 'Backspace') {
+          if (selStart !== selEnd) {
+            // Delete selection
+            newValue = currentValue.slice(0, selStart) + currentValue.slice(selEnd);
+            newCursorPos = selStart;
+          } else if (selStart > 0) {
+            // Delete character before cursor
+            newValue = currentValue.slice(0, selStart - 1) + currentValue.slice(selStart);
+            newCursorPos = selStart - 1;
+          }
+        } else if (payload.key === 'Delete') {
+          if (selStart !== selEnd) {
+            newValue = currentValue.slice(0, selStart) + currentValue.slice(selEnd);
+            newCursorPos = selStart;
+          } else if (selStart < currentValue.length) {
+            newValue = currentValue.slice(0, selStart) + currentValue.slice(selStart + 1);
+            newCursorPos = selStart;
+          }
+        } else if (payload.key.length === 1 && !payload.ctrlKey && !payload.metaKey) {
+          // Insert character
+          newValue = currentValue.slice(0, selStart) + payload.key + currentValue.slice(selEnd);
+          newCursorPos = selStart + 1;
+        } else if (payload.key === 'Enter' && tag === 'TEXTAREA') {
+          newValue = currentValue.slice(0, selStart) + '\\n' + currentValue.slice(selEnd);
+          newCursorPos = selStart + 1;
+        }
+
+        if (newValue !== currentValue) {
+          // Update value using native setter to trigger React's onChange
+          var nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+            tag === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype,
+            'value'
+          ).set;
+          nativeInputValueSetter.call(target, newValue);
+
+          // Dispatch input event for React
+          var inputEvent = new Event('input', { bubbles: true, cancelable: true });
+          target.dispatchEvent(inputEvent);
+
+          // Also dispatch change event
+          var changeEvent = new Event('change', { bubbles: true, cancelable: true });
+          target.dispatchEvent(changeEvent);
+
+          // Restore cursor position
+          setTimeout(function() {
+            target.setSelectionRange(newCursorPos, newCursorPos);
+          }, 0);
+
+          console.log('[BAVINI] Input updated, new length:', newValue.length);
+        }
+      }
+    }
+  });
 })();
 </script>`;
-
-    html = html.replace('<head>', `<head>\n${consoleCapture}`);
+    html = html.replace('<head>', `<head>\n${keyboardForwardingScript}`);
 
     return html;
   }

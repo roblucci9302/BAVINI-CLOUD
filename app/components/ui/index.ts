@@ -2,7 +2,7 @@
  * BAVINI UI Components
  *
  * Re-exports all UI components for convenient imports.
- * Based on Shadcn UI patterns with BAVINI theming.
+ * Custom BAVINI Design System with Tailwind CSS.
  *
  * @example
  * import { Button, Input, Select } from '~/components/ui';

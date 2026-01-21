@@ -1,8 +1,11 @@
 /**
- * Bibliothèque de Composants Modernes pour BAVINI
+ * BAVINI Design System - Composants Modernes
  *
- * Collection de snippets de code pour générer des UI belles et modernes
- * Inspiré de: shadcn/ui, Magic UI, Aceternity UI, Tailwind UI
+ * Collection de composants React/Tailwind uniques pour BAVINI
+ * Style: Moderne, épuré, avec animations Framer Motion
+ *
+ * ⚠️ Ces composants utilisent HTML natif + Tailwind CSS uniquement
+ * ⚠️ PAS de bibliothèques UI externes (Shadcn, Radix, etc.)
  *
  * @module agents/design/modern-components
  */
@@ -1129,9 +1132,9 @@ export function formatComponentsForPrompt(): string {
   }
 
   const lines: string[] = [
-    '# Bibliothèque de Composants Modernes BAVINI',
+    '# BAVINI Design System - Composants Modernes',
     '',
-    'Utilise ces composants pour créer des interfaces belles et modernes.',
+    'Composants React/Tailwind uniques. HTML natif uniquement - PAS de Shadcn/Radix.',
     '',
   ];
 

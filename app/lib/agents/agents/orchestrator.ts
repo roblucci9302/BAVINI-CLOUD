@@ -36,7 +36,12 @@
 import { BaseAgent } from '../core/base-agent';
 import type { ToolHandler } from '../core/tool-registry';
 import { AgentRegistry } from '../core/agent-registry';
-import { ORCHESTRATOR_SYSTEM_PROMPT, AGENT_CAPABILITIES } from '../prompts/orchestrator-prompt';
+import {
+  ORCHESTRATOR_SYSTEM_PROMPT,
+  AGENT_CAPABILITIES,
+  getOrchestratorSystemPrompt,
+  type DesignGuidelinesConfig,
+} from '../prompts/orchestrator-prompt';
 import type {
   Task,
   TaskResult,
@@ -258,7 +263,15 @@ export class Orchestrator extends BaseAgent {
   private projectMemory: ProjectMemory | null = null;
   private webSearchService: WebSearchServiceInterface | null = null;
 
-  constructor() {
+  /** Configuration des design guidelines */
+  private designGuidelinesConfig: DesignGuidelinesConfig | undefined;
+
+  constructor(designGuidelinesConfig?: DesignGuidelinesConfig) {
+    // Generate system prompt with design guidelines if config is provided
+    const systemPrompt = designGuidelinesConfig
+      ? getOrchestratorSystemPrompt(designGuidelinesConfig)
+      : ORCHESTRATOR_SYSTEM_PROMPT;
+
     super({
       name: 'orchestrator',
       description:
@@ -273,7 +286,7 @@ export class Orchestrator extends BaseAgent {
         ...INTERACTION_TOOLS, // AskUserQuestion et TodoWrite
         ...WEB_TOOLS, // WebSearch et WebFetch pour la recherche web
       ],
-      systemPrompt: ORCHESTRATOR_SYSTEM_PROMPT,
+      systemPrompt,
       maxTokens: 16384, // Increased from 8K to 16K for coordination
       temperature: 0.3, // Un peu de créativité pour la planification
       timeout: 300000, // 5 minutes
@@ -281,6 +294,8 @@ export class Orchestrator extends BaseAgent {
       extendedThinking: true, // Activer le raisonnement approfondi
       thinkingBudget: 16000, // 16K tokens pour la réflexion
     });
+
+    this.designGuidelinesConfig = designGuidelinesConfig;
 
     this.registry = AgentRegistry.getInstance();
 
@@ -673,8 +688,13 @@ export class Orchestrator extends BaseAgent {
       ? '\n\n## 🌐 Recherche Web ACTIVE\nTu peux utiliser `web_search` et `web_fetch` pour rechercher des informations actuelles sur le web.'
       : '\n\n## 🌐 Recherche Web\n⚠️ Service non configuré. Les outils web retourneront des résultats mock.';
 
+    // Use dynamic prompt with design guidelines if configured
+    const basePrompt = this.designGuidelinesConfig
+      ? getOrchestratorSystemPrompt(this.designGuidelinesConfig)
+      : ORCHESTRATOR_SYSTEM_PROMPT;
+
     return (
-      ORCHESTRATOR_SYSTEM_PROMPT +
+      basePrompt +
       `\n\n## Agents Actuellement Disponibles\n${availableAgents || 'Aucun agent disponible'}` +
       executionModeSection +
       webSearchSection +

@@ -493,7 +493,7 @@ export class WorkbenchStore {
       const entryPoint = this.#detectEntryPoint(files);
 
       if (!entryPoint) {
-        logger.debug('No entry point found yet, waiting for more files');
+        logger.warn('No entry point found. Files:', Array.from(files.keys()));
         return;
       }
 
@@ -526,19 +526,26 @@ export class WorkbenchStore {
    * Detect the entry point from available files.
    * Returns null if no suitable entry point is found.
    * Supports React, Vue, Svelte, and Astro frameworks.
+   * Also supports project subdirectories (e.g., /my-project/app/page.tsx)
    */
   #detectEntryPoint(files: Map<string, string>): string | null {
+    // First, detect if there's a project root folder (e.g., /ecommerce-shop/)
+    const projectRoot = this.#detectProjectRoot(files);
+    const prefix = projectRoot || '';
+
     // First, detect framework from package.json to prioritize correct entry points
     const framework = this.#detectFrameworkFromFiles(files);
+
+    logger.debug(`Detecting entry point: framework=${framework}, projectRoot=${projectRoot}`);
 
     // Framework-specific entry point candidates
     if (framework === 'astro') {
       const astroCandidates = [
-        '/src/pages/index.astro',
-        '/src/pages/index.md',
-        '/src/pages/index.mdx',
-        '/pages/index.astro',
-        '/index.astro',
+        `${prefix}/src/pages/index.astro`,
+        `${prefix}/src/pages/index.md`,
+        `${prefix}/src/pages/index.mdx`,
+        `${prefix}/pages/index.astro`,
+        `${prefix}/index.astro`,
       ];
       for (const candidate of astroCandidates) {
         if (files.has(candidate)) {
@@ -549,12 +556,12 @@ export class WorkbenchStore {
 
     if (framework === 'vue') {
       const vueCandidates = [
-        '/src/main.ts',
-        '/src/main.js',
-        '/src/App.vue',
-        '/App.vue',
-        '/main.ts',
-        '/main.js',
+        `${prefix}/src/main.ts`,
+        `${prefix}/src/main.js`,
+        `${prefix}/src/App.vue`,
+        `${prefix}/App.vue`,
+        `${prefix}/main.ts`,
+        `${prefix}/main.js`,
       ];
       for (const candidate of vueCandidates) {
         if (files.has(candidate)) {
@@ -565,12 +572,12 @@ export class WorkbenchStore {
 
     if (framework === 'svelte') {
       const svelteCandidates = [
-        '/src/main.ts',
-        '/src/main.js',
-        '/src/App.svelte',
-        '/App.svelte',
-        '/main.ts',
-        '/main.js',
+        `${prefix}/src/main.ts`,
+        `${prefix}/src/main.js`,
+        `${prefix}/src/App.svelte`,
+        `${prefix}/App.svelte`,
+        `${prefix}/main.ts`,
+        `${prefix}/main.js`,
       ];
       for (const candidate of svelteCandidates) {
         if (files.has(candidate)) {
@@ -584,24 +591,24 @@ export class WorkbenchStore {
     if (framework === 'react') {
       const nextAppCandidates = [
         // App Router - layout.tsx is the entry that imports CSS and wraps pages
-        '/src/app/layout.tsx',
-        '/src/app/layout.jsx',
-        '/app/layout.tsx',
-        '/app/layout.jsx',
+        `${prefix}/src/app/layout.tsx`,
+        `${prefix}/src/app/layout.jsx`,
+        `${prefix}/app/layout.tsx`,
+        `${prefix}/app/layout.jsx`,
         // Fallback to page if no layout
-        '/src/app/page.tsx',
-        '/src/app/page.jsx',
-        '/app/page.tsx',
-        '/app/page.jsx',
-        '/app/page.ts',
-        '/app/page.js',
+        `${prefix}/src/app/page.tsx`,
+        `${prefix}/src/app/page.jsx`,
+        `${prefix}/app/page.tsx`,
+        `${prefix}/app/page.jsx`,
+        `${prefix}/app/page.ts`,
+        `${prefix}/app/page.js`,
         // Pages Router
-        '/pages/_app.tsx',
-        '/pages/_app.jsx',
-        '/pages/index.tsx',
-        '/pages/index.jsx',
-        '/pages/index.ts',
-        '/pages/index.js',
+        `${prefix}/pages/_app.tsx`,
+        `${prefix}/pages/_app.jsx`,
+        `${prefix}/pages/index.tsx`,
+        `${prefix}/pages/index.jsx`,
+        `${prefix}/pages/index.ts`,
+        `${prefix}/pages/index.js`,
       ];
       for (const candidate of nextAppCandidates) {
         if (files.has(candidate)) {
@@ -611,28 +618,45 @@ export class WorkbenchStore {
     }
 
     // Default candidates for React/Preact/Vanilla
-    const candidates = [
-      '/src/main.tsx',
-      '/src/main.ts',
-      '/src/index.tsx',
-      '/src/index.ts',
-      '/src/App.tsx',
-      '/src/App.ts',
-      '/index.tsx',
-      '/index.ts',
-      '/main.tsx',
-      '/main.ts',
+    const defaultCandidates = [
+      `${prefix}/src/main.tsx`,
+      `${prefix}/src/main.ts`,
+      `${prefix}/src/index.tsx`,
+      `${prefix}/src/index.ts`,
+      `${prefix}/src/App.tsx`,
+      `${prefix}/src/App.ts`,
+      `${prefix}/index.tsx`,
+      `${prefix}/index.ts`,
+      `${prefix}/main.tsx`,
+      `${prefix}/main.ts`,
     ];
 
-    for (const candidate of candidates) {
+    for (const candidate of defaultCandidates) {
       if (files.has(candidate)) {
         return candidate;
       }
     }
 
-    // Return first TSX/TS file found in /src directory (excluding data files)
+    // Also check without prefix for backwards compatibility
+    if (prefix) {
+      const rootCandidates = [
+        '/src/main.tsx',
+        '/src/main.ts',
+        '/src/index.tsx',
+        '/src/index.ts',
+        '/app/layout.tsx',
+        '/app/page.tsx',
+      ];
+      for (const candidate of rootCandidates) {
+        if (files.has(candidate)) {
+          return candidate;
+        }
+      }
+    }
+
+    // Return first TSX/TS file found in /src or /{project}/src directory
     for (const path of files.keys()) {
-      if (path.startsWith('/src/') &&
+      if ((path.includes('/src/') || path.match(/^\/[^/]+\/src\//)) &&
           !path.includes('/data/') &&
           !path.includes('/utils/') &&
           !path.includes('/lib/') &&
@@ -641,18 +665,18 @@ export class WorkbenchStore {
       }
     }
 
-    // Fallback: Return first TSX/TS file found in /app directory (Next.js App Router)
+    // Fallback: Return first TSX/TS file found in /app or /{project}/app directory (Next.js App Router)
     for (const path of files.keys()) {
-      if (path.startsWith('/app/') &&
+      if ((path.includes('/app/')) &&
           !path.includes('/api/') &&
           (path.endsWith('.tsx') || path.endsWith('.ts') || path.endsWith('.jsx') || path.endsWith('.js'))) {
         return path;
       }
     }
 
-    // Fallback: Return first TSX/TS file found in /pages directory (Next.js Pages Router)
+    // Fallback: Return first TSX/TS file found in /pages or /{project}/pages directory (Next.js Pages Router)
     for (const path of files.keys()) {
-      if (path.startsWith('/pages/') &&
+      if ((path.includes('/pages/')) &&
           !path.includes('/api/') &&
           (path.endsWith('.tsx') || path.endsWith('.ts') || path.endsWith('.jsx') || path.endsWith('.js'))) {
         return path;
@@ -671,11 +695,83 @@ export class WorkbenchStore {
   }
 
   /**
-   * Detect framework from package.json or file extensions
+   * Detect project root directory from file paths.
+   * Returns the common prefix like '/ecommerce-shop' if all files are in a subdirectory.
+   */
+  #detectProjectRoot(files: Map<string, string>): string | null {
+    if (files.size === 0) return null;
+
+    // Get all file paths
+    const paths = Array.from(files.keys());
+
+    // Check if there's a common project directory prefix
+    // Look for patterns like /project-name/src/... or /project-name/app/...
+    // Extended list of common directories to detect project roots
+    const knownDirs = 'src|app|pages|components|lib|public|providers|hooks|utils|types|styles|assets|api|services|store|stores|context|config|data';
+    const projectDirPattern = new RegExp(`^(\\/[^/]+)\\/(${knownDirs}|package\\.json|tsconfig\\.json|index\\.(tsx?|jsx?|css))`);
+
+    const projectDirs = new Set<string>();
+    for (const path of paths) {
+      const match = path.match(projectDirPattern);
+      if (match) {
+        projectDirs.add(match[1]);
+      }
+    }
+
+    logger.debug(`Project root detection: found ${projectDirs.size} potential roots:`, Array.from(projectDirs));
+
+    // If we found exactly one project directory and most files are in it, use it
+    if (projectDirs.size === 1) {
+      const projectDir = Array.from(projectDirs)[0];
+      const filesInProject = paths.filter(p => p.startsWith(projectDir + '/')).length;
+      // At least 50% of files should be in the project directory (lowered from 70%)
+      if (filesInProject >= paths.length * 0.5) {
+        logger.info(`Detected project root: ${projectDir} (${filesInProject}/${paths.length} files)`);
+        return projectDir;
+      }
+    }
+
+    // If no project root found, check if all files have a common first-level prefix
+    const firstLevelDirs = new Set<string>();
+    for (const path of paths) {
+      const match = path.match(/^(\/[^/]+)\//);
+      if (match) {
+        firstLevelDirs.add(match[1]);
+      }
+    }
+
+    if (firstLevelDirs.size === 1) {
+      const commonDir = Array.from(firstLevelDirs)[0];
+      logger.info(`All files share common prefix: ${commonDir}`);
+      return commonDir;
+    }
+
+    logger.debug('No project root detected');
+    return null;
+  }
+
+  /**
+   * Detect framework from package.json or file extensions.
+   * Also checks for package.json in project subdirectories.
    */
   #detectFrameworkFromFiles(files: Map<string, string>): string {
-    // Check package.json first
-    const pkgJson = files.get('/package.json');
+    // Find package.json - check both root and project subdirectories
+    let pkgJson: string | undefined;
+
+    // First try root
+    pkgJson = files.get('/package.json');
+
+    // If not found, look for package.json in any first-level subdirectory
+    if (!pkgJson) {
+      for (const [path, content] of files.entries()) {
+        // Match patterns like /project-name/package.json
+        if (path.match(/^\/[^/]+\/package\.json$/)) {
+          pkgJson = content;
+          break;
+        }
+      }
+    }
+
     if (pkgJson) {
       try {
         const pkg = JSON.parse(pkgJson);
@@ -684,7 +780,7 @@ export class WorkbenchStore {
         if (deps['vue'] || deps['@vue/compiler-sfc']) return 'vue';
         if (deps['svelte']) return 'svelte';
         if (deps['preact']) return 'preact';
-        if (deps['react'] || deps['react-dom']) return 'react';
+        if (deps['react'] || deps['react-dom'] || deps['next']) return 'react';
       } catch (e) {
         // Ignore JSON parse errors
       }
@@ -708,13 +804,14 @@ export class WorkbenchStore {
    * Set a browser-mode preview (for esbuild-wasm builds)
    */
   setBrowserPreview(info: BrowserPreviewInfo): void {
-    logger.info(`Setting browser preview: ${info.url}`);
+    logger.info(`Setting browser preview: ${info.url}${info.srcdoc ? ' (srcdoc mode)' : ''}`);
 
     // Update the stable previews atom directly
     const previewInfo = {
       port: 0, // Use port 0 as marker for browser preview
       ready: info.ready,
       baseUrl: info.url,
+      srcdoc: info.srcdoc, // Pass srcdoc for iframe content (avoids blob URL origin issues)
     };
 
     const currentPreviews = this.#previewsAtom.get();

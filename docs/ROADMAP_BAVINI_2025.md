@@ -16,7 +16,7 @@
 | Temps génération app simple | ~5 min | < 2 min | Phase 3 |
 | Taux d'erreurs premier run | ~30% | < 10% | Phase 2 |
 | Score qualité code moyen | 65/100 | 85/100 | Phase 2 |
-| Composants UI modernes | Basic | shadcn/ui | Phase 1 |
+| Composants UI modernes | Basic | HTML natif (shadcn en pause) | Phase 1 |
 | Apps 100% responsive | ~70% | 100% | Phase 1 |
 | Intégration backend | Manuel | 1-clic | Phase 3 |
 | Support français natif | Partiel | 100% | Phase 4 |
@@ -44,7 +44,7 @@
 │         ┌──────────────────┼──────────────────┐                │
 │         ▼                  ▼                  ▼                │
 │  ┌───────────┐      ┌───────────┐      ┌───────────┐          │
-│  │ shadcn/ui │      │ Supabase  │      │  WebContainer│        │
+│  │HTML Native│      │ Supabase  │      │  WebContainer│        │
 │  │ Standards │      │ Templates │      │  Runtime    │         │
 │  └───────────┘      └───────────┘      └───────────┘          │
 │                                                                 │
@@ -59,7 +59,9 @@
 **Durée estimée**: 2 semaines
 **Priorité**: HAUTE
 
-### 1.1 Intégration shadcn/ui
+> **NOTE (2026-01-20)**: L'intégration Shadcn/ui est **temporairement désactivée** en raison de problèmes de compatibilité avec le mode preview browser (keyboard forwarding ne fonctionne pas avec les composants Radix UI). Les composants HTML natifs sont utilisés en attendant la correction du Service Worker preview. Issue: https://github.com/bavini/issues/keyboard-shadcn
+
+### 1.1 Intégration shadcn/ui (EN PAUSE)
 
 #### Objectif
 Faire de shadcn/ui le standard par défaut pour tous les composants UI générés.

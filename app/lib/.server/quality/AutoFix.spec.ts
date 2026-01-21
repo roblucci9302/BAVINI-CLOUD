@@ -103,7 +103,7 @@ describe('ImportFixer', () => {
       expect(fixer.canFix(code, context)).toBe(true);
     });
 
-    it('should detect missing shadcn imports', () => {
+    it('should detect missing component imports', () => {
       const code = `
         export function App() {
           return <Button>Click me</Button>;

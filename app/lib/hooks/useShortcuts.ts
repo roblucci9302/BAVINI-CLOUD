@@ -27,8 +27,14 @@ export function useShortcuts(): void {
     const handleKeyDown = (event: KeyboardEvent): void => {
       const { key, ctrlKey, shiftKey, altKey, metaKey } = event;
 
+      // Guard against undefined key (can happen with some keyboard events)
+      if (!key) return;
+
       for (const name in shortcuts) {
         const shortcut = shortcuts[name as keyof Shortcuts];
+
+        // Skip if shortcut or shortcut.key is not defined
+        if (!shortcut?.key) continue;
 
         if (
           shortcut.key.toLowerCase() === key.toLowerCase() &&

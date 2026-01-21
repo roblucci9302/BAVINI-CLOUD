@@ -1,8 +1,16 @@
 # PHASE 1: UI Excellence
 ## Plan d'implémentation détaillé
 
+> **STATUT: EN PAUSE (2026-01-20)**
+>
+> L'intégration Shadcn/ui est **temporairement suspendue** en raison de problèmes de compatibilité avec le mode preview browser. Les composants Radix UI (utilisés par Shadcn) ne fonctionnent pas correctement avec le système de keyboard forwarding de l'iframe.
+>
+> **Approche actuelle**: Utilisation de composants HTML natifs avec Tailwind CSS.
+> **Reprise prévue**: Lorsque le Service Worker preview sera corrigé.
+> Issue: https://github.com/bavini/issues/keyboard-shadcn
+
 **Durée**: 2 semaines
-**Objectif**: Faire de shadcn/ui le standard UI et atteindre 100% responsive
+**Objectif**: ~~Faire de shadcn/ui le standard UI~~ Utiliser HTML natif + atteindre 100% responsive
 
 ---
 

@@ -115,7 +115,7 @@ export interface ProjectConfig {
   /** Framework CSS (tailwind, css-modules, etc.) */
   cssFramework?: string;
 
-  /** Bibliothèque UI (shadcn, etc.) */
+  /** Bibliothèque UI (non utilisé - BAVINI utilise HTML natif) */
   uiLibrary?: string;
 }
 

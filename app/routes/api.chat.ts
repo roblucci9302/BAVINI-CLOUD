@@ -2,7 +2,13 @@ import { type ActionFunctionArgs } from '@remix-run/cloudflare';
 import { z } from 'zod';
 import { MAX_RESPONSE_SEGMENTS, MAX_TOKENS } from '~/lib/.server/llm/constants';
 import { CONTINUE_PROMPT } from '~/lib/.server/llm/prompts';
-import { streamText, isWebSearchAvailable, type Messages, type StreamingOptions } from '~/lib/.server/llm/stream-text';
+import {
+  streamText,
+  isWebSearchAvailable,
+  type Messages,
+  type StreamingOptions,
+  type DesignGuidelinesOptions,
+} from '~/lib/.server/llm/stream-text';
 import SwitchableStream from '~/lib/.server/llm/switchable-stream';
 import { createScopedLogger } from '~/utils/logger';
 import { ChatModeAgent, type ChatMode } from '~/lib/.server/agents';
@@ -230,6 +236,16 @@ const MAX_REQUEST_BODY_SIZE = 10 * 1024 * 1024;
 const MAX_MESSAGE_CONTENT_SIZE = 500 * 1024;
 
 /**
+ * Zod schema for design guidelines options
+ */
+const DesignGuidelinesSchema = z
+  .object({
+    enabled: z.boolean().optional().default(true),
+    level: z.enum(['minimal', 'standard', 'full']).optional().default('standard'),
+  })
+  .optional();
+
+/**
  * Zod schema for the full chat request body with size validation
  */
 const ChatRequestBodySchema = z.object({
@@ -246,6 +262,7 @@ const ChatRequestBodySchema = z.object({
   context: AgentContextSchema,
   continuationContext: ContinuationContextSchema.optional(),
   multiAgent: z.boolean().optional().default(false),
+  designGuidelines: DesignGuidelinesSchema,
 });
 
 type ChatRequestBody = z.infer<typeof ChatRequestBodySchema>;
@@ -325,9 +342,9 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
     );
   }
 
-  const { messages, mode, context: agentContext, continuationContext, multiAgent } = parseResult.data;
+  const { messages, mode, context: agentContext, continuationContext, multiAgent, designGuidelines } = parseResult.data;
 
-  logger.debug(`Chat mode: ${mode}, Multi-Agent: ${multiAgent}`);
+  logger.debug(`Chat mode: ${mode}, Multi-Agent: ${multiAgent}, Design Guidelines: ${designGuidelines?.enabled ?? 'default'} (${designGuidelines?.level ?? 'standard'})`);
 
   /*
    * Si un contexte de continuation est fourni, injecter les instructions système
@@ -431,6 +448,8 @@ Sois méthodique et explicite sur chaque action que tu entreprends.`,
       // Enable tools if web search is available, otherwise disable
       toolChoice: webSearchEnabled ? 'auto' : 'none',
       enableWebSearch: webSearchEnabled,
+      // Design guidelines injection (auto-detected for UI requests)
+      designGuidelines: designGuidelines as DesignGuidelinesOptions,
       onFinish: async ({ text: content, finishReason }) => {
         // Continuer si max tokens atteint
         if (finishReason === 'length') {
@@ -472,6 +491,7 @@ Sois méthodique et explicite sur chaque action que tu entreprends.`,
         'X-Context-Messages': stats.messageCount.toString(),
         'X-Context-Summaries': stats.summaryCount.toString(),
         'X-Web-Search': webSearchEnabled ? 'enabled' : 'disabled',
+        'X-Design-Guidelines': designGuidelines?.enabled !== false ? (designGuidelines?.level ?? 'standard') : 'disabled',
       },
     });
   } catch (error) {

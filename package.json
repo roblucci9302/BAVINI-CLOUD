@@ -76,6 +76,7 @@
     "date-fns": "^3.6.0",
     "diff": "^5.2.0",
     "esbuild-wasm": "^0.27.2",
+    "events": "^3.3.0",
     "framer-motion": "^11.2.12",
     "glob": ">=10.5.0",
     "isbot": "^4.1.0",
@@ -84,9 +85,11 @@
     "jose": "^5.6.3",
     "js-tiktoken": "^1.0.21",
     "lucide-react": "^0.562.0",
+    "memfs": "^4.56.4",
     "nanostores": "^0.10.3",
     "path-browserify": "^1.0.1",
     "pyodide": "0.29.0",
+    "quickjs-emscripten": "^0.31.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hotkeys-hook": "^4.5.0",
@@ -99,9 +102,11 @@
     "remix-island": "^0.2.0",
     "remix-utils": "^7.6.0",
     "shiki": "^1.9.1",
+    "stream-browserify": "^3.0.0",
     "tailwind-merge": "^3.4.0",
     "three": "^0.182.0",
-    "unist-util-visit": "^5.0.0"
+    "unist-util-visit": "^5.0.0",
+    "util": "^0.12.5"
   },
   "devDependencies": {
     "@blitz/eslint-plugin": "0.1.0",

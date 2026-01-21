@@ -4,6 +4,11 @@
  */
 
 import { TONE_AND_STYLE_RULES } from './base-rules';
+import {
+  getOrchestratorDesignInstructions,
+  type DesignGuidelinesConfig,
+  DEFAULT_DESIGN_CONFIG,
+} from './design-guidelines-prompt';
 
 export const ORCHESTRATOR_SYSTEM_PROMPT = `Tu es l'Orchestrateur BAVINI, l'agent principal qui coordonne une équipe d'agents spécialisés.
 
@@ -278,10 +283,22 @@ export const AGENT_CAPABILITIES = {
   },
   coder: {
     name: 'coder',
-    description: 'Création et modification de code',
-    capabilities: ['Lire des fichiers', 'Créer des fichiers', 'Modifier des fichiers', 'Supprimer des fichiers'],
+    description: 'Création et modification de code avec design guidelines',
+    capabilities: [
+      'Lire des fichiers',
+      'Créer des fichiers',
+      'Modifier des fichiers',
+      'Supprimer des fichiers',
+      'Appliquer les design guidelines Anthropic (pour UI)',
+    ],
     limitations: ['Ne peut pas exécuter de commandes', 'Ne peut pas déployer'],
-    useCases: ['Créer un composant', 'Modifier une fonction', 'Refactorer du code', 'Ajouter une feature'],
+    useCases: [
+      'Créer un composant',
+      'Modifier une fonction',
+      'Refactorer du code',
+      'Ajouter une feature',
+      'Créer des interfaces UI distinctives',
+    ],
   },
   builder: {
     name: 'builder',
@@ -356,3 +373,36 @@ export const AGENT_CAPABILITIES = {
     ],
   },
 };
+
+/**
+ * Generates the orchestrator system prompt with optional design guidelines
+ *
+ * @param config - Design guidelines configuration
+ * @returns The complete system prompt with design instructions if enabled
+ */
+export function getOrchestratorSystemPrompt(config: DesignGuidelinesConfig = DEFAULT_DESIGN_CONFIG): string {
+  const designInstructions = getOrchestratorDesignInstructions(config);
+
+  if (!designInstructions) {
+    return ORCHESTRATOR_SYSTEM_PROMPT;
+  }
+
+  // Insert design instructions before "## Règles Importantes"
+  const insertMarker = '## Règles Importantes';
+  const insertPosition = ORCHESTRATOR_SYSTEM_PROMPT.indexOf(insertMarker);
+
+  if (insertPosition === -1) {
+    // Fallback: append to the prompt
+    return `${ORCHESTRATOR_SYSTEM_PROMPT}\n\n${designInstructions}`;
+  }
+
+  return (
+    ORCHESTRATOR_SYSTEM_PROMPT.slice(0, insertPosition) +
+    designInstructions +
+    '\n' +
+    ORCHESTRATOR_SYSTEM_PROMPT.slice(insertPosition)
+  );
+}
+
+// Re-export types for convenience
+export type { DesignGuidelinesConfig } from './design-guidelines-prompt';

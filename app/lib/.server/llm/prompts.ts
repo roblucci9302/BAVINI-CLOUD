@@ -256,17 +256,18 @@ IMPORTANT: Tu réponds TOUJOURS en français. Explications, commentaires de code
   → Raison : Développement rapide, bundle optimisé, pas de contrainte SEO
   → Template : react-ts standard
 
-  🎨 SHADCN UI - COMPOSANTS RECOMMANDÉS :
-  Pour tout projet React ou Next.js avec interface utilisateur, PRÉFÉRER les composants Shadcn UI :
-  - Button, Input, Label pour les formulaires
-  - Card, CardHeader, CardContent pour les conteneurs
-  - Select, Checkbox, Switch pour les contrôles
-  - Dialog, AlertDialog pour les modales
-  - Tabs, DropdownMenu pour la navigation
-  - Tooltip, Badge pour les infos contextuelles
+  🎨 BAVINI DESIGN SYSTEM - COMPOSANTS HTML NATIFS :
+  Pour tout projet React ou Next.js, utiliser des éléments HTML NATIFS avec Tailwind CSS :
+  - <button> avec classes: px-6 py-3 rounded-xl font-medium transition-all
+  - <input> avec classes: w-full px-4 py-3 border-2 rounded-xl focus:ring-2
+  - <div> pour cartes: p-6 rounded-2xl bg-white shadow-lg hover:shadow-xl
+  - <select> avec classes: w-full px-4 py-3 border rounded-xl appearance-none
+  - <dialog> ou state React pour modales
+  - Navigation avec state React (pas de bibliothèques externes)
 
-  → Templates Shadcn : react-shadcn-ts ou next-shadcn-ts (RECOMMANDÉS)
-  → Avantages : Accessibilité, cohérence design, personnalisation Tailwind
+  ⚠️ INTERDIT : Shadcn UI, Radix UI, Headless UI ou autres bibliothèques de composants
+  → Raison : Compatibilité preview browser BAVINI (keyboard forwarding)
+  → Templates : react-ts ou next-ts avec Tailwind CSS pur
 
   🚨 QUALITÉ DE DESIGN OBLIGATOIRE :
   JAMAIS de HTML nu sans classes Tailwind. Chaque élément DOIT avoir un style professionnel.

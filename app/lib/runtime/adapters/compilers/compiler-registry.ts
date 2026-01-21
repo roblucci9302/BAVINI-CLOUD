@@ -17,6 +17,16 @@ const logger = createScopedLogger('CompilerRegistry');
 export type FrameworkType = 'react' | 'vue' | 'svelte' | 'astro' | 'vanilla' | 'preact';
 
 /**
+ * CSS metadata for aggregation
+ */
+export interface CSSMetadata {
+  /** Type of CSS (component styles or tailwind utilities) */
+  type: 'component' | 'tailwind';
+  /** Scope ID for Vue scoped styles */
+  scopeId?: string;
+}
+
+/**
  * Compilation result from a framework compiler
  */
 export interface CompilationResult {
@@ -28,6 +38,8 @@ export interface CompilationResult {
   map?: string;
   /** Any compilation warnings */
   warnings?: string[];
+  /** CSS metadata for aggregation (type, scopeId, etc.) */
+  cssMetadata?: CSSMetadata;
 }
 
 /**

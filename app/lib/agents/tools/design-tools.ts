@@ -156,7 +156,7 @@ const DESIGN_PATTERNS: Record<string, DesignPattern> = {
       'Ajouter une section features avec icônes et descriptions courtes',
       'Prévoir une section pricing avec 3 tiers maximum',
       'Footer avec liens légaux et newsletter signup',
-      'Utiliser les composants Shadcn UI (Button, Card, Input) pour les formulaires',
+      'Utiliser des éléments HTML natifs (button, input, form) avec Tailwind CSS',
     ],
   },
 
@@ -200,7 +200,7 @@ const DESIGN_PATTERNS: Record<string, DesignPattern> = {
       'Badge promotions et stock limité',
       'Panier persistant et visible',
       'Processus de checkout simplifié',
-      'Utiliser Shadcn UI (Button, Card, Badge, Input) pour les composants',
+      'Utiliser des éléments HTML natifs avec Tailwind CSS pour les composants',
     ],
   },
 
@@ -244,7 +244,7 @@ const DESIGN_PATTERNS: Record<string, DesignPattern> = {
       'Cards pour les KPIs principaux en haut',
       'Graphiques avec Recharts ou Chart.js',
       'Tables avec pagination, tri, et filtres',
-      'Utiliser un design system cohérent (shadcn/ui)',
+      'Utiliser un design system cohérent avec Tailwind CSS',
     ],
   },
 
@@ -288,7 +288,7 @@ const DESIGN_PATTERNS: Record<string, DesignPattern> = {
       'CTAs multiples tout au long de la page',
       'Testimonials avec photos et noms',
       'FAQ section en accordion',
-      'Utiliser Shadcn UI (Button, Card, Accordion) pour les composants',
+      'Utiliser des éléments HTML natifs avec Tailwind CSS pour les composants',
     ],
   },
 
@@ -332,7 +332,7 @@ const DESIGN_PATTERNS: Record<string, DesignPattern> = {
       'Section about avec photo et bio',
       'Contact section simple et directe',
       'Cursor personnalisé et micro-interactions',
-      'Utiliser Shadcn UI (Button, Card, Dialog) pour les interactions',
+      'Utiliser des éléments HTML natifs avec Tailwind CSS pour les interactions',
     ],
   },
 
@@ -376,7 +376,7 @@ const DESIGN_PATTERNS: Record<string, DesignPattern> = {
       'Table des matières pour articles longs',
       'Estimated reading time',
       "Related posts en fin d'article",
-      'Utiliser Shadcn UI (Card, Badge, Separator) pour les articles',
+      'Utiliser des éléments HTML natifs avec Tailwind CSS pour les articles',
     ],
   },
 
@@ -421,7 +421,7 @@ const DESIGN_PATTERNS: Record<string, DesignPattern> = {
       'Raccourcis clavier pour power users',
       'Responsive design mobile-first',
       'Accessibility (ARIA labels, focus states)',
-      'Utiliser Shadcn UI pour tous les formulaires et composants UI',
+      'Utiliser des éléments HTML natifs avec Tailwind CSS pour tous les formulaires',
     ],
   },
 };
@@ -1397,16 +1397,15 @@ Quand l'utilisateur demande de créer un site/page, utilise TOUJOURS \`get_desig
 - "une page d'authentification" → template AuthModern
 - "une page 404" → template ErrorModern
 
-## 🎯 SHADCN UI - COMPOSANTS PRIORITAIRES
-Pour tout projet React ou Next.js, utiliser les composants Shadcn UI :
-- **Formulaires**: Button, Input, Label, Textarea, Select, Checkbox, Switch
-- **Conteneurs**: Card, Dialog, Sheet, Tabs, Accordion
-- **Feedback**: Badge, Alert, Toast, Tooltip
-- **Navigation**: DropdownMenu, NavigationMenu, Command
-- **Data**: Table, DataTable avec tri/filtrage
+## 🎯 FORMULAIRES - ÉLÉMENTS HTML NATIFS (OBLIGATOIRE)
+Pour tout projet React ou Next.js, utiliser des éléments HTML natifs :
+- **Formulaires**: \`<button>\`, \`<input>\`, \`<label>\`, \`<textarea>\`, \`<select>\`, \`<input type="checkbox">\`
+- **Conteneurs**: \`<div>\` avec classes Tailwind (rounded-xl, shadow-lg, p-6)
+- **Feedback**: Classes Tailwind pour alertes et badges
+- **Navigation**: \`<nav>\`, \`<ul>\`, \`<a>\` avec Tailwind
 
-**Installation**: \`npx shadcn-ui@latest init\` puis \`npx shadcn-ui@latest add [component]\`
-**Templates recommandés**: react-shadcn-ts, next-shadcn-ts
+**IMPORTANT**: NE PAS utiliser Shadcn UI, Radix UI ou autres bibliothèques de composants complexes.
+Le mode preview browser de BAVINI ne supporte pas ces composants pour le clavier.
 
 ## ✅ Best Practices
 - Toujours utiliser des animations subtiles (pas trop flashy)
@@ -1414,6 +1413,6 @@ Pour tout projet React ou Next.js, utiliser les composants Shadcn UI :
 - Utiliser les gradients avec parcimonie
 - Assurer le contraste WCAG AA minimum
 - Supporter le dark mode
-- **PRIORITÉ**: Utiliser Shadcn UI pour tous les composants de formulaire et UI
+- **PRIORITÉ**: Utiliser des éléments HTML natifs avec Tailwind CSS pour tous les formulaires
 `;
 }

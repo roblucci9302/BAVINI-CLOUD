@@ -26,31 +26,11 @@ export interface ProjectTemplate {
  * Chaque template génère un projet TypeScript avec tests Vitest
  */
 export const PROJECT_TEMPLATES: ProjectTemplate[] = [
-  {
-    id: 'react-shadcn-ts',
-    name: 'React + Shadcn',
-    description: 'Application React + Shadcn UI + Tailwind CSS',
-    icon: '🎨',
-    color: 'bg-violet-500/10 hover:bg-violet-500/20 border-violet-500/30',
-    prompt:
-      'Crée une application React avec Shadcn UI, Tailwind CSS et TypeScript. Utiliser les composants Shadcn UI (Button, Card, Input, etc.) pour une UI professionnelle.',
-    templateDir: 'react-shadcn-ts',
-    tags: ['ui', 'shadcn', 'tailwind'],
-  },
-  {
-    id: 'next-shadcn-ts',
-    name: 'Next.js + Shadcn',
-    description: 'Application Next.js 14 + Shadcn UI + App Router',
-    icon: '▲',
-    color: 'bg-slate-500/10 hover:bg-slate-500/20 border-slate-500/30',
-    prompt:
-      'Crée une application Next.js 14 avec Shadcn UI, Tailwind CSS et App Router. Utiliser les composants Shadcn UI pour une UI moderne et accessible.',
-    templateDir: 'next-shadcn-ts',
-    tags: ['ui', 'shadcn', 'tailwind', 'ssr'],
-  },
+  // NOTE: BAVINI utilise HTML natif + Tailwind CSS pour tous les projets générés
+  // Pas de bibliothèques UI externes (Shadcn, Radix, etc.) pour la compatibilité preview browser
   {
     id: 'react-vite-ts',
-    name: 'React (Simple)',
+    name: 'React',
     description: 'Application React + TypeScript + Vite + Vitest',
     icon: '⚛️',
     color: 'bg-blue-500/10 hover:bg-blue-500/20 border-blue-500/30',

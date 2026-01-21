@@ -308,10 +308,14 @@ export class TailwindCompiler implements FrameworkCompiler {
     }
 
     /*
-     * Fallback: Strip Tailwind directives and keep other CSS
-     * The CDN fallback in browser-build-adapter.ts will provide base Tailwind styles
+     * Fallback: Include marker so browser-build-adapter.ts triggers CDN fallback
+     * The CDN fallback will provide Tailwind with custom theme from tailwind.config.js
      */
-    const fallbackCSS = this._stripTailwindDirectives(source);
+    const strippedCSS = this._stripTailwindDirectives(source);
+
+    // Include marker that triggers CDN fallback in browser-build-adapter.ts (line ~2877)
+    const fallbackCSS = `/* Tailwind compilation failed - using CDN fallback */
+${strippedCSS}`;
 
     const compileTime = (performance.now() - startTime).toFixed(0);
     logger.debug(`Used fallback for ${filename} (${compileTime}ms)`);

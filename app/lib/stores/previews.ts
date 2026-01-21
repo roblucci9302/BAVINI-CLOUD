@@ -9,6 +9,8 @@ export interface PreviewInfo {
   port: number;
   ready: boolean;
   baseUrl: string;
+  /** HTML content for srcdoc mode (browser preview) */
+  srcdoc?: string;
 }
 
 /**
@@ -18,6 +20,8 @@ export interface BrowserPreviewInfo {
   url: string;
   ready: boolean;
   updatedAt: number;
+  /** HTML content for srcdoc mode (avoids blob URL origin issues) */
+  srcdoc?: string;
 }
 
 /** Store global pour les erreurs de preview */
@@ -93,11 +97,11 @@ export class PreviewsStore {
   }
 
   /**
-   * Add or update a browser-mode preview (URL-based)
+   * Add or update a browser-mode preview (URL-based or srcdoc-based)
    * Called from BrowserBuildAdapter when preview is ready
    */
   setBrowserPreview(info: BrowserPreviewInfo): void {
-    logger.info(`Browser preview ready: ${info.url}`);
+    logger.info(`Browser preview ready: ${info.url}${info.srcdoc ? ' (srcdoc mode)' : ''}`);
 
     this.#browserPreviewUrl = info.url;
 
@@ -107,6 +111,7 @@ export class PreviewsStore {
       port: 0,
       ready: info.ready,
       baseUrl: info.url,
+      srcdoc: info.srcdoc,
     };
 
     // Update or add the browser preview

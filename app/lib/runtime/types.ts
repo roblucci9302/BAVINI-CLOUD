@@ -124,6 +124,8 @@ export interface PreviewInfo {
   ready: boolean;
   /** Timestamp de dernière mise à jour */
   updatedAt: number;
+  /** HTML content for srcdoc mode (avoids blob URL origin issues) */
+  srcdoc?: string;
 }
 
 /**

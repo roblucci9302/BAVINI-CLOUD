@@ -18,10 +18,13 @@ export const Preview = memo(() => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fullscreenContainerRef = useRef<HTMLDivElement>(null);
+  const portDropdownRef = useRef<HTMLDivElement>(null);
   const [activePreviewIndex, setActivePreviewIndex] = useState(0);
   const [isPortDropdownOpen, setIsPortDropdownOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [hasSelectedPreview, setHasSelectedPreview] = useState(false);
+  // Track whether an input in the iframe is focused (for keyboard forwarding)
+  const [iframeInputFocused, setIframeInputFocused] = useState(false);
   const previews = useStore(workbenchStore.previews);
   const activePreview = previews[activePreviewIndex];
 
@@ -42,6 +45,7 @@ export const Preview = memo(() => {
 
   const [url, setUrl] = useState('');
   const [iframeUrl, setIframeUrl] = useState<string | undefined>();
+  const [iframeSrcdoc, setIframeSrcdoc] = useState<string | undefined>();
 
   // Listen for fullscreen changes
   useEffect(() => {
@@ -57,19 +61,143 @@ export const Preview = memo(() => {
   }, []);
 
   /**
+   * KEYBOARD FIX: Focus the iframe contentWindow when user clicks inside the iframe.
+   * We detect this by listening for the window blur event - when the parent window
+   * loses focus, it's usually because the user clicked inside the iframe.
+   * We then focus the contentWindow to route keyboard events to the iframe.
+   */
+  useEffect(() => {
+    const handleWindowBlur = () => {
+      // When window loses focus and we have an iframe, focus its contentWindow
+      // This ensures keyboard events are routed to the iframe content
+      if (iframeRef.current?.contentWindow && (iframeUrl || iframeSrcdoc)) {
+        logger.info('[Preview] Window blur detected, focusing iframe contentWindow');
+        // Small delay to ensure the iframe has received the click
+        setTimeout(() => {
+          iframeRef.current?.contentWindow?.focus();
+        }, 0);
+      }
+    };
+
+    window.addEventListener('blur', handleWindowBlur);
+
+    return () => {
+      window.removeEventListener('blur', handleWindowBlur);
+    };
+  }, [iframeUrl, iframeSrcdoc]);
+
+  /**
+   * KEYBOARD EVENT FORWARDING for srcdoc mode.
+   * When an input inside the iframe is focused (detected via postMessage),
+   * we capture keyboard events on the parent document and forward them to the iframe.
+   * This works around the issue where srcdoc iframes don't receive keyboard events properly.
+   */
+  useEffect(() => {
+    if (!iframeInputFocused || !iframeSrcdoc) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Don't forward if typing in parent inputs (like URL bar)
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      // Forward the event to the iframe
+      if (iframeRef.current?.contentWindow) {
+        logger.debug('[Preview] Forwarding keydown to iframe:', event.key);
+        iframeRef.current.contentWindow.postMessage({
+          type: 'bavini-keyboard-event',
+          payload: {
+            eventType: 'keydown',
+            key: event.key,
+            code: event.code,
+            ctrlKey: event.ctrlKey,
+            metaKey: event.metaKey,
+            shiftKey: event.shiftKey,
+            altKey: event.altKey,
+          }
+        }, '*');
+
+        // Prevent default for most keys so they don't trigger browser shortcuts
+        // but allow some like Tab, Escape for accessibility
+        if (!['Tab', 'Escape', 'F5', 'F11', 'F12'].includes(event.key)) {
+          event.preventDefault();
+        }
+      }
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage({
+          type: 'bavini-keyboard-event',
+          payload: {
+            eventType: 'keyup',
+            key: event.key,
+            code: event.code,
+            ctrlKey: event.ctrlKey,
+            metaKey: event.metaKey,
+            shiftKey: event.shiftKey,
+            altKey: event.altKey,
+          }
+        }, '*');
+      }
+    };
+
+    logger.info('[Preview] Keyboard forwarding ENABLED for iframe input');
+    document.addEventListener('keydown', handleKeyDown, true);
+    document.addEventListener('keyup', handleKeyUp, true);
+
+    return () => {
+      logger.info('[Preview] Keyboard forwarding DISABLED');
+      document.removeEventListener('keydown', handleKeyDown, true);
+      document.removeEventListener('keyup', handleKeyUp, true);
+    };
+  }, [iframeInputFocused, iframeSrcdoc]);
+
+  // Close port dropdown when clicking outside
+  // This replaces the overlay approach which was blocking iframe interactions
+  useEffect(() => {
+    if (!isPortDropdownOpen) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (portDropdownRef.current && !portDropdownRef.current.contains(event.target as Node)) {
+        setIsPortDropdownOpen(false);
+      }
+    };
+
+    // Use capture phase to catch clicks before they reach other handlers
+    document.addEventListener('click', handleClickOutside, true);
+
+    return () => {
+      document.removeEventListener('click', handleClickOutside, true);
+    };
+  }, [isPortDropdownOpen]);
+
+  /**
    * Listen for postMessage from the preview iframe.
-   * Handles console logs, errors, and other messages from the sandboxed preview.
+   * Handles console logs, errors, and other messages from the preview.
    * CRITICAL: Always cleanup listener on unmount to prevent memory leaks.
+   *
+   * Origin handling:
+   * - Service Worker mode: same origin as parent (preferred)
+   * - Blob URL fallback: 'null' origin
+   * - srcdoc with allow-same-origin: same origin as parent OR empty origin
    */
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      // SECURITY: Validate origin - only accept blob: URLs or null (sandboxed)
-      // 'null' is the origin for blob: URLs and sandboxed iframes
-      if (event.origin !== 'null' && !event.origin.startsWith('blob:')) {
-        // Also allow same origin for WebContainer previews
-        if (event.origin !== window.location.origin) {
-          return;
-        }
+      // SECURITY: Validate origin
+      // Accept: same origin, 'null' (Blob URL), blob: prefix, or empty origin (srcdoc)
+      const isSameOrigin = event.origin === window.location.origin;
+      const isBlobOrigin = event.origin === 'null' || event.origin.startsWith('blob:');
+      const isSrcdocOrigin = event.origin === '' || event.source === iframeRef.current?.contentWindow;
+
+      if (!isSameOrigin && !isBlobOrigin && !isSrcdocOrigin) {
+        return;
       }
 
       // Validate message structure
@@ -80,6 +208,29 @@ export const Preview = memo(() => {
       const { type, payload } = event.data;
 
       switch (type) {
+        case 'bavini-focus-request':
+          // Iframe content is requesting keyboard focus routing
+          // Focus the contentWindow so keyboard events route to the iframe
+          if (iframeRef.current?.contentWindow) {
+            logger.debug('[Preview] Focus request received, focusing contentWindow');
+            iframeRef.current.contentWindow.focus();
+          }
+          break;
+
+        case 'bavini-input-focused':
+          // An input/textarea in the iframe is now focused
+          // Enable keyboard event forwarding
+          logger.info('[Preview] Iframe input focused, enabling keyboard forwarding');
+          setIframeInputFocused(true);
+          break;
+
+        case 'bavini-input-blurred':
+          // The input in the iframe was blurred
+          // Disable keyboard event forwarding
+          logger.info('[Preview] Iframe input blurred, disabling keyboard forwarding');
+          setIframeInputFocused(false);
+          break;
+
         case 'console':
           // Log console messages from preview
           if (payload?.type === 'error') {
@@ -135,33 +286,45 @@ export const Preview = memo(() => {
   const openInNewTab = useCallback(() => {
     if (iframeUrl) {
       window.open(iframeUrl, '_blank', 'noopener,noreferrer');
+    } else if (iframeSrcdoc) {
+      // For srcdoc mode, create a temporary blob URL to open in new tab
+      const blob = new Blob([iframeSrcdoc], { type: 'text/html' });
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, '_blank', 'noopener,noreferrer');
+      // Revoke after a short delay to allow the new tab to load
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
     }
-  }, [iframeUrl]);
+  }, [iframeUrl, iframeSrcdoc]);
 
   useEffect(() => {
     if (!activePreview) {
       logger.info('No active preview, clearing URL');
       setUrl('');
       setIframeUrl(undefined);
+      setIframeSrcdoc(undefined);
 
       return;
     }
 
-    const { baseUrl, ready } = activePreview;
-    logger.info(`Preview effect triggered: baseUrl=${baseUrl}, ready=${ready}`);
+    const { baseUrl, ready, srcdoc } = activePreview;
+    logger.info(`Preview effect triggered: baseUrl=${baseUrl}, ready=${ready}, srcdoc=${srcdoc ? 'yes' : 'no'}`);
 
-    // Only set iframe URL when preview is ready
-    if (ready && baseUrl) {
-      logger.info(`Setting iframe URL to: ${baseUrl}`);
-      setUrl(baseUrl);
-
-      /*
-       * Set iframe URL directly without setTimeout hack
-       * The setTimeout was causing race conditions with device mode switches
-       */
-      setIframeUrl(baseUrl);
+    // Only set iframe content when preview is ready
+    if (ready) {
+      // Prefer srcdoc mode (avoids blob URL origin issues with form inputs)
+      if (srcdoc) {
+        logger.info('Using srcdoc mode for preview (recommended)');
+        setUrl('about:srcdoc');
+        setIframeSrcdoc(srcdoc);
+        setIframeUrl(undefined); // Clear URL when using srcdoc
+      } else if (baseUrl) {
+        logger.info(`Setting iframe URL to: ${baseUrl}`);
+        setUrl(baseUrl);
+        setIframeUrl(baseUrl);
+        setIframeSrcdoc(undefined); // Clear srcdoc when using URL
+      }
     }
-  }, [activePreview?.baseUrl, activePreview?.ready]);
+  }, [activePreview?.baseUrl, activePreview?.ready, activePreview?.srcdoc]);
 
   const validateUrl = useCallback(
     (value: string) => {
@@ -198,30 +361,42 @@ export const Preview = memo(() => {
     }
   }, [previews, findMinPortIndex, hasSelectedPreview]);
 
-  const reloadPreview = () => {
-    if (iframeRef.current) {
-      iframeRef.current.src = iframeRef.current.src;
+  const reloadPreview = useCallback(() => {
+    if (!iframeRef.current) return;
+
+    if (iframeSrcdoc) {
+      // For srcdoc mode, use React state (not DOM) for the content
+      // This ensures thread-safety with React's async updates
+      const contentToReload = iframeSrcdoc;
+      iframeRef.current.srcdoc = '';
+
+      // Use requestAnimationFrame to ensure the empty state is applied before reload
+      requestAnimationFrame(() => {
+        if (iframeRef.current && contentToReload) {
+          iframeRef.current.srcdoc = contentToReload;
+        }
+      });
+    } else if (iframeUrl) {
+      // For URL mode (Service Worker), reassign src to trigger reload
+      iframeRef.current.src = iframeUrl;
     }
-  };
+  }, [iframeSrcdoc, iframeUrl]);
 
   return (
     <div className="w-full h-full flex flex-col">
-      {isPortDropdownOpen && (
-        <div className="z-iframe-overlay w-full h-full absolute" onClick={() => setIsPortDropdownOpen(false)} />
-      )}
       <div className="px-3.5 py-2.5 flex items-center gap-2.5 bg-[var(--bolt-bg-panel,#0f0f11)] border-b border-bolt-elements-borderColor">
         <IconButton icon="i-ph:arrow-clockwise" title="Recharger l'aperçu" onClick={reloadPreview} />
         <IconButton
           icon="i-ph:arrows-out"
           title="Plein écran"
           onClick={enterFullscreen}
-          disabled={!iframeUrl || !activePreview?.ready}
+          disabled={(!iframeUrl && !iframeSrcdoc) || !activePreview?.ready}
         />
         <IconButton
           icon="i-ph:arrow-square-out"
           title="Ouvrir dans un nouvel onglet"
           onClick={openInNewTab}
-          disabled={!iframeUrl || !activePreview?.ready}
+          disabled={(!iframeUrl && !iframeSrcdoc) || !activePreview?.ready}
         />
         <div className="flex items-center gap-2.5 flex-grow bg-[var(--bolt-bg-base,#050506)] border border-bolt-elements-borderColor text-bolt-elements-textSecondary rounded-[16px] px-3.5 h-[34px] text-[13px] font-mono transition-all duration-200 focus-within:border-[#0ea5e9] focus-within:text-bolt-elements-textPrimary focus-within:shadow-[0_0_0_2px_rgba(14,165,233,0.15)]">
           <div className="i-ph:globe-simple text-bolt-elements-textMuted text-sm flex-shrink-0" />
@@ -246,14 +421,16 @@ export const Preview = memo(() => {
           />
         </div>
         {previews.length > 1 && (
-          <PortDropdown
-            activePreviewIndex={activePreviewIndex}
-            setActivePreviewIndex={setActivePreviewIndex}
-            isDropdownOpen={isPortDropdownOpen}
-            setHasSelectedPreview={setHasSelectedPreview}
-            setIsDropdownOpen={setIsPortDropdownOpen}
-            previews={previews}
-          />
+          <div ref={portDropdownRef}>
+            <PortDropdown
+              activePreviewIndex={activePreviewIndex}
+              setActivePreviewIndex={setActivePreviewIndex}
+              isDropdownOpen={isPortDropdownOpen}
+              setHasSelectedPreview={setHasSelectedPreview}
+              setIsDropdownOpen={setIsPortDropdownOpen}
+              previews={previews}
+            />
+          </div>
         )}
         {/* Separator */}
         <div className="w-px h-5 bg-bolt-elements-borderColor" />
@@ -283,19 +460,36 @@ export const Preview = memo(() => {
             </div>
           </div>
         ) : activePreview ? (
-          activePreview.ready ? (
+          activePreview.ready && (iframeUrl || iframeSrcdoc) ? (
 
             /*
              * CRITICAL FIX: Always use DeviceFrame wrapper to prevent iframe remounting.
              * DeviceFrame handles desktop vs mobile display internally using CSS only.
              * This prevents the layout thrashing bug that caused screen glitching.
+             *
+             * PREVIEW MODES:
+             * 1. Service Worker mode (iframeUrl like /preview/index.html):
+             *    - No sandbox needed - SW provides same-origin URL
+             *    - Keyboard events work correctly
+             *    - Full browser API access
+             *
+             * 2. srcdoc mode (fallback):
+             *    - Uses sandbox with allow-same-origin for security
+             *    - May have keyboard event issues in some browsers
              */
             <DeviceFrame>
               <iframe
                 ref={iframeRef}
                 className="border-none w-full h-full bg-white"
-                src={iframeUrl}
+                src={iframeSrcdoc ? undefined : iframeUrl}
+                srcDoc={iframeSrcdoc}
                 title="Aperçu de l'application"
+                // Only use sandbox for srcdoc mode - Service Worker mode doesn't need it
+                // as it provides a real same-origin URL with natural security
+                {...(iframeSrcdoc ? {
+                  sandbox: "allow-same-origin allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-presentation allow-downloads"
+                } : {})}
+                allow="accelerometer; autoplay; camera; clipboard-read; clipboard-write; encrypted-media; fullscreen; geolocation; gyroscope; microphone; midi; payment; picture-in-picture; sync-xhr"
               />
             </DeviceFrame>
           ) : (

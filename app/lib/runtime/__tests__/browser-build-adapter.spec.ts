@@ -7,6 +7,16 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { BrowserBuildAdapter } from '../adapters/browser-build-adapter';
 
+// Mock preview-service-worker
+vi.mock('../preview-service-worker', () => ({
+  initPreviewServiceWorker: vi.fn().mockResolvedValue(false), // Default to Blob URL fallback
+  setPreviewFiles: vi.fn().mockResolvedValue(undefined),
+  isServiceWorkerReady: vi.fn().mockReturnValue(false),
+  getPreviewUrl: vi.fn().mockReturnValue('/preview/index.html'),
+  PREVIEW_URL: '/preview/index.html',
+  PREVIEW_BASE_PATH: '/preview',
+}));
+
 // Mock esbuild-wasm
 vi.mock('esbuild-wasm', () => ({
   initialize: vi.fn().mockResolvedValue(undefined),
@@ -253,7 +263,8 @@ describe('BrowserBuildAdapter', () => {
       const preview = adapter.getPreview();
       expect(preview).not.toBeNull();
       expect(preview?.ready).toBe(true);
-      expect(preview?.url).toContain('blob:');
+      // Preview now uses srcdoc mode (about:srcdoc) instead of blob URLs
+      expect(preview?.url).toContain('srcdoc');
     });
 
     it('should emit onPreviewReady', async () => {

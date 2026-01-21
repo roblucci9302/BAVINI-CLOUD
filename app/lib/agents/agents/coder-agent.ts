@@ -17,7 +17,11 @@ import {
   type ConnectorsStateInterface,
   type SupabaseClientInterface,
 } from '../tools/integration-tools';
-import { CODER_SYSTEM_PROMPT } from '../prompts/coder-prompt';
+import {
+  CODER_SYSTEM_PROMPT,
+  getCoderSystemPrompt,
+  type DesignGuidelinesConfig,
+} from '../prompts/coder-prompt';
 import type { Task, TaskResult, ToolDefinition, Artifact } from '../types';
 import { getModelForAgent } from '../types';
 import { createScopedLogger } from '~/utils/logger';
@@ -74,7 +78,15 @@ export class CoderAgent extends BaseAgent {
     rollbackOnError: true,
   };
 
-  constructor() {
+  /** Configuration des design guidelines */
+  private designGuidelinesConfig: DesignGuidelinesConfig | undefined;
+
+  constructor(designGuidelinesConfig?: DesignGuidelinesConfig) {
+    // Generate system prompt with design guidelines if config is provided
+    const systemPrompt = designGuidelinesConfig
+      ? getCoderSystemPrompt(designGuidelinesConfig)
+      : CODER_SYSTEM_PROMPT;
+
     super({
       name: 'coder',
       description:
@@ -82,12 +94,14 @@ export class CoderAgent extends BaseAgent {
         "Spécialisé dans l'écriture de code propre et fonctionnel.",
       model: getModelForAgent('coder'), // Opus 4.5 pour code de haute qualité
       tools: [...READ_TOOLS, ...WRITE_TOOLS, ...DESIGN_TOOLS, ...INSPECT_TOOLS, ...INTEGRATION_TOOLS],
-      systemPrompt: CODER_SYSTEM_PROMPT,
+      systemPrompt,
       maxTokens: 32768, // Increased from 8K to 32K for complex code generation
       temperature: 0.1, // Plus déterministe pour le code
       timeout: 180000, // 3 minutes - génération de code peut être intensive
       maxRetries: 2, // Réessayer en cas d'erreur transitoire
     });
+
+    this.designGuidelinesConfig = designGuidelinesConfig;
 
     // Enregistrer les outils de design immédiatement (pas de dépendance externe)
     // Utilise V2 qui inclut TOUS les handlers: generate_design_inspiration, get_modern_components, get_palette_2025, get_design_template
@@ -137,7 +151,9 @@ export class CoderAgent extends BaseAgent {
    * Implémentation du system prompt
    */
   getSystemPrompt(): string {
-    return CODER_SYSTEM_PROMPT;
+    return this.designGuidelinesConfig
+      ? getCoderSystemPrompt(this.designGuidelinesConfig)
+      : CODER_SYSTEM_PROMPT;
   }
 
   /**

@@ -1,7 +1,7 @@
 # BAVINI Cloud - Claude Code Configuration
 
-> **Version**: 2.0
-> **Dernière mise à jour**: 2026-01-19
+> **Version**: 2.1
+> **Dernière mise à jour**: 2026-01-20
 > **Projet**: BAVINI - Environnement de développement web propulsé par l'IA
 
 ---
@@ -228,6 +228,92 @@ this._callbacks.onPreviewReady?.({
 
 ---
 
+## Frontend Design Plugin (Anthropic Official)
+
+BAVINI intègre le plugin officiel Anthropic **frontend-design** pour générer des interfaces uniques et créatives. Ce plugin guide Claude pour éviter les designs "génériques IA" et créer des expériences mémorables.
+
+### Configuration
+
+| Niveau | Description | Tokens estimés | Usage |
+|--------|-------------|----------------|-------|
+| `minimal` | Désactivé | 0 | Pour du code backend ou utilitaires |
+| `standard` | Guidelines essentielles | ~500 | **Défaut** - Bon équilibre créativité/coût |
+| `full` | Guidelines complètes | ~1200 | Projets UI critiques |
+
+### Activation
+
+**Via UI (utilisateurs):**
+1. Ouvrir Settings (icône engrenage dans sidebar)
+2. Onglet "Interface"
+3. Section "Design Guidelines"
+4. Toggle ON/OFF + sélection du niveau
+
+**Via API (développeurs):**
+```typescript
+// Dans le body de l'API chat
+{
+  designGuidelines: {
+    enabled: true,
+    level: 'standard'  // 'minimal' | 'standard' | 'full'
+  }
+}
+```
+
+**Via code (agents):**
+```typescript
+import { getCoderSystemPrompt } from '~/lib/agents';
+
+const prompt = getCoderSystemPrompt({
+  enabled: true,
+  level: 'full'
+});
+```
+
+### Principes du Plugin
+
+Le plugin guide Claude pour :
+
+1. **Typographie distinctive** - Éviter Inter, Roboto, Arial (trop générique)
+2. **Palettes audacieuses** - Pas de blue-500, indigo-600 par défaut
+3. **Layouts surprenants** - Asymétrie, compositions inattendues
+4. **Animations impactantes** - Focus sur les moments clés (entrées, transitions)
+5. **Designs variés** - Chaque génération doit être unique
+
+### Architecture
+
+```
+.claude/skills/frontend-design/SKILL.md  →  Source officielle Anthropic
+        │
+        ▼
+app/lib/skills/skill-loader.ts           →  Charge et cache le contenu
+        │
+        ▼
+app/lib/stores/design-guidelines.ts      →  État utilisateur (nanostores)
+        │
+        ├──→ app/lib/agents/prompts/     →  Injection dans prompts multi-agent
+        └──→ Settings UI                 →  Toggle et sélecteur
+```
+
+### Stores Disponibles
+
+```typescript
+import {
+  designGuidelinesEnabledStore,  // atom<boolean>
+  guidelinesLevelStore,          // atom<GuidelinesLevel>
+  setDesignGuidelinesEnabled,    // (enabled: boolean) => void
+  setGuidelinesLevel,            // (level: GuidelinesLevel) => void
+  getEstimatedTokens,            // (level: GuidelinesLevel) => number
+} from '~/lib/stores/design-guidelines';
+```
+
+### Référence
+
+- **Source** : `.claude/skills/frontend-design/SKILL.md`
+- **ADR** : `docs/adr/005-design-guidelines-plugin.md`
+- **Tests** : `app/lib/skills/__tests__/`, `app/lib/stores/design-guidelines.spec.ts`
+
+---
+
 ## Git Workflow
 
 ### Branch Naming
@@ -419,6 +505,7 @@ console.log('Previews:', previewsStore.get());
 | Components | `docs/COMPONENTS.md` | UI components guide |
 | Database | `docs/DATABASE.md` | PGlite schema |
 | ADRs | `docs/adr/` | Architecture decisions |
+| Design Plugin | `docs/adr/005-design-guidelines-plugin.md` | Frontend Design Plugin ADR |
 
 ---
 
