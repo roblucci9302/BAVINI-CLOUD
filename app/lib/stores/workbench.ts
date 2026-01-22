@@ -617,18 +617,28 @@ export class WorkbenchStore {
       }
     }
 
-    // Default candidates for React/Preact/Vanilla
+    // Default candidates for React/Preact/Vanilla (including JSX/JS extensions)
     const defaultCandidates = [
       `${prefix}/src/main.tsx`,
+      `${prefix}/src/main.jsx`,
       `${prefix}/src/main.ts`,
+      `${prefix}/src/main.js`,
       `${prefix}/src/index.tsx`,
+      `${prefix}/src/index.jsx`,
       `${prefix}/src/index.ts`,
+      `${prefix}/src/index.js`,
       `${prefix}/src/App.tsx`,
+      `${prefix}/src/App.jsx`,
       `${prefix}/src/App.ts`,
+      `${prefix}/src/App.js`,
       `${prefix}/index.tsx`,
+      `${prefix}/index.jsx`,
       `${prefix}/index.ts`,
+      `${prefix}/index.js`,
       `${prefix}/main.tsx`,
+      `${prefix}/main.jsx`,
       `${prefix}/main.ts`,
+      `${prefix}/main.js`,
     ];
 
     for (const candidate of defaultCandidates) {
@@ -641,11 +651,17 @@ export class WorkbenchStore {
     if (prefix) {
       const rootCandidates = [
         '/src/main.tsx',
+        '/src/main.jsx',
         '/src/main.ts',
+        '/src/main.js',
         '/src/index.tsx',
+        '/src/index.jsx',
         '/src/index.ts',
+        '/src/index.js',
         '/app/layout.tsx',
+        '/app/layout.jsx',
         '/app/page.tsx',
+        '/app/page.jsx',
       ];
       for (const candidate of rootCandidates) {
         if (files.has(candidate)) {
@@ -654,13 +670,13 @@ export class WorkbenchStore {
       }
     }
 
-    // Return first TSX/TS file found in /src or /{project}/src directory
+    // Return first TSX/JSX/TS/JS file found in /src or /{project}/src directory
     for (const path of files.keys()) {
       if ((path.includes('/src/') || path.match(/^\/[^/]+\/src\//)) &&
           !path.includes('/data/') &&
           !path.includes('/utils/') &&
           !path.includes('/lib/') &&
-          (path.endsWith('.tsx') || path.endsWith('.ts'))) {
+          (path.endsWith('.tsx') || path.endsWith('.jsx') || path.endsWith('.ts') || path.endsWith('.js'))) {
         return path;
       }
     }
