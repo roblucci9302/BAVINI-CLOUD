@@ -18,12 +18,6 @@
   transition: background var(--device-duration) var(--device-easing);
 }
 
-/* Desktop mode: wrapper should not center, just fill space */
-.device-frame-wrapper:has(.device-frame-container.desktop) {
-  align-items: stretch;
-  justify-content: stretch;
-}
-
 /* Container - holds the device */
 .device-frame-container {
   transition: all var(--device-duration) var(--device-easing);
@@ -89,22 +83,23 @@
 /* ========================================
    DESKTOP MODE
    ======================================== */
-.device-frame-container.desktop {
-  width: 100%;
-  height: 100%;
-}
-
 .device-frame-container.desktop .device-frame-shell {
-  width: 100%;
-  height: 100%;
-  background: transparent;
-  border-radius: 0;
+  width: calc(100vw - 380px);
+  height: calc(100vh - 180px);
+  max-width: 1200px;
+  max-height: 800px;
+  min-width: 600px;
+  min-height: 400px;
+  background: #18181b;
+  border-radius: 12px;
   padding: 0;
-  box-shadow: none;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 4px 24px rgba(0, 0, 0, 0.3);
 }
 
 .device-frame-container.desktop .device-frame-screen {
-  border-radius: 0;
+  border-radius: 8px;
 }
 
 .device-frame-container.desktop .device-frame-notch,
@@ -202,35 +197,4 @@
   transform: translateY(50%);
   width: 5px;
   height: 100px;
-}
-
-/* ========================================
-   FULLSCREEN MODE
-   ======================================== */
-:fullscreen .device-frame-wrapper {
-  background: var(--bolt-elements-background-depth-3, #0f0f11);
-}
-
-/* Desktop in fullscreen: fill the entire screen */
-:fullscreen .device-frame-wrapper:has(.device-frame-container.desktop) {
-  align-items: stretch;
-  justify-content: stretch;
-  background: transparent;
-}
-
-:fullscreen .device-frame-container.desktop {
-  width: 100%;
-  height: 100%;
-}
-
-:fullscreen .device-frame-container.desktop .device-frame-shell {
-  width: 100%;
-  height: 100%;
-  background: transparent;
-  border-radius: 0;
-  box-shadow: none;
-}
-
-:fullscreen .device-frame-container.desktop .device-frame-screen {
-  border-radius: 0;
 }

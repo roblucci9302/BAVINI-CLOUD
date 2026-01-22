@@ -3406,11 +3406,13 @@ root.render(<NextJSApp />);
     const isSfcFramework = ['vue', 'svelte', 'astro'].includes(this._detectedFramework);
     const needsTailwindCdn = !css || css.length < 100 || jitFailed || hasCustomColors || isSfcFramework;
 
-    // FIX: When custom colors are detected OR SFC framework is used, REMOVE the inline style from body
-    // This is critical because:
-    // 1. Inline styles can interfere with Tailwind classes
-    // 2. SFC frameworks (Vue, Svelte, Astro) define their own backgrounds in components
-    if (hasCustomColors || isSfcFramework) {
+    // FIX: For Astro, DON'T remove body inline style or apply background override
+    // Astro works better with BAVINI's default styles (the old behavior that worked)
+    // Only apply these modifications for Next.js/Vue/Svelte with custom colors
+    const isAstro = this._detectedFramework === 'astro';
+    const needsBodyStyleRemoval = !isAstro && (hasCustomColors || isSfcFramework);
+
+    if (needsBodyStyleRemoval) {
       // DEBUG: Log body tag BEFORE modification
       const bodyTagBefore = html.match(/<body[^>]*>/i);
       logger.info(`[BODY DEBUG] Body tag BEFORE removal: ${bodyTagBefore?.[0] || 'NOT FOUND'}`);
@@ -3430,14 +3432,13 @@ root.render(<NextJSApp />);
     }
 
     if (needsTailwindCdn) {
-      // When custom colors are detected OR SFC framework is used, override BAVINI's default background
-      // to let the project's own background colors show through
-      // Use more specific selectors and !important to ensure override works
-      const needsBackgroundOverride = hasCustomColors || isSfcFramework;
+      // FIX: For Astro, DON'T apply background override - it breaks dark text
+      // Astro works with the default BAVINI background (like the old version)
+      const needsBackgroundOverride = !isAstro && (hasCustomColors || isSfcFramework);
       const backgroundOverride = needsBackgroundOverride ? `
 <style id="bavini-bg-override">
-  /* Override BAVINI default background for SFC frameworks or custom Tailwind colors */
-  /* Let Vue/Svelte/Astro components control their own backgrounds */
+  /* Override BAVINI default background for Next.js/Vue/Svelte with custom Tailwind colors */
+  /* NOTE: Astro is excluded - it works with default BAVINI styles */
   html, html:root { background: transparent !important; background-color: transparent !important; }
   body, body:root { background: transparent !important; background-color: transparent !important; }
   :root {
