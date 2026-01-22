@@ -21,3 +21,4 @@ export {
 export { AstroCompiler } from './astro-compiler';
 export { VueCompiler } from './vue-compiler';
 export { SvelteCompiler } from './svelte-compiler';
+export { NextJSCompiler, isNextJSProject, getNextJSEntryPoint } from './nextjs-compiler';

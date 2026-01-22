@@ -14,7 +14,7 @@ const logger = createScopedLogger('CompilerRegistry');
 /**
  * Supported framework types
  */
-export type FrameworkType = 'react' | 'vue' | 'svelte' | 'astro' | 'vanilla' | 'preact';
+export type FrameworkType = 'react' | 'nextjs' | 'vue' | 'svelte' | 'astro' | 'vanilla' | 'preact';
 
 /**
  * CSS metadata for aggregation
@@ -123,6 +123,12 @@ export async function loadCompiler(ext: string): Promise<FrameworkCompiler> {
           compiler = new SCSSCompiler();
           break;
 
+        // Next.js compiler/transformer
+        case 'nextjs':
+          const { NextJSCompiler } = await import('./nextjs-compiler');
+          compiler = new NextJSCompiler();
+          break;
+
         default:
           throw new Error(`No compiler available for extension: ${normalizedExt}`);
       }
@@ -161,10 +167,11 @@ export function getCompiler(ext: string): FrameworkCompiler | null {
 /**
  * Check if a compiler is available for a given extension
  * FIX 3.3: Added scss and sass support
+ * Added nextjs for Next.js framework support
  */
 export function hasCompilerFor(ext: string): boolean {
   const normalizedExt = ext.startsWith('.') ? ext.slice(1) : ext;
-  return ['astro', 'vue', 'svelte', 'css', 'scss', 'sass'].includes(normalizedExt);
+  return ['astro', 'vue', 'svelte', 'css', 'scss', 'sass', 'nextjs'].includes(normalizedExt);
 }
 
 /**
@@ -179,7 +186,9 @@ export function detectFramework(files: Map<string, string>): FrameworkType {
       const deps = { ...pkg.dependencies, ...pkg.devDependencies };
 
       // Order matters - check more specific frameworks first
+      // IMPORTANT: Next.js MUST be checked before React (Next.js includes React)
       if (deps['astro']) return 'astro';
+      if (deps['next']) return 'nextjs';
       if (deps['vue'] || deps['@vue/compiler-sfc']) return 'vue';
       if (deps['svelte']) return 'svelte';
       if (deps['preact']) return 'preact';
@@ -189,14 +198,25 @@ export function detectFramework(files: Map<string, string>): FrameworkType {
     }
   }
 
-  // 2. Check file extensions
+  // 2. Check for Next.js config files
+  if (files.has('/next.config.js') || files.has('/next.config.ts') || files.has('/next.config.mjs')) {
+    return 'nextjs';
+  }
+
+  // 3. Check for Next.js App Router structure
+  if (files.has('/src/app/layout.tsx') || files.has('/src/app/page.tsx') ||
+      files.has('/app/layout.tsx') || files.has('/app/page.tsx')) {
+    return 'nextjs';
+  }
+
+  // 4. Check file extensions for other frameworks
   for (const path of files.keys()) {
     if (path.endsWith('.astro')) return 'astro';
     if (path.endsWith('.vue')) return 'vue';
     if (path.endsWith('.svelte')) return 'svelte';
   }
 
-  // 3. Check for React-specific files
+  // 5. Check for React-specific files
   for (const path of files.keys()) {
     if (path.endsWith('.tsx') || path.endsWith('.jsx')) {
       // Could be React or Preact - default to React

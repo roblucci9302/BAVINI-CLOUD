@@ -747,6 +747,15 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
       const esbuildCss = cssOutput?.text || '';
       let css = aggregatedCss + (esbuildCss ? `\n\n/* esbuild output */\n${esbuildCss}` : '');
 
+      // For Next.js projects, extract and inject Google Fonts CSS
+      if (this._detectedFramework === 'nextjs') {
+        const googleFontsCss = this.extractGoogleFontsCSS();
+        if (googleFontsCss) {
+          css = googleFontsCss + '\n\n' + css;
+          logger.info('Injected Google Fonts CSS for Next.js project');
+        }
+      }
+
       // Remove @import statements for tailwindcss/* - these are handled by CDN
       css = this.stripTailwindImports(css);
 
@@ -1626,6 +1635,86 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
   }
 
   /**
+   * Extract custom colors from tailwind.config.js/ts for Tailwind CDN @theme
+   * Handles nested color objects like:
+   * colors: { cream: { 50: '#...', 100: '#...' }, terracotta: { ... } }
+   */
+  private extractTailwindCustomColors(): string {
+    const configContent = this._files.get('/tailwind.config.js') || this._files.get('/tailwind.config.ts');
+    if (!configContent) {
+      return '';
+    }
+
+    const colorDefs: string[] = [];
+
+    // Try to find the colors object in extend or theme
+    // We need to handle nested objects like: cream: { 50: '#fff', 100: '#eee' }
+    const colorsBlockMatch = configContent.match(/colors\s*:\s*\{([\s\S]*?)\n\s{4}\}/);
+    if (!colorsBlockMatch) {
+      // Try simpler patterns
+      const simpleMatch = configContent.match(/colors\s*:\s*\{([^}]+)\}/);
+      if (simpleMatch) {
+        // Simple color: value pairs
+        const simpleColorRegex = /['"]?(\w+)['"]?\s*:\s*['"]([^'"]+)['"]/g;
+        let match;
+        while ((match = simpleColorRegex.exec(simpleMatch[1])) !== null) {
+          colorDefs.push(`--color-${match[1]}: ${match[2]};`);
+        }
+      }
+      if (colorDefs.length > 0) {
+        logger.debug(`Extracted ${colorDefs.length} simple custom colors from tailwind.config`);
+        return colorDefs.join('\n    ');
+      }
+      return '';
+    }
+
+    const colorsBlock = colorsBlockMatch[1];
+
+    // Parse nested color objects: colorName: { shade: 'value', ... }
+    // Pattern matches: colorName: { ... }
+    const nestedColorRegex = /['"]?(\w+)['"]?\s*:\s*\{([^}]+)\}/g;
+    let nestedMatch;
+
+    while ((nestedMatch = nestedColorRegex.exec(colorsBlock)) !== null) {
+      const colorName = nestedMatch[1];
+      const shadesBlock = nestedMatch[2];
+
+      // Extract shade: value pairs
+      const shadeRegex = /['"]?(\w+)['"]?\s*:\s*['"]([^'"]+)['"]/g;
+      let shadeMatch;
+
+      while ((shadeMatch = shadeRegex.exec(shadesBlock)) !== null) {
+        const shade = shadeMatch[1];
+        const value = shadeMatch[2];
+
+        // Generate CSS variable: --color-colorName-shade: value
+        if (shade === 'DEFAULT') {
+          colorDefs.push(`--color-${colorName}: ${value};`);
+        } else {
+          colorDefs.push(`--color-${colorName}-${shade}: ${value};`);
+        }
+      }
+    }
+
+    // Also extract any simple color: value pairs at the top level
+    // These would be single-value colors, not nested objects
+    const lines = colorsBlock.split('\n');
+    for (const line of lines) {
+      // Match: colorName: 'value' (not followed by {)
+      const simpleMatch = line.match(/^\s*['"]?(\w+)['"]?\s*:\s*['"]([^'"]+)['"]\s*,?\s*$/);
+      if (simpleMatch) {
+        colorDefs.push(`--color-${simpleMatch[1]}: ${simpleMatch[2]};`);
+      }
+    }
+
+    if (colorDefs.length > 0) {
+      logger.info(`Extracted ${colorDefs.length} custom colors from tailwind.config`);
+    }
+
+    return colorDefs.join('\n    ');
+  }
+
+  /**
    * Strip Tailwind CSS @import statements from CSS content
    * These are handled by the Tailwind CDN browser script
    */
@@ -1898,6 +1987,9 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
         return this.createAstroBootstrapEntry(entryPath);
       case 'preact':
         return this.createPreactBootstrapEntry(entryPath);
+      case 'nextjs':
+        // Next.js uses React, but we need to handle App Router structure
+        return this.createNextJSBootstrapEntry(entryPath);
       case 'react':
       default:
         return this.createReactBootstrapEntry(entryPath);
@@ -2528,6 +2620,185 @@ if (container) {
   }
 
   /**
+   * Create Next.js App Router bootstrap entry
+   * Handles layout.tsx wrapping and page structure
+   */
+  private createNextJSBootstrapEntry(entryPath: string): string {
+    // Find layout and page files
+    const layoutPath = this.findFile('/src/app/layout') || this.findFile('/app/layout');
+    const pagePath = this.findFile('/src/app/page') || this.findFile('/app/page');
+
+    logger.debug('Next.js bootstrap paths:', { layoutPath, pagePath, entryPath });
+
+    // Get all page components for routing
+    const filesList = Array.from(this._files.keys());
+    const detectedRoutes = detectRoutesFromFiles(filesList, this._files);
+
+    // Build route imports
+    const routeImports: string[] = [];
+    const routeComponents: string[] = [];
+
+    detectedRoutes.forEach((route, index) => {
+      const componentName = `Page${index}`;
+      const importPath = route.component.replace(/\.tsx?$/, '');
+      routeImports.push(`import ${componentName} from '${importPath}';`);
+      routeComponents.push(`    { path: '${route.path}', component: ${componentName} }`);
+    });
+
+    // If we have a layout, wrap everything in it
+    const hasLayout = !!layoutPath;
+    const layoutImport = hasLayout
+      ? `import RootLayout from '${layoutPath!.replace(/\.tsx?$/, '')}';`
+      : '';
+
+    return `
+import React, { useState, useEffect } from 'react';
+import { createRoot } from 'react-dom/client';
+${layoutImport}
+${routeImports.join('\n')}
+
+// Route configuration
+const routes = [
+${routeComponents.join(',\n')}
+];
+
+// Get path from hash for client-side routing
+function getHashPath() {
+  const hash = window.location.hash || '#/';
+  return hash.startsWith('#') ? hash.slice(1) : '/';
+}
+
+// Match route to path
+function matchRoute(path) {
+  const normalizedPath = path || '/';
+
+  // Exact match first
+  const exactMatch = routes.find(r => r.path === normalizedPath);
+  if (exactMatch) return { route: exactMatch, params: {} };
+
+  // Dynamic route matching
+  for (const route of routes) {
+    if (route.path.includes(':')) {
+      const routeParts = route.path.split('/');
+      const pathParts = normalizedPath.split('/');
+
+      if (routeParts.length === pathParts.length) {
+        const params = {};
+        let isMatch = true;
+
+        for (let i = 0; i < routeParts.length; i++) {
+          if (routeParts[i].startsWith(':')) {
+            params[routeParts[i].slice(1)] = pathParts[i];
+          } else if (routeParts[i] !== pathParts[i]) {
+            isMatch = false;
+            break;
+          }
+        }
+
+        if (isMatch) return { route, params };
+      }
+    }
+  }
+
+  // Fallback to index
+  return { route: routes[0], params: {} };
+}
+
+// Next.js App Router Wrapper
+function NextJSApp() {
+  const [currentPath, setCurrentPath] = useState(getHashPath);
+
+  useEffect(() => {
+    const handleHashChange = () => setCurrentPath(getHashPath());
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  const { route, params } = matchRoute(currentPath);
+  const PageComponent = route?.component || (() => <div>Page not found</div>);
+
+  // Store params for useParams hook
+  if (typeof window !== 'undefined') {
+    window.__BAVINI_ROUTE_PARAMS__ = params;
+  }
+
+  const pageContent = <PageComponent />;
+
+  ${hasLayout ? 'return <RootLayout>{pageContent}</RootLayout>;' : 'return pageContent;'}
+}
+
+// Mount the app
+const container = document.getElementById('root') || document.getElementById('app') || document.body;
+const root = createRoot(container);
+root.render(<NextJSApp />);
+`;
+  }
+
+  /**
+   * Extract Google Fonts from Next.js project files
+   * Parses imports like: import { Playfair_Display, Inter } from 'next/font/google'
+   * Returns CSS @import statements for Google Fonts
+   */
+  extractGoogleFontsCSS(): string {
+    const fontNames = new Set<string>();
+    const fontVariables: Map<string, { font: string; fallback: string }> = new Map();
+
+    // Scan all files for next/font/google imports
+    for (const [path, content] of this._files) {
+      if (!path.endsWith('.tsx') && !path.endsWith('.ts') && !path.endsWith('.jsx') && !path.endsWith('.js')) {
+        continue;
+      }
+
+      // Match: import { FontName, FontName2 } from 'next/font/google'
+      const importMatch = content.match(/import\s*\{([^}]+)\}\s*from\s*['"]next\/font\/google['"]/);
+      if (importMatch) {
+        const imports = importMatch[1].split(',').map(s => s.trim()).filter(Boolean);
+        imports.forEach(font => fontNames.add(font));
+      }
+
+      // Match font initialization to get CSS variables
+      // const inter = Inter({ variable: '--font-body', ... })
+      const initRegex = /const\s+(\w+)\s*=\s*(\w+)\s*\(\s*\{[^}]*variable\s*:\s*['"]([^'"]+)['"]/g;
+      let match;
+      while ((match = initRegex.exec(content)) !== null) {
+        const [, , fontName, variable] = match;
+        const displayName = fontName.replace(/_/g, ' ');
+        const isSerif = ['Playfair_Display', 'Merriweather', 'Lora', 'Crimson_Text'].includes(fontName);
+        const isMono = ['Fira_Code', 'JetBrains_Mono', 'Source_Code_Pro'].includes(fontName);
+        const fallback = isMono ? 'monospace' : isSerif ? 'serif' : 'sans-serif';
+        fontVariables.set(variable, { font: displayName, fallback });
+      }
+    }
+
+    if (fontNames.size === 0) {
+      return '';
+    }
+
+    // Build Google Fonts URL
+    const fontParams = Array.from(fontNames).map(font => {
+      const urlName = font.replace(/_/g, '+');
+      return `family=${urlName}:wght@300;400;500;600;700`;
+    });
+
+    const googleFontsUrl = `https://fonts.googleapis.com/css2?${fontParams.join('&')}&display=swap`;
+
+    // Build CSS
+    let css = `@import url('${googleFontsUrl}');\n\n`;
+
+    // Add CSS variables
+    if (fontVariables.size > 0) {
+      css += ':root {\n';
+      for (const [variable, { font, fallback }] of fontVariables) {
+        css += `  ${variable}: "${font}", ${fallback};\n`;
+      }
+      css += '}\n';
+    }
+
+    logger.info(`Extracted ${fontNames.size} Google Font(s) for Next.js project`);
+    return css;
+  }
+
+  /**
    * Check if a file is a mounting entry file (handles its own React mounting)
    * These files typically contain ReactDOM.render() or createRoot().render() calls
    */
@@ -3090,58 +3361,49 @@ if (container) {
       html = html.replace('</head>', `${styleTag}\n</head>`);
     }
 
-    // FALLBACK: Add Tailwind Play CDN ONLY when:
+    // Extract custom theme from tailwind.config.js/ts
+    const customTheme = this.extractTailwindCustomColors();
+    const hasCustomColors = customTheme.length > 0;
+
+    // DEBUG: Log custom theme extraction
+    logger.info(`[TAILWIND DEBUG] hasCustomColors: ${hasCustomColors}`);
+    logger.info(`[TAILWIND DEBUG] customTheme length: ${customTheme.length}`);
+    if (customTheme) {
+      logger.info(`[TAILWIND DEBUG] customTheme preview:\n${customTheme.substring(0, 800)}`);
+    }
+
+    // ALWAYS inject Tailwind CDN browser script when:
     // 1. No compiled CSS is available, OR
-    // 2. CSS contains "Tailwind compilation failed" (JIT explicitly failed)
-    // NOTE: Don't add CDN just because there's a tailwind.config - JIT should handle it
-    // This prevents CSS duplication (JIT CSS + CDN CSS both being applied)
+    // 2. CSS contains "Tailwind compilation failed" (JIT explicitly failed), OR
+    // 3. Custom colors are defined in tailwind.config (JIT doesn't know about them)
     const jitFailed = css?.includes('Tailwind compilation failed');
-    const needsTailwindCdn = !css || css.length < 100 || jitFailed;
+    const needsTailwindCdn = !css || css.length < 100 || jitFailed || hasCustomColors;
+
+    // FIX: When custom colors are detected, REMOVE the inline style from body
+    // This is critical because inline styles can interfere with Tailwind classes
+    if (hasCustomColors) {
+      // Remove inline style from body tag
+      html = html.replace(
+        /<body([^>]*)\s+style="[^"]*"([^>]*)>/gi,
+        '<body$1$2>'
+      );
+      logger.info('[TAILWIND DEBUG] Removed inline style from body tag');
+    }
 
     if (needsTailwindCdn) {
-      // Extract custom theme from tailwind.config.js if present
-      let customTheme = '';
-      const configContent = this._files.get('/tailwind.config.js') || this._files.get('/tailwind.config.ts');
-
-      if (configContent) {
-        // Extract color definitions from config (handles both direct and extend patterns)
-        // Pattern 1: theme: { colors: { ... } }
-        // Pattern 2: theme: { extend: { colors: { ... } } }
-        const colorPatterns = [
-          /theme\s*:\s*\{[^]*?extend\s*:\s*\{[^]*?colors\s*:\s*\{([^}]+)\}/,
-          /theme\s*:\s*\{[^]*?colors\s*:\s*\{([^}]+)\}/,
-          /colors\s*:\s*\{([^}]+)\}/,
-        ];
-
-        let colorsStr = '';
-
-        for (const pattern of colorPatterns) {
-          const match = configContent.match(pattern);
-
-          if (match) {
-            colorsStr = match[1];
-            break;
-          }
-        }
-
-        if (colorsStr) {
-          const colorDefs: string[] = [];
-
-          // Match simple color: value pairs (handles 'name': 'value' and name: 'value')
-          const simpleColorRegex = /['"]?(\w+)['"]?\s*:\s*['"]([^'"]+)['"]/g;
-          let match;
-
-          while ((match = simpleColorRegex.exec(colorsStr)) !== null) {
-            const [, name, value] = match;
-            colorDefs.push(`--color-${name}: ${value};`);
-          }
-
-          if (colorDefs.length > 0) {
-            customTheme = colorDefs.join('\n      ');
-            logger.debug(`Extracted ${colorDefs.length} custom colors from tailwind.config`);
-          }
-        }
-      }
+      // When custom colors are detected, override BAVINI's default gray background
+      // to let the project's own background colors show through
+      // Use more specific selectors and !important to ensure override works
+      const backgroundOverride = hasCustomColors ? `
+<style id="bavini-bg-override">
+  /* Override BAVINI default background when project has custom Tailwind colors */
+  /* Using high specificity and !important to ensure override */
+  html, html:root { background: #ffffff !important; background-color: #ffffff !important; }
+  body, body:root { background: transparent !important; background-color: transparent !important; }
+  :root { --color-background: transparent !important; --bavini-bg: transparent !important; }
+  /* Remove any gray tints from all containers */
+  #root, #app, #__next, main { background: transparent !important; }
+</style>` : '';
 
       const tailwindCdnScript = `
 <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
@@ -3149,9 +3411,20 @@ if (container) {
   @theme {
     ${customTheme || '/* Using Tailwind default theme */'}
   }
-</style>`;
+</style>${backgroundOverride}`;
       html = html.replace('</head>', `${tailwindCdnScript}\n</head>`);
-      logger.info(`Injected Tailwind CDN fallback (reason: ${!css ? 'no CSS' : css.length < 100 ? 'CSS too short' : 'JIT failed'})`);
+      const reason = !css ? 'no CSS' : css.length < 100 ? 'CSS too short' : jitFailed ? 'JIT failed' : 'custom colors detected';
+      logger.info(`Injected Tailwind CDN (reason: ${reason}, ${customTheme.split('\n').length} custom vars)`);
+
+      // DEBUG: Log what we're injecting
+      logger.info(`[TAILWIND DEBUG] backgroundOverride applied: ${hasCustomColors}`);
+      logger.info(`[TAILWIND DEBUG] tailwindCdnScript:\n${tailwindCdnScript}`);
+    }
+
+    // DEBUG: Log the HTML head section to see what's in there
+    const headMatch = html.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
+    if (headMatch) {
+      logger.info(`[TAILWIND DEBUG] Final HTML <head> section (first 2000 chars):\n${headMatch[1].substring(0, 2000)}`);
     }
 
     // Remove original entry point script tags to prevent 404 errors
