@@ -3406,11 +3406,11 @@ root.render(<NextJSApp />);
     const isSfcFramework = ['vue', 'svelte', 'astro'].includes(this._detectedFramework);
     const needsTailwindCdn = !css || css.length < 100 || jitFailed || hasCustomColors || isSfcFramework;
 
-    // FIX: For Astro, DON'T remove body inline style or apply background override
-    // Astro works better with BAVINI's default styles (the old behavior that worked)
-    // Only apply these modifications for Next.js/Vue/Svelte with custom colors
+    // FIX: For Astro and SFC frameworks, DON'T remove body inline styles
+    // SFC frameworks (Vue, Svelte) should control their own styles without BAVINI interference
+    // Only apply body style removal for non-SFC projects with custom colors
     const isAstro = this._detectedFramework === 'astro';
-    const needsBodyStyleRemoval = !isAstro && (hasCustomColors || isSfcFramework);
+    const needsBodyStyleRemoval = !isAstro && !isSfcFramework && hasCustomColors;
 
     if (needsBodyStyleRemoval) {
       // DEBUG: Log body tag BEFORE modification
@@ -3428,27 +3428,22 @@ root.render(<NextJSApp />);
       const bodyTagAfter = html.match(/<body[^>]*>/i);
       logger.info(`[BODY DEBUG] Body tag AFTER removal: ${bodyTagAfter?.[0] || 'NOT FOUND'}`);
       logger.info(`[BODY DEBUG] HTML changed: ${htmlBefore !== html}`);
-      logger.info(`[TAILWIND DEBUG] Removed inline style from body tag (reason: ${hasCustomColors ? 'custom colors' : 'SFC framework'})`);
+      logger.info(`[TAILWIND DEBUG] Removed inline style from body tag (reason: custom colors)`);
     }
 
     if (needsTailwindCdn) {
-      // FIX: For Astro, DON'T apply background override - it breaks dark text
-      // Astro works with the default BAVINI background (like the old version)
-      const needsBackgroundOverride = !isAstro && (hasCustomColors || isSfcFramework);
+      // FIX: Don't apply aggressive background override for SFC frameworks
+      // The transparent !important was breaking user-defined Tailwind backgrounds (bg-gradient-*, bg-blue-*, etc.)
+      // Only apply minimal reset for BAVINI CSS variables, let user CSS take precedence
+      const needsBackgroundOverride = !isAstro && !isSfcFramework && hasCustomColors;
       const backgroundOverride = needsBackgroundOverride ? `
 <style id="bavini-bg-override">
-  /* Override BAVINI default background for Next.js/Vue/Svelte with custom Tailwind colors */
-  /* NOTE: Astro is excluded - it works with default BAVINI styles */
-  html, html:root { background: transparent !important; background-color: transparent !important; }
-  body, body:root { background: transparent !important; background-color: transparent !important; }
+  /* Override BAVINI default background for projects with custom Tailwind colors */
+  /* NOTE: Astro and SFC frameworks (Vue, Svelte) are excluded - they work with their own styles */
   :root {
-    --color-background: transparent !important;
-    --bavini-bg: transparent !important;
-    --background: transparent !important;
-    --tw-bg-opacity: 1 !important;
+    --color-background: transparent;
+    --bavini-bg: transparent;
   }
-  /* Remove any gray tints from all containers */
-  #root, #app, #__next, main { background: transparent !important; }
 </style>` : '';
 
       // Use Tailwind Browser Runtime for dynamic compilation of all Tailwind classes
