@@ -690,6 +690,37 @@ export class WorkbenchStore {
       }
     }
 
+    // VANILLA HTML/JS SUPPORT:
+    // For projects with just index.html, style.css, script.js (no framework)
+    // Check if we have an index.html file - this is valid for vanilla projects
+    const htmlCandidates = [
+      `${prefix}/index.html`,
+      '/index.html',
+      `${prefix}/public/index.html`,
+      '/public/index.html',
+    ];
+
+    for (const candidate of htmlCandidates) {
+      if (files.has(candidate)) {
+        // Verify it's truly a vanilla project (no framework JS files)
+        const hasFrameworkEntry = Array.from(files.keys()).some(
+          (path) =>
+            path.endsWith('.tsx') ||
+            path.endsWith('.jsx') ||
+            (path.endsWith('.ts') && !path.endsWith('.d.ts')) ||
+            path.endsWith('.vue') ||
+            path.endsWith('.svelte') ||
+            path.endsWith('.astro')
+        );
+
+        // Only use index.html as entry if no framework files exist
+        if (!hasFrameworkEntry) {
+          logger.info(`Detected vanilla HTML project, using ${candidate} as entry point`);
+          return candidate;
+        }
+      }
+    }
+
     // No suitable entry point found
     return null;
   }

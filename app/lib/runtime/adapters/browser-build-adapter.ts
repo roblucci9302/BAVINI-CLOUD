@@ -685,6 +685,14 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
         };
       }
 
+      // VANILLA HTML SUPPORT:
+      // If entry point is an HTML file, handle it as a vanilla project
+      // Don't run through esbuild - just serve the HTML directly
+      if (foundEntry.endsWith('.html')) {
+        logger.info(`Vanilla HTML project detected, using direct HTML preview`);
+        return this.buildVanillaProject(foundEntry, options, startTime);
+      }
+
       // Create a virtual bootstrap entry that mounts React
       // This wraps the actual entry point with React mounting code
       const bootstrapEntry = this.createBootstrapEntry(foundEntry);
@@ -1497,7 +1505,7 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
                 logger.warn(`CSS compilation failed, using fallback: ${errorMsg}`);
                 // Sanitize error message for CSS comment (prevent comment injection via */)
                 const sanitizedError = errorMsg.replace(/\*\//g, '* /').replace(/</g, '&lt;');
-                const fallbackCSS = `/* Tailwind compilation failed: ${sanitizedError} */\n:root { --background: 0 0% 100%; --foreground: 222.2 84% 4.9%; }`;
+                const fallbackCSS = `/* Tailwind compilation failed: ${sanitizedError} */\n:root { --background: transparent; --foreground: inherit; }`;
                 const fallbackInjector = `(function(){if(typeof document!=='undefined'){var s=document.createElement('style');s.setAttribute('data-source',${JSON.stringify(foundPath)});s.textContent=${JSON.stringify(fallbackCSS)};document.head.appendChild(s);}})();`;
 
                 return {
@@ -1547,7 +1555,7 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
 
                   // Use minimal fallback - just strip @tailwind directives
                   cssContent = `/* Tailwind compilation failed - using CDN fallback */
-:root { --background: 0 0% 100%; --foreground: 222.2 84% 4.9%; }`;
+:root { --background: transparent; --foreground: inherit; }`;
                 }
               }
 
@@ -2846,11 +2854,18 @@ root.render(<NextJSApp />);
     try {
       // Find HTML template
       let htmlTemplate = this._files.get('/index.html') || this._files.get('/public/index.html');
+      let templateSource = 'project';
 
       if (!htmlTemplate) {
         // Generate default HTML
         htmlTemplate = this.generateDefaultHtml(options);
+        templateSource = 'generated';
       }
+
+      // DEBUG: Log which template is being used and its body tag
+      const templateBodyTag = htmlTemplate.match(/<body[^>]*>/i);
+      logger.info(`[TEMPLATE DEBUG] Using ${templateSource} HTML template`);
+      logger.info(`[TEMPLATE DEBUG] Original body tag: ${templateBodyTag?.[0] || 'NOT FOUND'}`);
 
       // Try SSR if enabled and available
       let ssrContent: { html: string; css: string; head: string } | null = null;
@@ -3327,14 +3342,23 @@ root.render(<NextJSApp />);
     --color-border-hover: #475569;
   }
 
-  /* Base styles */
+  /* Base reset - allow SFC components to control their own backgrounds */
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    min-height: 100%;
+  }
+
   body {
     font-family: var(--font-body);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background: var(--color-background);
-    color: var(--color-text);
     line-height: 1.5;
+    /* NOTE: No background/color set to allow SFC components to define their own */
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -3368,6 +3392,7 @@ root.render(<NextJSApp />);
     // DEBUG: Log custom theme extraction
     logger.info(`[TAILWIND DEBUG] hasCustomColors: ${hasCustomColors}`);
     logger.info(`[TAILWIND DEBUG] customTheme length: ${customTheme.length}`);
+    logger.info(`[TAILWIND DEBUG] detectedFramework: ${this._detectedFramework}`);
     if (customTheme) {
       logger.info(`[TAILWIND DEBUG] customTheme preview:\n${customTheme.substring(0, 800)}`);
     }
@@ -3375,50 +3400,83 @@ root.render(<NextJSApp />);
     // ALWAYS inject Tailwind CDN browser script when:
     // 1. No compiled CSS is available, OR
     // 2. CSS contains "Tailwind compilation failed" (JIT explicitly failed), OR
-    // 3. Custom colors are defined in tailwind.config (JIT doesn't know about them)
+    // 3. Custom colors are defined in tailwind.config (JIT doesn't know about them), OR
+    // 4. Framework is SFC-based (Vue, Svelte, Astro) - JIT can't properly extract classes from templates
     const jitFailed = css?.includes('Tailwind compilation failed');
-    const needsTailwindCdn = !css || css.length < 100 || jitFailed || hasCustomColors;
+    const isSfcFramework = ['vue', 'svelte', 'astro'].includes(this._detectedFramework);
+    const needsTailwindCdn = !css || css.length < 100 || jitFailed || hasCustomColors || isSfcFramework;
 
-    // FIX: When custom colors are detected, REMOVE the inline style from body
-    // This is critical because inline styles can interfere with Tailwind classes
-    if (hasCustomColors) {
-      // Remove inline style from body tag
+    // FIX: When custom colors are detected OR SFC framework is used, REMOVE the inline style from body
+    // This is critical because:
+    // 1. Inline styles can interfere with Tailwind classes
+    // 2. SFC frameworks (Vue, Svelte, Astro) define their own backgrounds in components
+    if (hasCustomColors || isSfcFramework) {
+      // DEBUG: Log body tag BEFORE modification
+      const bodyTagBefore = html.match(/<body[^>]*>/i);
+      logger.info(`[BODY DEBUG] Body tag BEFORE removal: ${bodyTagBefore?.[0] || 'NOT FOUND'}`);
+
+      // Remove inline style from body tag to let components control their own backgrounds
+      const htmlBefore = html;
       html = html.replace(
         /<body([^>]*)\s+style="[^"]*"([^>]*)>/gi,
         '<body$1$2>'
       );
-      logger.info('[TAILWIND DEBUG] Removed inline style from body tag');
+
+      // DEBUG: Log body tag AFTER modification
+      const bodyTagAfter = html.match(/<body[^>]*>/i);
+      logger.info(`[BODY DEBUG] Body tag AFTER removal: ${bodyTagAfter?.[0] || 'NOT FOUND'}`);
+      logger.info(`[BODY DEBUG] HTML changed: ${htmlBefore !== html}`);
+      logger.info(`[TAILWIND DEBUG] Removed inline style from body tag (reason: ${hasCustomColors ? 'custom colors' : 'SFC framework'})`);
     }
 
     if (needsTailwindCdn) {
-      // When custom colors are detected, override BAVINI's default gray background
+      // When custom colors are detected OR SFC framework is used, override BAVINI's default background
       // to let the project's own background colors show through
       // Use more specific selectors and !important to ensure override works
-      const backgroundOverride = hasCustomColors ? `
+      const needsBackgroundOverride = hasCustomColors || isSfcFramework;
+      const backgroundOverride = needsBackgroundOverride ? `
 <style id="bavini-bg-override">
-  /* Override BAVINI default background when project has custom Tailwind colors */
-  /* Using high specificity and !important to ensure override */
-  html, html:root { background: #ffffff !important; background-color: #ffffff !important; }
+  /* Override BAVINI default background for SFC frameworks or custom Tailwind colors */
+  /* Let Vue/Svelte/Astro components control their own backgrounds */
+  html, html:root { background: transparent !important; background-color: transparent !important; }
   body, body:root { background: transparent !important; background-color: transparent !important; }
-  :root { --color-background: transparent !important; --bavini-bg: transparent !important; }
+  :root {
+    --color-background: transparent !important;
+    --bavini-bg: transparent !important;
+    --background: transparent !important;
+    --tw-bg-opacity: 1 !important;
+  }
   /* Remove any gray tints from all containers */
   #root, #app, #__next, main { background: transparent !important; }
 </style>` : '';
 
-      const tailwindCdnScript = `
+      // Use Tailwind Browser Runtime for dynamic compilation of all Tailwind classes
+      // This handles custom colors via @theme and all standard Tailwind utilities
+      let tailwindCdnScript = `
 <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
 <style type="text/tailwindcss">
   @theme {
     ${customTheme || '/* Using Tailwind default theme */'}
   }
+</style>
+<style id="tailwind-base-fixes">
+/* Minimal base fixes - Tailwind Browser Runtime handles everything else */
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
 </style>${backgroundOverride}`;
+
+      // Tailwind Browser Runtime handles all utilities via @theme - no manual generation needed
       html = html.replace('</head>', `${tailwindCdnScript}\n</head>`);
-      const reason = !css ? 'no CSS' : css.length < 100 ? 'CSS too short' : jitFailed ? 'JIT failed' : 'custom colors detected';
+      const reason = !css ? 'no CSS' : css.length < 100 ? 'CSS too short' : jitFailed ? 'JIT failed' : isSfcFramework ? `SFC framework (${this._detectedFramework})` : 'custom colors detected';
       logger.info(`Injected Tailwind CDN (reason: ${reason}, ${customTheme.split('\n').length} custom vars)`);
 
       // DEBUG: Log what we're injecting
-      logger.info(`[TAILWIND DEBUG] backgroundOverride applied: ${hasCustomColors}`);
-      logger.info(`[TAILWIND DEBUG] tailwindCdnScript:\n${tailwindCdnScript}`);
+      logger.info(`[TAILWIND DEBUG] backgroundOverride applied: ${needsBackgroundOverride} (customColors: ${hasCustomColors}, sfcFramework: ${isSfcFramework})`);
+      if (needsBackgroundOverride) {
+        logger.info(`[BG OVERRIDE DEBUG] backgroundOverride content:\n${backgroundOverride}`);
+      }
+      // Note: tailwindCdnScript log removed - too long and floods logs
     }
 
     // DEBUG: Log the HTML head section to see what's in there
@@ -3426,6 +3484,10 @@ root.render(<NextJSApp />);
     if (headMatch) {
       logger.info(`[TAILWIND DEBUG] Final HTML <head> section (first 2000 chars):\n${headMatch[1].substring(0, 2000)}`);
     }
+
+    // DEBUG: Log the final body tag to confirm style removal
+    const finalBodyTag = html.match(/<body[^>]*>/i);
+    logger.info(`[BODY DEBUG] FINAL body tag in HTML: ${finalBodyTag?.[0] || 'NOT FOUND'}`);
 
     // Remove original entry point script tags to prevent 404 errors
     // These patterns match common Vite/React entry scripts:
@@ -3629,6 +3691,245 @@ root.render(<NextJSApp />);
     html = html.replace('</body>', `${hmrClientScript}\n</body>`);
 
     return html;
+  }
+
+  /**
+   * Build a vanilla HTML/CSS/JS project without esbuild bundling.
+   * Simply serves the HTML with inlined CSS and JS.
+   */
+  private async buildVanillaProject(
+    htmlPath: string,
+    options: BuildOptions,
+    startTime: number
+  ): Promise<BundleResult> {
+    this.emitBuildProgress('bundling', 20);
+
+    // Get the HTML content
+    let html = this._files.get(htmlPath) || '';
+
+    if (!html) {
+      return {
+        code: '',
+        css: '',
+        errors: [{ message: `HTML file not found: ${htmlPath}`, file: htmlPath }],
+        warnings: [],
+        buildTime: performance.now() - startTime,
+        hash: '',
+      };
+    }
+
+    // Find and collect CSS files
+    const cssFiles: string[] = [];
+    const cssPatterns = ['/style.css', '/styles.css', '/main.css', '/index.css', '/css/style.css', '/css/main.css'];
+
+    for (const pattern of cssPatterns) {
+      if (this._files.has(pattern)) {
+        cssFiles.push(pattern);
+      }
+    }
+
+    // Also find any CSS files referenced in the HTML
+    const cssLinkRegex = /<link[^>]+href=["']([^"']+\.css)["'][^>]*>/gi;
+    let match;
+    while ((match = cssLinkRegex.exec(html)) !== null) {
+      const cssPath = match[1].startsWith('/') ? match[1] : '/' + match[1];
+      if (this._files.has(cssPath) && !cssFiles.includes(cssPath)) {
+        cssFiles.push(cssPath);
+      }
+    }
+
+    // Collect all CSS content
+    let css = '';
+    for (const cssFile of cssFiles) {
+      const cssContent = this._files.get(cssFile);
+      if (cssContent) {
+        css += `/* ${cssFile} */\n${cssContent}\n\n`;
+      }
+    }
+
+    // Remove CSS link tags (we'll inline the CSS)
+    html = html.replace(/<link[^>]+href=["'][^"']+\.css["'][^>]*\/?>/gi, '');
+
+    // Find and collect JS files
+    const jsFiles: string[] = [];
+    const jsPatterns = ['/script.js', '/main.js', '/app.js', '/index.js', '/js/script.js', '/js/main.js', '/js/app.js'];
+
+    for (const pattern of jsPatterns) {
+      if (this._files.has(pattern)) {
+        jsFiles.push(pattern);
+      }
+    }
+
+    // Also find any JS files referenced in the HTML
+    const jsScriptRegex = /<script[^>]+src=["']([^"']+\.js)["'][^>]*><\/script>/gi;
+    while ((match = jsScriptRegex.exec(html)) !== null) {
+      const jsPath = match[1].startsWith('/') ? match[1] : '/' + match[1];
+      if (this._files.has(jsPath) && !jsFiles.includes(jsPath)) {
+        jsFiles.push(jsPath);
+      }
+    }
+
+    // Collect all JS content
+    let code = '';
+    for (const jsFile of jsFiles) {
+      const jsContent = this._files.get(jsFile);
+      if (jsContent) {
+        code += `// ${jsFile}\n${jsContent}\n\n`;
+      }
+    }
+
+    // Remove JS script tags with src (we'll inline the JS)
+    html = html.replace(/<script[^>]+src=["'][^"']+\.js["'][^>]*><\/script>/gi, '');
+
+    this.emitBuildProgress('bundling', 60);
+
+    logger.info(`Vanilla project: ${cssFiles.length} CSS files, ${jsFiles.length} JS files`);
+    logger.info(`Bundle size: JS=${(code.length / 1024).toFixed(1)}KB, CSS=${(css.length / 1024).toFixed(1)}KB`);
+
+    // Inject CSS into head
+    if (css) {
+      const styleTag = `<style>\n${css}</style>`;
+      if (html.includes('</head>')) {
+        html = html.replace('</head>', `${styleTag}\n</head>`);
+      } else {
+        // No head tag, add one
+        html = html.replace('<html', '<html>\n<head>' + styleTag + '</head');
+      }
+    }
+
+    // Extract custom theme from tailwind.config if present
+    const customTheme = this.extractTailwindCustomColors();
+    const hasCustomColors = customTheme.length > 0;
+
+    // Inject Tailwind CDN if the CSS uses Tailwind classes
+    const usesTailwind = html.includes('class="') && (
+      html.includes('flex') || html.includes('grid') || html.includes('bg-') ||
+      html.includes('text-') || html.includes('p-') || html.includes('m-') ||
+      css.includes('@tailwind') || css.includes('tailwindcss')
+    );
+
+    if (usesTailwind || hasCustomColors) {
+      const tailwindCdnScript = `
+<script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+${hasCustomColors ? `<style type="text/tailwindcss">
+  @theme {
+    ${customTheme}
+  }
+</style>` : ''}`;
+      html = html.replace('</head>', `${tailwindCdnScript}\n</head>`);
+      logger.info(`Injected Tailwind CDN for vanilla project (custom colors: ${hasCustomColors})`);
+    }
+
+    // Inject JS before closing body
+    if (code) {
+      const scriptTag = `<script>\n${code}</script>`;
+      if (html.includes('</body>')) {
+        html = html.replace('</body>', `${scriptTag}\n</body>`);
+      } else {
+        // No body closing tag, append
+        html += scriptTag;
+      }
+    }
+
+    // Add localStorage protection script
+    const localStorageProtection = `
+<script>
+(function() {
+  try {
+    localStorage.setItem('__bavini_test__', '1');
+    localStorage.removeItem('__bavini_test__');
+  } catch (e) {
+    console.warn('[BAVINI] localStorage not available, using memory fallback');
+    var memoryStorage = {};
+    window.localStorage = {
+      getItem: function(k) { return memoryStorage[k] || null; },
+      setItem: function(k, v) { memoryStorage[k] = String(v); },
+      removeItem: function(k) { delete memoryStorage[k]; },
+      clear: function() { memoryStorage = {}; },
+      get length() { return Object.keys(memoryStorage).length; },
+      key: function(i) { return Object.keys(memoryStorage)[i] || null; }
+    };
+  }
+})();
+</script>`;
+    html = html.replace('<head>', `<head>\n${localStorageProtection}`);
+
+    this.emitBuildProgress('bundling', 80);
+
+    // Create preview
+    logger.info('Creating vanilla HTML preview...');
+    await this.createVanillaPreview(html);
+
+    this.emitBuildProgress('complete', 100);
+
+    const buildTime = performance.now() - startTime;
+    logger.info(`Vanilla build completed in ${buildTime.toFixed(0)}ms`);
+
+    this._status = 'ready';
+    this.emitStatusChange('ready');
+
+    return {
+      code,
+      css,
+      errors: [],
+      warnings: [],
+      buildTime,
+      hash: this.generateHash(code + css),
+    };
+  }
+
+  /**
+   * Create preview for vanilla HTML project using srcdoc
+   */
+  private async createVanillaPreview(html: string): Promise<void> {
+    // Clean up previous blob URL
+    if (this._blobUrl) {
+      try {
+        URL.revokeObjectURL(this._blobUrl);
+        this._blobUrl = null;
+        logger.debug('Revoked previous blob URL (vanilla preview)');
+      } catch (e) {
+        logger.warn('Failed to revoke old blob URL:', e);
+      }
+    }
+
+    // Add keyboard forwarding script
+    const keyboardForwardingScript = `
+<script>
+(function() {
+  console.log('[BAVINI] Keyboard forwarding helper loaded');
+  window.addEventListener('message', function(event) {
+    if (event.data && event.data.type === 'BAVINI_KEY_EVENT') {
+      var payload = event.data.payload;
+      var target = document.activeElement;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
+        if (payload.key.length === 1) {
+          var start = target.selectionStart || 0;
+          var end = target.selectionEnd || 0;
+          var value = target.value;
+          target.value = value.slice(0, start) + payload.key + value.slice(end);
+          target.setSelectionRange(start + 1, start + 1);
+          target.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      }
+    }
+  });
+})();
+</script>`;
+    html = html.replace('<head>', `<head>\n${keyboardForwardingScript}`);
+
+    // Create preview object with srcdoc (same pattern as createPreviewWithSrcdoc)
+    const preview: PreviewInfo = {
+      url: 'about:srcdoc',
+      ready: true,
+      updatedAt: Date.now(),
+      srcdoc: html,
+    };
+
+    this._preview = preview;
+
+    logger.info('Vanilla preview created via srcdoc');
+    this.emitPreviewReady(this._preview);
   }
 }
 
