@@ -3,16 +3,31 @@
  * BAVINI Runtime Engine - Node.js Polyfills
  * =============================================================================
  * Polyfills for Node.js built-in modules to run in QuickJS/browser context.
+ * Uses the BAVINI Node runtime modules for consistent behavior.
  * =============================================================================
  */
 
 import type { ProcessShim, ProcessEnv, VirtualFS } from './types';
-import pathBrowserify from 'path-browserify';
-import { Buffer } from 'buffer';
-import EventEmitter from 'events';
+
+// Import from our Node runtime modules
+import * as pathModule from '../node/core-modules/path';
+import { EventEmitter } from '../node/core-modules/events';
+import { Buffer } from '../node/globals/buffer';
+import * as utilModule from '../node/core-modules/util';
+import * as streamModule from '../node/core-modules/stream';
+import * as cryptoModule from '../node/core-modules/crypto';
+import {
+  nodeSetTimeout,
+  nodeClearTimeout,
+  nodeSetInterval,
+  nodeClearInterval,
+  nodeSetImmediate,
+  nodeClearImmediate,
+  timers as timersModule,
+} from '../node/globals/timers';
 
 // Re-export path module
-export const path = pathBrowserify;
+export const path = pathModule;
 
 // Re-export Buffer
 export { Buffer };
@@ -21,7 +36,18 @@ export { Buffer };
 export { EventEmitter };
 
 /**
+ * FIX 3.5: Maximum buffer size to prevent memory leaks
+ */
+const MAX_BUFFER_SIZE = 10000;
+
+/**
+ * FIX 3.5: Maximum pending nextTick callbacks to prevent unbounded growth
+ */
+const MAX_NEXT_TICK_QUEUE = 1000;
+
+/**
  * Create a process shim
+ * FIX 3.5: Added buffer limits and nextTick queue management
  */
 export function createProcessShim(
   fs: VirtualFS,
@@ -41,8 +67,12 @@ export function createProcessShim(
     ...options.env,
   };
 
+  // FIX 3.5: Buffers with size limits to prevent memory leaks
   const stdoutBuffer: string[] = [];
   const stderrBuffer: string[] = [];
+
+  // FIX 3.5: Track pending nextTick callbacks
+  let pendingNextTicks = 0;
 
   return {
     env,
@@ -51,7 +81,7 @@ export function createProcessShim(
 
     chdir: (dir: string) => {
       // Normalize path
-      const newPath = dir.startsWith('/') ? dir : path.join(currentCwd, dir);
+      const newPath = dir.startsWith('/') ? dir : pathModule.join(currentCwd, dir);
       if (fs.existsSync(newPath)) {
         currentCwd = newPath;
       } else {
@@ -74,8 +104,31 @@ export function createProcessShim(
       options.onExit?.(code);
     },
 
-    nextTick: (callback: () => void) => {
-      queueMicrotask(callback);
+    /**
+     * FIX 3.5: Improved nextTick with queue limits and error handling
+     */
+    nextTick: (callback: () => void, ...args: unknown[]) => {
+      // Prevent unbounded queue growth
+      if (pendingNextTicks >= MAX_NEXT_TICK_QUEUE) {
+        console.warn(`[process.nextTick] Queue limit reached (${MAX_NEXT_TICK_QUEUE}), callback dropped`);
+        return;
+      }
+
+      pendingNextTicks++;
+
+      queueMicrotask(() => {
+        pendingNextTicks--;
+        try {
+          if (args.length > 0) {
+            (callback as (...args: unknown[]) => void)(...args);
+          } else {
+            callback();
+          }
+        } catch (error) {
+          // Log error but don't crash - match Node.js behavior
+          console.error('[process.nextTick] Callback error:', error);
+        }
+      });
     },
 
     hrtime: (time?: [number, number]): [number, number] => {
@@ -94,16 +147,28 @@ export function createProcessShim(
 
     stdout: {
       write: (data: string) => {
+        // FIX 3.5: Limit buffer size to prevent memory leaks
+        if (stdoutBuffer.length >= MAX_BUFFER_SIZE) {
+          // Remove oldest entries (keep last 80%)
+          stdoutBuffer.splice(0, Math.floor(MAX_BUFFER_SIZE * 0.2));
+        }
         stdoutBuffer.push(data);
         options.onStdout?.(data);
+        return true;
       },
       isTTY: false,
     },
 
     stderr: {
       write: (data: string) => {
+        // FIX 3.5: Limit buffer size to prevent memory leaks
+        if (stderrBuffer.length >= MAX_BUFFER_SIZE) {
+          // Remove oldest entries (keep last 80%)
+          stderrBuffer.splice(0, Math.floor(MAX_BUFFER_SIZE * 0.2));
+        }
         stderrBuffer.push(data);
         options.onStderr?.(data);
+        return true;
       },
       isTTY: false,
     },
@@ -138,7 +203,10 @@ export function createConsoleShim(
       onLog?.(level, ...args);
       // Also log to real console in development
       if (typeof globalThis.console !== 'undefined') {
-        (globalThis.console as Record<string, unknown>)[level]?.('[QuickJS]', ...args);
+        const consoleMethod = (globalThis.console as unknown as Record<string, (...args: unknown[]) => void>)[level];
+        if (consoleMethod) {
+          consoleMethod('[QuickJS]', ...args);
+        }
       }
     };
 
@@ -185,56 +253,22 @@ export const TextEncoder = globalThis.TextEncoder;
 export const TextDecoder = globalThis.TextDecoder;
 
 /**
- * Crypto polyfill (use Web Crypto API)
+ * Crypto module - use our Node runtime implementation
  */
-export const crypto = {
-  randomBytes: (size: number): Buffer => {
-    const bytes = new Uint8Array(size);
-    globalThis.crypto.getRandomValues(bytes);
-    return Buffer.from(bytes);
-  },
-
-  randomUUID: (): string => {
-    return globalThis.crypto.randomUUID();
-  },
-
-  createHash: (algorithm: string) => {
-    let data = '';
-    return {
-      update: (input: string) => {
-        data += input;
-        return this;
-      },
-      digest: (encoding: 'hex' | 'base64' = 'hex') => {
-        // Simple hash for basic use cases
-        // For real crypto, use Web Crypto API async methods
-        let hash = 0;
-        for (let i = 0; i < data.length; i++) {
-          const char = data.charCodeAt(i);
-          hash = (hash << 5) - hash + char;
-          hash = hash & hash;
-        }
-        const hashStr = Math.abs(hash).toString(16).padStart(8, '0');
-        if (encoding === 'base64') {
-          return btoa(hashStr);
-        }
-        return hashStr;
-      },
-    };
-  },
-};
+export const crypto = cryptoModule;
 
 /**
  * setTimeout/setInterval/clearTimeout/clearInterval
- * (These are available in QuickJS but we expose them for consistency)
+ * Use our Node runtime implementation
  */
 export const timers = {
-  setTimeout: globalThis.setTimeout.bind(globalThis),
-  setInterval: globalThis.setInterval.bind(globalThis),
-  clearTimeout: globalThis.clearTimeout.bind(globalThis),
-  clearInterval: globalThis.clearInterval.bind(globalThis),
-  setImmediate: (fn: () => void) => globalThis.setTimeout(fn, 0),
-  clearImmediate: globalThis.clearTimeout.bind(globalThis),
+  setTimeout: nodeSetTimeout,
+  setInterval: nodeSetInterval,
+  clearTimeout: nodeClearTimeout,
+  clearInterval: nodeClearInterval,
+  setImmediate: nodeSetImmediate,
+  clearImmediate: nodeClearImmediate,
+  promises: timersModule.promises,
 };
 
 /**
@@ -259,77 +293,14 @@ export const os = {
 };
 
 /**
- * util module polyfill
+ * util module - use our Node runtime implementation
  */
-export const util = {
-  format: (format: string, ...args: unknown[]): string => {
-    let i = 0;
-    return format.replace(/%[sdjifoO%]/g, (match) => {
-      if (match === '%%') return '%';
-      if (i >= args.length) return match;
-      const arg = args[i++];
-      switch (match) {
-        case '%s':
-          return String(arg);
-        case '%d':
-        case '%i':
-          return parseInt(String(arg), 10).toString();
-        case '%f':
-          return parseFloat(String(arg)).toString();
-        case '%j':
-          return JSON.stringify(arg);
-        case '%o':
-        case '%O':
-          return JSON.stringify(arg, null, 2);
-        default:
-          return match;
-      }
-    });
-  },
+export const util = utilModule;
 
-  inspect: (obj: unknown, _options?: unknown): string => {
-    try {
-      return JSON.stringify(obj, null, 2);
-    } catch {
-      return String(obj);
-    }
-  },
-
-  promisify:
-    <T>(fn: (...args: unknown[]) => void) =>
-    (...args: unknown[]): Promise<T> => {
-      return new Promise((resolve, reject) => {
-        fn(...args, (err: Error | null, result: T) => {
-          if (err) reject(err);
-          else resolve(result);
-        });
-      });
-    },
-
-  inherits: (ctor: { prototype: unknown; super_?: unknown }, superCtor: { prototype: unknown }) => {
-    Object.setPrototypeOf(ctor.prototype, superCtor.prototype);
-    ctor.super_ = superCtor;
-  },
-
-  deprecate: <T extends (...args: unknown[]) => unknown>(fn: T, _msg: string): T => fn,
-
-  isArray: Array.isArray,
-  isBoolean: (arg: unknown): arg is boolean => typeof arg === 'boolean',
-  isNull: (arg: unknown): arg is null => arg === null,
-  isNullOrUndefined: (arg: unknown): arg is null | undefined => arg == null,
-  isNumber: (arg: unknown): arg is number => typeof arg === 'number',
-  isString: (arg: unknown): arg is string => typeof arg === 'string',
-  isSymbol: (arg: unknown): arg is symbol => typeof arg === 'symbol',
-  isUndefined: (arg: unknown): arg is undefined => arg === undefined,
-  isRegExp: (arg: unknown): arg is RegExp => arg instanceof RegExp,
-  isObject: (arg: unknown): arg is object => typeof arg === 'object' && arg !== null,
-  isDate: (arg: unknown): arg is Date => arg instanceof Date,
-  isError: (arg: unknown): arg is Error => arg instanceof Error,
-  isFunction: (arg: unknown): arg is (...args: unknown[]) => unknown => typeof arg === 'function',
-  isPrimitive: (arg: unknown): boolean =>
-    arg === null || (typeof arg !== 'object' && typeof arg !== 'function'),
-  isBuffer: (arg: unknown): arg is Buffer => Buffer.isBuffer(arg),
-};
+/**
+ * stream module - use our Node runtime implementation
+ */
+export const stream = streamModule;
 
 /**
  * Module factory type
@@ -340,7 +311,85 @@ export type ModuleFactory = (
 ) => Record<string, unknown>;
 
 /**
+ * FIX 2.5: Create a lazy FS wrapper that throws explicit errors if fs is not initialized
+ * This prevents silent failures when fs methods are called before initialization
+ */
+function createLazyFsWrapper(fs: VirtualFS | null | undefined): Record<string, unknown> {
+  const assertFs = (method: string): VirtualFS => {
+    if (!fs) {
+      throw new Error(
+        `FileSystem not initialized: Cannot call fs.${method}(). ` +
+        `Ensure the virtual filesystem is properly initialized before using fs operations.`
+      );
+    }
+    return fs;
+  };
+
+  // Create lazy wrappers for each method
+  const createLazyMethod = <T extends keyof VirtualFS>(method: T) => {
+    return (...args: unknown[]) => {
+      const vfs = assertFs(method);
+      const fn = vfs[method];
+      if (typeof fn !== 'function') {
+        throw new Error(`fs.${method} is not a function`);
+      }
+      return (fn as (...args: unknown[]) => unknown).apply(vfs, args);
+    };
+  };
+
+  // Sync methods
+  const readFileSync = createLazyMethod('readFileSync');
+  const writeFileSync = createLazyMethod('writeFileSync');
+  const existsSync = createLazyMethod('existsSync');
+  const mkdirSync = createLazyMethod('mkdirSync');
+  const readdirSync = createLazyMethod('readdirSync');
+  const statSync = createLazyMethod('statSync');
+  const unlinkSync = createLazyMethod('unlinkSync');
+  const rmdirSync = createLazyMethod('rmdirSync');
+
+  // Async methods (promises)
+  const readFile = createLazyMethod('readFile');
+  const writeFile = createLazyMethod('writeFile');
+  const mkdir = createLazyMethod('mkdir');
+  const rmdir = createLazyMethod('rmdir');
+  const unlink = createLazyMethod('unlink');
+  const readdir = createLazyMethod('readdir');
+  const stat = createLazyMethod('stat');
+
+  return {
+    // Sync methods
+    readFileSync,
+    writeFileSync,
+    existsSync,
+    mkdirSync,
+    readdirSync,
+    statSync,
+    unlinkSync,
+    rmdirSync,
+    // Async methods at top level (Node style)
+    readFile,
+    writeFile,
+    mkdir,
+    rmdir,
+    unlink,
+    readdir,
+    stat,
+    // Promises namespace
+    promises: {
+      readFile,
+      writeFile,
+      mkdir,
+      rmdir,
+      unlink,
+      readdir,
+      stat,
+    },
+  };
+}
+
+/**
  * Get all builtin modules
+ * FIX 2.5: Uses lazy fs wrapper for explicit error messages
  */
 export function getBuiltinModules(
   fs: VirtualFS,
@@ -348,33 +397,24 @@ export function getBuiltinModules(
 ): Map<string, Record<string, unknown>> {
   const modules = new Map<string, Record<string, unknown>>();
 
-  // Core modules
-  modules.set('path', path);
-  modules.set('buffer', { Buffer });
+  // Core modules from our Node runtime
+  modules.set('path', pathModule);
+  modules.set('buffer', { Buffer, default: { Buffer } });
   modules.set('events', { EventEmitter, default: EventEmitter });
-  modules.set('util', util);
+  modules.set('util', utilModule);
   modules.set('os', os);
-  modules.set('crypto', crypto);
+  modules.set('crypto', cryptoModule);
+  modules.set('stream', streamModule);
 
-  // FS module (wraps our virtual FS)
-  modules.set('fs', {
-    ...fs,
-    promises: {
-      readFile: fs.readFile.bind(fs),
-      writeFile: fs.writeFile.bind(fs),
-      mkdir: fs.mkdir.bind(fs),
-      rmdir: fs.rmdir.bind(fs),
-      unlink: fs.unlink.bind(fs),
-      readdir: fs.readdir.bind(fs),
-      stat: fs.stat.bind(fs),
-    },
-  });
+  // FIX 2.5: FS module uses lazy wrapper for explicit error messages
+  modules.set('fs', createLazyFsWrapper(fs));
 
   // Process module
-  modules.set('process', process);
+  modules.set('process', process as unknown as Record<string, unknown>);
 
   // Timers
   modules.set('timers', timers);
+  modules.set('timers/promises', timers.promises as unknown as Record<string, unknown>);
 
   // URL
   modules.set('url', { URL, URLSearchParams });

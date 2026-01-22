@@ -56,12 +56,23 @@ export class WebContainerAdapter extends BaseRuntimeAdapter {
   private currentPreview: PreviewInfo | null = null;
   private _status: RuntimeStatus = 'idle';
 
+  /**
+   * FIX 1.3: Track cleanup functions for proper resource release
+   */
+  private _cleanupFunctions: Array<() => void> = [];
+
+  /**
+   * FIX 1.3: Store port listener reference for cleanup
+   */
+  private _portListener: ((port: number, type: string, url: string) => void) | null = null;
+
   get status(): RuntimeStatus {
     return this._status;
   }
 
   /**
    * Initialise le WebContainer.
+   * FIX 1.3: Now stores listener reference for proper cleanup
    */
   async init(): Promise<void> {
     if (this.container) {
@@ -76,9 +87,12 @@ export class WebContainerAdapter extends BaseRuntimeAdapter {
       logger.info('Initializing WebContainer...');
       this.container = await getWebContainer();
 
-      // Écouter les événements de port pour le preview
-      this.container.on('port', (port, type, url) => {
+      // FIX 1.3: Create port listener as named reference for cleanup
+      this._portListener = (port: number, type: string, url: string) => {
+        logger.debug(`Port event: ${port} ${type} ${url}`);
+
         if (type === 'open') {
+          // FIX: Create immutable copy to prevent mutation issues
           this.currentPreview = {
             url,
             ready: true,
@@ -90,6 +104,15 @@ export class WebContainerAdapter extends BaseRuntimeAdapter {
             this.currentPreview = null;
           }
         }
+      };
+
+      // Register the listener
+      this.container.on('port', this._portListener);
+
+      // FIX 1.3: Register cleanup function
+      this._cleanupFunctions.push(() => {
+        logger.debug('Cleaning up port listener reference');
+        this._portListener = null;
       });
 
       this._status = 'ready';
@@ -106,8 +129,24 @@ export class WebContainerAdapter extends BaseRuntimeAdapter {
 
   /**
    * Nettoie les ressources.
+   * FIX 1.3: Now executes all registered cleanup functions
    */
   async destroy(): Promise<void> {
+    logger.info('Destroying WebContainerAdapter...');
+
+    // FIX 1.3: Execute all registered cleanup functions
+    for (const cleanup of this._cleanupFunctions) {
+      try {
+        cleanup();
+      } catch (error) {
+        logger.warn('Cleanup function error:', error);
+      }
+    }
+    this._cleanupFunctions = [];
+
+    // Reset listener reference
+    this._portListener = null;
+
     // WebContainer ne peut pas être détruit proprement
     // On reset juste les références
     this.container = null;
@@ -280,12 +319,17 @@ export class WebContainerAdapter extends BaseRuntimeAdapter {
 
   /**
    * Rafraîchit le preview.
+   * FIX: Now creates immutable copy instead of mutating
    */
   async refreshPreview(): Promise<void> {
     // Le refresh est géré par l'iframe côté UI
     // On émet juste un événement
     if (this.currentPreview) {
-      this.currentPreview.updatedAt = Date.now();
+      // FIX: Create new object instead of mutating (prevents race conditions)
+      this.currentPreview = {
+        ...this.currentPreview,
+        updatedAt: Date.now(),
+      };
       this.emitPreviewReady(this.currentPreview);
     }
   }

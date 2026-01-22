@@ -343,6 +343,11 @@ export class AstroCompiler implements FrameworkCompiler {
   private postProcessCode(code: string, filename: string): string {
     let processed = code;
 
+    // DEBUG: Log raw compiled code (first 500 chars)
+    logger.info(`[DEBUG] Raw Astro compiled code for ${filename}:`, processed.substring(0, 1500));
+    logger.info(`[DEBUG] Code contains $render tagged template:`, /\$render\s*`/.test(processed));
+    logger.info(`[DEBUG] Code contains $$render tagged template:`, /\$\$render\s*`/.test(processed));
+
     // The Astro compiler v2+ generates code with $$ (double dollar) prefix:
     // - $$createComponent, $$render, $$renderComponent, $$renderTemplate, etc.
     // We need to:
@@ -400,6 +405,22 @@ export class AstroCompiler implements FrameworkCompiler {
       '// Using global $$result from shims'
     );
 
+    // CRITICAL: Replace $$renderTemplate definitions that use createTemplateFactory
+    // The Astro compiler generates: const $$renderTemplate = createTemplateFactory($$result, ...);
+    // But createTemplateFactory doesn't exist in our browser context.
+    // Replace with our globalThis.$$renderTemplate shim.
+    processed = processed.replace(
+      /(?:const|let|var)\s+\$\$renderTemplate\s*=\s*createTemplateFactory\s*\([^)]*\)\s*;?/g,
+      'const $$renderTemplate = globalThis.$$renderTemplate;'
+    );
+
+    // Also handle any other $$renderTemplate definitions that might use different patterns
+    // e.g., const $$renderTemplate = $$createRenderTemplate(...)
+    processed = processed.replace(
+      /(?:const|let|var)\s+\$\$renderTemplate\s*=\s*\$\$create\w+\s*\([^)]*\)\s*;?/g,
+      'const $$renderTemplate = globalThis.$$renderTemplate;'
+    );
+
     // CRITICAL: Replace property access references to $result and $$result with globalThis.xxx
     // This prevents esbuild from renaming these variables during bundling
     // Property accesses like globalThis.$result.createAstro() cannot be renamed
@@ -435,6 +456,35 @@ export class AstroCompiler implements FrameworkCompiler {
       processed = processed.replace(regex, `globalThis.$$$$${func}(`);
     }
 
+    // CRITICAL FIX: Replace tagged template literal usage of $$renderTemplate
+    // Astro compiler generates: return $$renderTemplate`<html>...</html>`;
+    // This is a tagged template literal, NOT a function call!
+    // We need to replace: $$renderTemplate` → globalThis.$$renderTemplate`
+    processed = processed.replace(
+      /(?<!globalThis\.)(?<![\w\(])\$\$renderTemplate\s*`/g,
+      'globalThis.$$renderTemplate`'
+    );
+
+    // Also handle $renderTemplate tagged template literals (single $)
+    processed = processed.replace(
+      /(?<!globalThis\.)(?<![\w\$\(])\$renderTemplate\s*`/g,
+      'globalThis.$renderTemplate`'
+    );
+
+    // CRITICAL: Astro v2.10.3 uses $render (not $renderTemplate) as tagged template literal!
+    // e.g., return $render`<html>...</html>`;
+    // We need to replace: $render` → globalThis.$render`
+    processed = processed.replace(
+      /(?<!globalThis\.)(?<![\w\$\(])\$render\s*`/g,
+      'globalThis.$render`'
+    );
+
+    // Also handle $$render tagged template literals (double $)
+    processed = processed.replace(
+      /(?<!globalThis\.)(?<![\w\(])\$\$render\s*`/g,
+      'globalThis.$$render`'
+    );
+
     // Replace $ prefixed function calls with globalThis.$xxx
     // e.g., $renderTemplate(...) → globalThis.$renderTemplate(...)
     const singleDollarFuncs = [
@@ -455,6 +505,11 @@ export class AstroCompiler implements FrameworkCompiler {
       processed = this.wrapForBrowser(processed, filename);
     }
 
+    // DEBUG: Log processed code (first 800 chars)
+    logger.info(`[DEBUG] Processed code for ${filename}:`, processed.substring(0, 1500));
+    logger.info(`[DEBUG] After processing - globalThis.$render:`, processed.includes('globalThis.$render'));
+    logger.info(`[DEBUG] After processing - globalThis.$$render:`, processed.includes('globalThis.$$render'));
+
     return processed;
   }
 
@@ -473,13 +528,102 @@ export class AstroCompiler implements FrameworkCompiler {
 // ============================================================================
 (function(g) {
   // Single $ prefix functions
-  if (!g.$createComponent) g.$createComponent = (fn) => fn;
+  if (!g.$createComponent) g.$createComponent = (fn) => {
+    console.log('[BAVINI Astro Shim] $createComponent called, fn type:', typeof fn);
+    return fn;
+  };
 
-  if (!g.$render) g.$render = async function(component, props, slots) {
-    if (typeof component === 'function') {
-      return await component(props, slots);
+  // CRITICAL: $render is a TAGGED TEMPLATE LITERAL handler in Astro v2+
+  // It must return an object that can be awaited and converted to string
+  // Because Astro components are async and return promises
+  if (!g.$render) g.$render = function(strings, ...values) {
+    console.log('[BAVINI Astro Shim] $render (tagged template) called with', strings?.length, 'strings and', values?.length, 'values');
+    if (!strings || !Array.isArray(strings)) {
+      console.log('[BAVINI Astro Shim] $render fallback mode');
+      return strings;
     }
-    return component;
+
+    // Create an async-aware render result object
+    const renderResult = {
+      strings: strings,
+      values: values,
+
+      // Async method to resolve all promises and build the final string
+      async render() {
+        let result = strings[0] || '';
+        for (let i = 0; i < values.length; i++) {
+          let val = values[i];
+
+          // Await promises
+          if (val && typeof val.then === 'function') {
+            try {
+              val = await val;
+            } catch (e) {
+              console.error('[BAVINI Astro] Error awaiting value:', e);
+              val = '';
+            }
+          }
+
+          // Recursively render nested render results
+          if (val && typeof val.render === 'function') {
+            val = await val.render();
+          }
+
+          let strVal = '';
+          if (val === null || val === undefined) {
+            strVal = '';
+          } else if (typeof val === 'string') {
+            strVal = val;
+          } else if (Array.isArray(val)) {
+            // Handle arrays of values (including promises and render results)
+            const resolvedArr = await Promise.all(val.map(async (v) => {
+              if (v && typeof v.then === 'function') v = await v;
+              if (v && typeof v.render === 'function') v = await v.render();
+              return typeof v === 'string' ? v : (v?.toString?.() || '');
+            }));
+            strVal = resolvedArr.join('');
+          } else if (val && typeof val.toString === 'function') {
+            strVal = val.toString();
+            if (strVal === '[object Object]') strVal = '';
+          } else {
+            strVal = String(val);
+          }
+          result += strVal + (strings[i + 1] || '');
+        }
+        return result;
+      },
+
+      // For Promise-like behavior
+      then(resolve, reject) {
+        return this.render().then(resolve, reject);
+      },
+
+      // toString for sync contexts (will show placeholder)
+      toString() {
+        // Try to return sync result if no promises
+        let hasAsync = values.some(v => v && (typeof v.then === 'function' || typeof v.render === 'function'));
+        if (!hasAsync) {
+          let result = strings[0] || '';
+          for (let i = 0; i < values.length; i++) {
+            const val = values[i];
+            let strVal = '';
+            if (val === null || val === undefined) strVal = '';
+            else if (typeof val === 'string') strVal = val;
+            else if (Array.isArray(val)) strVal = val.map(v => typeof v === 'string' ? v : (v?.toString?.() || '')).join('');
+            else if (val && typeof val.toString === 'function') {
+              strVal = val.toString();
+              if (strVal === '[object Object]') strVal = '';
+            } else strVal = String(val);
+            result += strVal + (strings[i + 1] || '');
+          }
+          return result;
+        }
+        return '[ASYNC_RENDER_RESULT]';
+      }
+    };
+
+    console.log('[BAVINI Astro Shim] $render returning async-aware object');
+    return renderResult;
   };
 
   if (!g.$renderComponent) g.$renderComponent = async function(result, name, Component, props, slots) {
@@ -491,8 +635,12 @@ export class AstroCompiler implements FrameworkCompiler {
     // Handle ES module with default export
     const Comp = Component.default || Component;
     if (typeof Comp === 'function') {
-      const output = await Comp(props, slots);
-      return output?.toString?.() || '';
+      let output = await Comp(result, props, slots);
+      // If output is a render result object, resolve it
+      if (output && typeof output.render === 'function') {
+        output = await output.render();
+      }
+      return typeof output === 'string' ? output : (output?.toString?.() || '');
     }
     return '';
   };
@@ -539,6 +687,7 @@ export class AstroCompiler implements FrameworkCompiler {
   });
 
   if (!g.$renderTemplate) g.$renderTemplate = function(strings, ...values) {
+    console.log('[BAVINI Astro Shim] $renderTemplate (single $) called with', strings?.length, 'strings');
     let result = strings[0] || '';
     for (let i = 0; i < values.length; i++) {
       const val = values[i];
@@ -605,7 +754,17 @@ export class AstroCompiler implements FrameworkCompiler {
     slots: {},
   });
 
-  if (!g.$$createComponent) g.$$createComponent = (fn) => fn;
+  if (!g.$$createComponent) g.$$createComponent = (fn) => {
+    console.log('[BAVINI Astro Shim] $$createComponent called');
+    return fn;
+  };
+  if (!g.$$createMetadata) g.$$createMetadata = (filePathname, opts = {}) => ({
+    modules: opts.modules || [],
+    hydratedComponents: opts.hydratedComponents || [],
+    clientOnlyComponents: opts.clientOnlyComponents || [],
+    hydrationDirectives: opts.hydrationDirectives || new Set(),
+    hoisted: opts.hoisted || [],
+  });
   if (!g.$$defineScriptVars) g.$$defineScriptVars = (vars) => Object.entries(vars || {}).map(([k, v]) => \`let \${k} = \${JSON.stringify(v)};\`).join('\\n');
   if (!g.$$unescapeHTML) g.$$unescapeHTML = (str) => ({ toString: () => str, toHTML: () => str });
 
@@ -631,12 +790,35 @@ export class AstroCompiler implements FrameworkCompiler {
     return Object.entries(attrs).map(([k, v]) => g.$$addAttribute(v, k)).join('');
   };
 
-  if (!g.$$render) g.$$render = async function(result, Component, props, slots) {
-    if (typeof Component === 'function') {
-      const output = await Component(result, props, slots);
-      return output?.toString?.() || '';
+  // CRITICAL: $$render is a TAGGED TEMPLATE LITERAL handler in Astro v2+
+  // Usage: return $$render(templateStrings, ...values);
+  if (!g.$$render) g.$$render = function(strings, ...values) {
+    console.log('[BAVINI Astro Shim] $$render (tagged template) called with', strings?.length, 'strings and', values?.length, 'values');
+    if (!strings || !Array.isArray(strings)) {
+      // Fallback for old-style function calls
+      return strings;
     }
-    return '';
+    let result = strings[0] || '';
+    for (let i = 0; i < values.length; i++) {
+      const val = values[i];
+      let strVal = '';
+      if (val === null || val === undefined) {
+        strVal = '';
+      } else if (typeof val === 'string') {
+        strVal = val;
+      } else if (val && typeof val.then === 'function') {
+        strVal = '[ASYNC]';
+      } else if (Array.isArray(val)) {
+        strVal = val.map(v => typeof v === 'string' ? v : (v?.toString?.() || '')).join('');
+      } else if (val && typeof val.toString === 'function') {
+        strVal = val.toString();
+        if (strVal === '[object Object]') strVal = '';
+      } else {
+        strVal = String(val);
+      }
+      result += strVal + (strings[i + 1] || '');
+    }
+    return result;
   };
 
   if (!g.$$renderComponent) g.$$renderComponent = async function(result, name, Component, props, slots) {
@@ -656,6 +838,8 @@ export class AstroCompiler implements FrameworkCompiler {
 
   // CRITICAL: $$renderTemplate - tagged template literal handler
   if (!g.$$renderTemplate) g.$$renderTemplate = function(strings, ...values) {
+    console.log('[BAVINI Astro Shim] $$renderTemplate called with', strings.length, 'strings and', values.length, 'values');
+    console.log('[BAVINI Astro Shim] First string:', strings[0]?.substring(0, 100));
     let result = strings[0] || '';
     for (let i = 0; i < values.length; i++) {
       const val = values[i];
@@ -755,10 +939,22 @@ ${code}
 // Browser preview wrapper
 const __astroComponent = typeof Component !== 'undefined' ? Component : (typeof $$Component !== 'undefined' ? $$Component : null);
 
-export default function ${componentName}Preview(props = {}) {
+// CRITICAL: Astro components expect (result, props, slots) signature
+// The $result object must be passed as first argument
+export default async function ${componentName}Preview(props = {}) {
   if (__astroComponent) {
-    // Return the Astro component for rendering
-    return __astroComponent(props);
+    // Get the global $result which has createAstro and other methods
+    const $result = globalThis.$result || globalThis.$$result || {
+      styles: new Set(),
+      scripts: new Set(),
+      links: new Set(),
+      createAstro: (Astro, p, s) => ({ ...Astro, props: p || {}, slots: s || {} }),
+      resolve: (path) => path,
+    };
+    // Call component with proper signature: (result, props, slots)
+    const output = await __astroComponent($result, props, {});
+    console.log('[BAVINI Astro] wrapForBrowser output type:', typeof output, 'length:', String(output).length);
+    return output;
   }
   return null;
 }

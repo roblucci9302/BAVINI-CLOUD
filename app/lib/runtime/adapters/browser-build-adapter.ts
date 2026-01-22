@@ -55,6 +55,9 @@ import {
   type SSRMode,
   type SSRBridgeConfig,
 } from '../quickjs/ssr-bridge';
+import { withTimeout, TIMEOUTS, TimeoutError } from '../utils/timeout';
+// FIX 3.1: Import HMR manager
+import { HMRManager, createHMRManager, classifyChange } from './hmr-manager';
 
 const logger = createScopedLogger('BrowserBuildAdapter');
 
@@ -84,11 +87,33 @@ const ESBUILD_WASM_URL = 'https://unpkg.com/esbuild-wasm@0.27.2/esbuild.wasm';
 const ESM_SH_CDN = 'https://esm.sh';
 
 /**
+ * FIX 3.4: Bundle size limits configuration
+ * Provides clear warnings and errors for oversized bundles
+ */
+const BUNDLE_LIMITS = {
+  /** Warning threshold for JS bundle (1.5MB) */
+  JS_WARNING_KB: 1500,
+  /** Error threshold for JS bundle (5MB) - browser may freeze */
+  JS_ERROR_KB: 5000,
+  /** Warning threshold for CSS bundle (500KB) */
+  CSS_WARNING_KB: 500,
+  /** Error threshold for CSS bundle (2MB) */
+  CSS_ERROR_KB: 2000,
+  /** Warning threshold for total bundle (2MB) */
+  TOTAL_WARNING_KB: 2000,
+  /** Error threshold for total bundle (8MB) */
+  TOTAL_ERROR_KB: 8000,
+} as const;
+
+/**
  * LRU Cache with TTL for module caching.
  * Prevents unbounded memory growth from cached CDN responses.
+ *
+ * FIX 2.3: Separated cachedAt (for TTL expiration) from lastAccess (for LRU eviction)
+ * This ensures that frequently accessed items still expire after maxAge.
  */
 class LRUCache<K, V> {
-  private cache = new Map<K, { value: V; lastAccess: number }>();
+  private cache = new Map<K, { value: V; cachedAt: number; lastAccess: number }>();
   private maxSize: number;
   private maxAge: number;
 
@@ -104,13 +129,14 @@ class LRUCache<K, V> {
       return undefined;
     }
 
-    // Check expiration
-    if (Date.now() - entry.lastAccess > this.maxAge) {
+    // FIX 2.3: Check expiration based on cachedAt, not lastAccess
+    // This ensures entries expire even if frequently accessed
+    if (Date.now() - entry.cachedAt > this.maxAge) {
       this.cache.delete(key);
       return undefined;
     }
 
-    // Update lastAccess (move to end for LRU)
+    // Update lastAccess for LRU eviction (separate from TTL)
     entry.lastAccess = Date.now();
 
     return entry.value;
@@ -122,7 +148,9 @@ class LRUCache<K, V> {
       this.evictOldest();
     }
 
-    this.cache.set(key, { value, lastAccess: Date.now() });
+    const now = Date.now();
+    // FIX 2.3: Store both cachedAt and lastAccess
+    this.cache.set(key, { value, cachedAt: now, lastAccess: now });
   }
 
   has(key: K): boolean {
@@ -133,6 +161,7 @@ class LRUCache<K, V> {
     let oldest: K | null = null;
     let oldestTime = Infinity;
 
+    // Evict based on lastAccess (LRU) - least recently accessed
     for (const [key, entry] of this.cache.entries()) {
       if (entry.lastAccess < oldestTime) {
         oldest = key;
@@ -143,6 +172,23 @@ class LRUCache<K, V> {
     if (oldest !== null) {
       this.cache.delete(oldest);
     }
+  }
+
+  /**
+   * FIX 2.3: Proactively remove all expired entries
+   */
+  pruneExpired(): number {
+    const now = Date.now();
+    let removed = 0;
+
+    for (const [key, entry] of this.cache.entries()) {
+      if (now - entry.cachedAt > this.maxAge) {
+        this.cache.delete(key);
+        removed++;
+      }
+    }
+
+    return removed;
   }
 
   clear(): void {
@@ -170,13 +216,20 @@ const moduleCache = new LRUCache<string, string>(
 const ESM_SH_BASE = 'https://esm.sh';
 
 /**
- * Global flag to track esbuild initialization (esbuild-wasm can only be initialized once)
- * Preserved across HMR and instance recreation
+ * FIX 1.1: Import the thread-safe esbuild initialization lock
+ * Replaces the old global flags that had race condition issues
+ */
+import { esbuildInitLock } from './esbuild-init-lock';
+
+/**
+ * @deprecated Use esbuildInitLock.isReady instead
+ * Kept for backward compatibility checks
  */
 let globalEsbuildInitialized: boolean = (globalThis as any).__esbuildInitialized ?? false;
 
 /**
- * Global Promise to synchronize concurrent init calls (prevents race condition)
+ * @deprecated Use esbuildInitLock.initialize() instead
+ * Kept for backward compatibility
  */
 let globalEsbuildPromise: Promise<void> | null = (globalThis as any).__esbuildPromise ?? null;
 
@@ -226,8 +279,26 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
   private _ssrBridge: SSRBridge | null = null;
   private _ssrEnabled = false;
 
+  /**
+   * FIX 1.2: Track all created Blob URLs for proper cleanup
+   * Prevents memory leaks when switching runtimes rapidly
+   */
+  private _trackedBlobUrls: Set<string> = new Set();
+
+  /**
+   * FIX 3.1: HMR manager for hot module replacement
+   */
+  private _hmrManager: HMRManager = createHMRManager();
+
   get status(): RuntimeStatus {
     return this._status;
+  }
+
+  /**
+   * FIX 3.1: Get the HMR manager for external use
+   */
+  get hmrManager(): HMRManager {
+    return this._hmrManager;
   }
 
   /**
@@ -239,65 +310,38 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
 
   /**
    * Initialize esbuild-wasm
-   * Thread-safe: handles concurrent init calls via shared Promise
+   * FIX 1.1: Uses thread-safe esbuild-init-lock to prevent race conditions
    */
   async init(): Promise<void> {
-    // Check global flag first (esbuild-wasm can only be initialized once globally)
-    if (globalEsbuildInitialized) {
-      logger.debug('esbuild already initialized globally, reusing');
+    // FIX 1.1: Use the thread-safe singleton lock
+    if (esbuildInitLock.isReady) {
+      logger.debug('esbuild already initialized via lock, reusing');
       this._esbuildInitialized = true;
       this._status = 'ready';
       this.emitStatusChange('ready');
       return;
     }
 
-    // If initialization is in progress, wait for the existing Promise
-    // This prevents race condition when multiple adapters call init() simultaneously
-    if (globalEsbuildPromise) {
-      logger.debug('esbuild initialization in progress, waiting...');
-      try {
-        await globalEsbuildPromise;
-        this._esbuildInitialized = true;
-        this._status = 'ready';
-        this.emitStatusChange('ready');
-        return;
-      } catch (error) {
-        // Previous init failed, we'll try again below
-        logger.warn('Previous esbuild init failed, retrying...');
-      }
-    }
-
     this._status = 'initializing';
     this.emitStatusChange('initializing');
 
     try {
-      logger.info('Initializing esbuild-wasm...');
+      // FIX 1.1: Use the thread-safe initialization lock
+      // This handles concurrent calls and prevents double initialization
+      await esbuildInitLock.initialize(ESBUILD_WASM_URL);
 
-      // Create the Promise BEFORE calling initialize to prevent race condition
-      globalEsbuildPromise = esbuild.initialize({
-        wasmURL: ESBUILD_WASM_URL,
-      });
-      (globalThis as any).__esbuildPromise = globalEsbuildPromise;
-
-      await globalEsbuildPromise;
-
-      // Set both instance and global flags
+      // Update local and legacy global flags
       this._esbuildInitialized = true;
       globalEsbuildInitialized = true;
-      (globalThis as any).__esbuildInitialized = true;
 
       this._status = 'ready';
       this.emitStatusChange('ready');
 
-      logger.info('esbuild-wasm initialized successfully');
+      logger.info('esbuild-wasm initialized via lock');
 
       // Initialize Service Worker for preview (non-blocking)
       this.initServiceWorker();
     } catch (error) {
-      // Reset the Promise on failure to allow retry
-      globalEsbuildPromise = null;
-      (globalThis as any).__esbuildPromise = null;
-
       this._status = 'error';
       this.emitStatusChange('error');
       logger.error('Failed to initialize esbuild-wasm:', error);
@@ -329,6 +373,7 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
 
   /**
    * Cleanup resources
+   * FIX 1.2: Now revokes ALL tracked Blob URLs to prevent memory leaks
    * Robust: handles errors during cleanup to ensure all resources are freed
    */
   async destroy(): Promise<void> {
@@ -336,11 +381,26 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
 
     const errors: Error[] = [];
 
-    // Revoke blob URL with error handling
+    // FIX 1.2: Revoke ALL tracked blob URLs first
+    if (this._trackedBlobUrls.size > 0) {
+      logger.debug(`Revoking ${this._trackedBlobUrls.size} tracked blob URLs...`);
+      for (const url of this._trackedBlobUrls) {
+        try {
+          URL.revokeObjectURL(url);
+        } catch (error) {
+          logger.warn(`Failed to revoke tracked blob URL ${url.substring(0, 30)}:`, error);
+          errors.push(error instanceof Error ? error : new Error(String(error)));
+        }
+      }
+      this._trackedBlobUrls.clear();
+      logger.debug('All tracked blob URLs revoked');
+    }
+
+    // Revoke current blob URL with error handling (legacy)
     if (this._blobUrl) {
       try {
         URL.revokeObjectURL(this._blobUrl);
-        logger.debug('Revoked blob URL during destroy');
+        logger.debug('Revoked current blob URL during destroy');
       } catch (error) {
         logger.warn('Failed to revoke blob URL:', error);
         errors.push(error instanceof Error ? error : new Error(String(error)));
@@ -375,6 +435,14 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
         logger.warn('Failed to destroy SSR bridge:', error);
       }
       this._ssrBridge = null;
+    }
+
+    // FIX 3.1: Cleanup HMR manager
+    try {
+      this._hmrManager.destroy();
+    } catch (error) {
+      logger.warn('Failed to destroy HMR manager:', error);
+      errors.push(error instanceof Error ? error : new Error(String(error)));
     }
 
     this._preview = null;
@@ -532,10 +600,15 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
 
   /**
    * Write a single file with validation
+   * FIX 3.1: Notifies HMR manager of changes
    */
   async writeFile(path: string, content: string): Promise<void> {
     this.validateFile(path, content);
-    this._files.set(this.normalizePath(path), content);
+    const normalizedPath = this.normalizePath(path);
+    this._files.set(normalizedPath, content);
+
+    // FIX 3.1: Notify HMR manager of file change
+    this._hmrManager.notifyChange(normalizedPath, content);
   }
 
   /**
@@ -626,31 +699,36 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
       const jsxConfig = getJsxConfig(this._detectedFramework);
 
       // Build with esbuild
-      const result = await esbuild.build({
-        stdin: {
-          contents: bootstrapEntry,
-          loader: 'tsx',
-          resolveDir: entryDir,
-          sourcefile: '/__bootstrap__.tsx',
-        },
-        bundle: true,
-        format: 'esm',
-        target: 'es2020',
-        minify: options.minify ?? options.mode === 'production',
-        sourcemap: options.sourcemap ? 'inline' : false,
-        define: {
-          'process.env.NODE_ENV': `"${options.mode}"`,
-          ...options.define,
-        },
-        jsx: jsxConfig.jsx,
-        jsxImportSource: jsxConfig.jsxImportSource,
-        // virtual-fs first to handle local files and path aliases (@/) before esm-sh
-        // esm-sh will handle remaining bare imports (npm packages)
-        plugins: [this.createVirtualFsPlugin(), this.createEsmShPlugin()],
-        write: false,
-        outdir: '/dist', // Required for outputFiles to be populated
-        logLevel: 'warning',
-      });
+      // FIX 2.1: Added timeout to prevent infinite hangs
+      const result = await withTimeout(
+        esbuild.build({
+          stdin: {
+            contents: bootstrapEntry,
+            loader: 'tsx',
+            resolveDir: entryDir,
+            sourcefile: '/__bootstrap__.tsx',
+          },
+          bundle: true,
+          format: 'esm',
+          target: 'es2020',
+          minify: options.minify ?? options.mode === 'production',
+          sourcemap: options.sourcemap ? 'inline' : false,
+          define: {
+            'process.env.NODE_ENV': `"${options.mode}"`,
+            ...options.define,
+          },
+          jsx: jsxConfig.jsx,
+          jsxImportSource: jsxConfig.jsxImportSource,
+          // virtual-fs first to handle local files and path aliases (@/) before esm-sh
+          // esm-sh will handle remaining bare imports (npm packages)
+          plugins: [this.createVirtualFsPlugin(), this.createEsmShPlugin()],
+          write: false,
+          outdir: '/dist', // Required for outputFiles to be populated
+          logLevel: 'warning',
+        }),
+        TIMEOUTS.BUILD_TOTAL,
+        'esbuild bundle'
+      );
 
       this.emitBuildProgress('bundling', 80);
 
@@ -672,32 +750,80 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
       logger.info(`CSS Aggregation: ${this._cssAggregator.size} sources, ${aggregatedCss.length} chars`);
 
       // Log bundle size in KB/MB for better diagnostics
-      const codeKB = (code.length / 1024).toFixed(1);
-      const cssKB = (css.length / 1024).toFixed(1);
-      const totalKB = ((code.length + css.length) / 1024).toFixed(1);
-      logger.info(`Bundle size: JS=${codeKB}KB, CSS=${cssKB}KB, Total=${totalKB}KB`);
+      const codeKB = code.length / 1024;
+      const cssKB = css.length / 1024;
+      const totalKB = codeKB + cssKB;
+      logger.info(`Bundle size: JS=${codeKB.toFixed(1)}KB, CSS=${cssKB.toFixed(1)}KB, Total=${totalKB.toFixed(1)}KB`);
 
-      // Warn if bundle is very large (potential performance issue)
-      const BUNDLE_SIZE_WARNING_KB = 1500; // 1.5MB
-      if (code.length / 1024 > BUNDLE_SIZE_WARNING_KB) {
-        logger.warn(`⚠️ Large bundle detected (${codeKB}KB). This may cause browser freeze. Consider using fewer external imports.`);
+      // FIX 3.4: Check bundle size limits and collect warnings/errors
+      const bundleWarnings: BuildWarning[] = [];
+      const bundleErrors: BuildError[] = [];
+
+      // Check JS bundle size
+      if (codeKB > BUNDLE_LIMITS.JS_ERROR_KB) {
+        bundleErrors.push({
+          message: `JS bundle too large (${codeKB.toFixed(0)}KB > ${BUNDLE_LIMITS.JS_ERROR_KB}KB limit). Browser may freeze or crash. Split your code or use fewer dependencies.`,
+          file: 'bundle.js',
+        });
+        logger.error(`JS bundle exceeds error limit: ${codeKB.toFixed(0)}KB`);
+      } else if (codeKB > BUNDLE_LIMITS.JS_WARNING_KB) {
+        bundleWarnings.push({
+          message: `JS bundle is large (${codeKB.toFixed(0)}KB). Consider code splitting or removing unused dependencies.`,
+          file: 'bundle.js',
+        });
+        logger.warn(`JS bundle exceeds warning limit: ${codeKB.toFixed(0)}KB`);
       }
 
-      // Convert esbuild errors/warnings
-      const errors: BuildError[] = result.errors.map((e) => ({
-        message: e.text,
-        file: e.location?.file,
-        line: e.location?.line,
-        column: e.location?.column,
-        snippet: e.location?.lineText,
-      }));
+      // Check CSS bundle size
+      if (cssKB > BUNDLE_LIMITS.CSS_ERROR_KB) {
+        bundleErrors.push({
+          message: `CSS bundle too large (${cssKB.toFixed(0)}KB > ${BUNDLE_LIMITS.CSS_ERROR_KB}KB limit). Remove unused styles or split CSS.`,
+          file: 'bundle.css',
+        });
+        logger.error(`CSS bundle exceeds error limit: ${cssKB.toFixed(0)}KB`);
+      } else if (cssKB > BUNDLE_LIMITS.CSS_WARNING_KB) {
+        bundleWarnings.push({
+          message: `CSS bundle is large (${cssKB.toFixed(0)}KB). Consider purging unused styles.`,
+          file: 'bundle.css',
+        });
+        logger.warn(`CSS bundle exceeds warning limit: ${cssKB.toFixed(0)}KB`);
+      }
 
-      const warnings: BuildWarning[] = result.warnings.map((w) => ({
-        message: w.text,
-        file: w.location?.file,
-        line: w.location?.line,
-        column: w.location?.column,
-      }));
+      // Check total bundle size
+      if (totalKB > BUNDLE_LIMITS.TOTAL_ERROR_KB) {
+        bundleErrors.push({
+          message: `Total bundle too large (${totalKB.toFixed(0)}KB > ${BUNDLE_LIMITS.TOTAL_ERROR_KB}KB limit). Application may not load properly.`,
+        });
+        logger.error(`Total bundle exceeds error limit: ${totalKB.toFixed(0)}KB`);
+      } else if (totalKB > BUNDLE_LIMITS.TOTAL_WARNING_KB) {
+        bundleWarnings.push({
+          message: `Total bundle is large (${totalKB.toFixed(0)}KB). Consider optimizations for better performance.`,
+        });
+        logger.warn(`Total bundle exceeds warning limit: ${totalKB.toFixed(0)}KB`);
+      }
+
+      // Convert esbuild errors/warnings and merge with bundle size checks
+      const errors: BuildError[] = [
+        ...bundleErrors,
+        ...result.errors.map((e) => ({
+          message: e.text,
+          file: e.location?.file,
+          line: e.location?.line,
+          column: e.location?.column,
+          snippet: e.location?.lineText,
+        })),
+      ];
+
+      // FIX 3.4: Merge bundle warnings with esbuild warnings
+      const warnings: BuildWarning[] = [
+        ...bundleWarnings,
+        ...result.warnings.map((w) => ({
+          message: w.text,
+          file: w.location?.file,
+          line: w.location?.line,
+          column: w.location?.column,
+        })),
+      ];
 
       // Generate hash
       const hash = this.generateHash(code);
@@ -734,6 +860,19 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
       this._status = 'ready';
       this.emitStatusChange('ready');
 
+      // FIX 2.1: Handle timeout errors specifically
+      if (error instanceof TimeoutError) {
+        logger.error(`Build timeout: ${error.message}`);
+        return {
+          code: '',
+          css: '',
+          errors: [{ message: `Build timed out after ${TIMEOUTS.BUILD_TOTAL / 1000}s. The project may be too large or have circular dependencies.` }],
+          warnings: [],
+          buildTime: TIMEOUTS.BUILD_TOTAL,
+          hash: '',
+        };
+      }
+
       const errorMessage = error instanceof Error ? error.message : String(error);
       logger.warn('Build failed (will retry when files change):', errorMessage);
 
@@ -750,15 +889,20 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
 
   /**
    * Transform a single file
+   * FIX 2.1: Added timeout to prevent infinite hangs
    */
   async transform(code: string, options: TransformOptions): Promise<string> {
-    const result = await esbuild.transform(code, {
-      loader: options.loader,
-      sourcefile: options.filename,
-      jsx: 'automatic',
-      jsxImportSource: 'react',
-      target: 'es2020',
-    });
+    const result = await withTimeout(
+      esbuild.transform(code, {
+        loader: options.loader,
+        sourcefile: options.filename,
+        jsx: 'automatic',
+        jsxImportSource: 'react',
+        target: 'es2020',
+      }),
+      TIMEOUTS.TRANSFORM,
+      `transform:${options.filename}`
+    );
 
     return result.code;
   }
@@ -814,7 +958,9 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
         return 'jsx';
       case 'js':
       case 'mjs':
-        return 'js';
+        // Use 'jsx' loader for .js files - many React projects use JSX in .js files
+        // The JSX transform is safe on pure JS (no-op if no JSX present)
+        return 'jsx';
       case 'css':
         return 'css';
       case 'json':
@@ -2126,6 +2272,14 @@ async function collectAsyncOutput(gen) {
   // If it's already a string, return it
   if (typeof gen === 'string') return gen;
 
+  // CRITICAL: Handle render result objects with .render() method
+  // This is the async-aware format from our $render handler
+  if (gen && typeof gen.render === 'function') {
+    console.log('[BAVINI Astro] Detected render result object, calling .render()');
+    const rendered = await gen.render();
+    return await collectAsyncOutput(rendered);
+  }
+
   // CRITICAL: Detect Astro's template literal array format
   // Format: ['string1', 'string2', ..., raw: Array(n)]
   // The actual content is often in the array values, not the raw strings
@@ -2229,18 +2383,36 @@ async function renderAstro() {
     let html = '';
 
     // Try different ways to render the Astro component
+    // CRITICAL: Astro components expect (result, props, slots) not just (props)
+    // The $result object contains createAstro and other runtime methods
+    const $result = globalThis.$result || {
+      styles: new Set(),
+      scripts: new Set(),
+      links: new Set(),
+      createAstro: (Astro, props, slots) => ({ ...Astro, props: props || {}, slots: slots || {} }),
+      resolve: (path) => path,
+    };
+
     if (typeof Component === 'function') {
-      console.log('[BAVINI Astro] Component is a function, calling it...');
-      const result = await Component({});
-      console.log('[BAVINI Astro] Component result type:', typeof result, result);
+      console.log('[BAVINI Astro] Component is a function, calling with $result...');
+      // Try with $result first (Astro v2+ pattern)
+      let result = await Component($result, {}, {});
+      console.log('[BAVINI Astro] Component result type:', typeof result, 'length:', String(result).length);
+
+      // If result is empty, try without $result (some components are wrapped differently)
+      if (!result || (typeof result === 'string' && result.length === 0)) {
+        console.log('[BAVINI Astro] Empty result, trying alternative call patterns...');
+        result = await Component({}, {});
+      }
+
       html = await collectAsyncOutput(result);
     } else if (Component && Component.default && typeof Component.default === 'function') {
       console.log('[BAVINI Astro] Using Component.default');
-      const result = await Component.default({});
+      const result = await Component.default($result, {}, {});
       html = await collectAsyncOutput(result);
     } else if (Component && typeof Component.render === 'function') {
       console.log('[BAVINI Astro] Using Component.render');
-      const result = await Component.render({});
+      const result = await Component.render($result, {}, {});
       html = await collectAsyncOutput(result);
     } else {
       console.log('[BAVINI Astro] Component structure:', Object.keys(Component || {}));
@@ -2934,14 +3106,55 @@ if (container) {
       logger.info(`Injected Tailwind CDN fallback (reason: ${!css ? 'no CSS' : css.length < 100 ? 'CSS too short' : 'JIT failed'})`);
     }
 
-    // Inject JS
-    const scriptTag = `<script type="module">${code}</script>`;
+    // Remove original entry point script tags to prevent 404 errors
+    // These patterns match common Vite/React entry scripts:
+    // <script type="module" src="/src/main.tsx"></script>
+    // <script type="module" src="./src/main.tsx"></script>
+    // <script type="module" src="/src/main.ts"></script>
+    // etc.
+    const entryScriptPatterns = [
+      /<script[^>]*\s+src=["'][^"']*\/src\/main\.(tsx?|jsx?)["'][^>]*><\/script>/gi,
+      /<script[^>]*\s+src=["'][^"']*\/src\/index\.(tsx?|jsx?)["'][^>]*><\/script>/gi,
+      /<script[^>]*\s+src=["'][^"']*main\.(tsx?|jsx?)["'][^>]*><\/script>/gi,
+      /<script[^>]*\s+src=["'][^"']*index\.(tsx?|jsx?)["'][^>]*><\/script>/gi,
+    ];
+
+    for (const pattern of entryScriptPatterns) {
+      // Reset lastIndex before each operation (regex with 'g' flag maintains state)
+      pattern.lastIndex = 0;
+      if (pattern.test(html)) {
+        logger.debug(`Removing original entry script matching: ${pattern}`);
+        // Reset again before replace (test() modifies lastIndex)
+        pattern.lastIndex = 0;
+        html = html.replace(pattern, '<!-- BAVINI: Original entry script removed, using bundled code -->');
+      }
+    }
+
+    // Inject JS bundle using base64 encoding
+    // This completely avoids all escaping issues (backticks, </script>, quotes, etc.)
+    // The code is base64 encoded and decoded at runtime
+    // Use btoa with UTF-8 encoding (encodeURIComponent + unescape trick for Unicode support)
+    const base64Code = btoa(unescape(encodeURIComponent(code)));
+    const loaderScript = '<script type="module">\n' +
+      '(async function() {\n' +
+      '  try {\n' +
+      '    const base64 = "' + base64Code + '";\n' +
+      '    const code = decodeURIComponent(escape(atob(base64)));\n' +
+      '    const blob = new Blob([code], { type: "text/javascript" });\n' +
+      '    const url = URL.createObjectURL(blob);\n' +
+      '    await import(url);\n' +
+      '    URL.revokeObjectURL(url);\n' +
+      '  } catch (e) {\n' +
+      '    console.error("[BAVINI] Failed to load bundle:", e);\n' +
+      '  }\n' +
+      '})();\n' +
+      '</script>';
 
     // Replace placeholder or add before </body>
     if (html.includes('<!-- BAVINI_BUNDLE -->')) {
-      html = html.replace('<!-- BAVINI_BUNDLE -->', scriptTag);
+      html = html.replace('<!-- BAVINI_BUNDLE -->', loaderScript);
     } else {
-      html = html.replace('</body>', `${scriptTag}\n</body>`);
+      html = html.replace('</body>', `${loaderScript}\n</body>`);
     }
 
     // TEMPORARILY DISABLED: Console capture for debugging input freeze issue
@@ -3068,6 +3281,10 @@ if (container) {
 })();
 </script>`;
     html = html.replace('<head>', `<head>\n${keyboardForwardingScript}`);
+
+    // FIX 3.1: Inject HMR client script for hot module replacement
+    const hmrClientScript = this._hmrManager.getHMRClientScript();
+    html = html.replace('</body>', `${hmrClientScript}\n</body>`);
 
     return html;
   }

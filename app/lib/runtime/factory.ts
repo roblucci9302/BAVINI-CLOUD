@@ -17,16 +17,21 @@ const logger = createScopedLogger('RuntimeFactory');
 
 /**
  * Types de runtime disponibles.
+ *
+ * - 'webcontainer': Full Node.js environment via WebContainer (StackBlitz)
+ * - 'browser': Client-side bundling with esbuild-wasm
+ * - 'bavini-container': OPFS filesystem + browser terminal (Phase 1)
  */
-export type RuntimeType = 'webcontainer' | 'browser';
+export type RuntimeType = 'webcontainer' | 'browser' | 'bavini-container';
 
 /**
  * Feature flag pour choisir le runtime.
  *
  * - 'webcontainer': Utilise WebContainer (StackBlitz) - comportement actuel
  * - 'browser': Utilise esbuild-wasm dans le browser - nouveau système
+ * - 'bavini-container': OPFS filesystem + browser terminal (Phase 1)
  *
- * @default 'webcontainer'
+ * @default 'browser'
  */
 export const runtimeTypeStore: WritableAtom<RuntimeType> = atom<RuntimeType>('browser');
 
@@ -45,7 +50,7 @@ let initPromise: Promise<RuntimeAdapter> | null = null;
 /**
  * Crée un RuntimeAdapter basé sur le type spécifié.
  *
- * @param type - Type de runtime ('webcontainer' | 'browser')
+ * @param type - Type de runtime
  * @returns Instance de RuntimeAdapter
  */
 export function createRuntimeAdapter(type: RuntimeType): RuntimeAdapter {
@@ -58,6 +63,12 @@ export function createRuntimeAdapter(type: RuntimeType): RuntimeAdapter {
     case 'browser':
       return new BrowserBuildAdapter();
 
+    case 'bavini-container':
+      // For Phase 1, bavini-container uses the same build system as browser
+      // but with OPFS filesystem and BrowserTerminalStore for terminal
+      // The terminal integration is handled separately via BrowserTerminalStore
+      return new BrowserBuildAdapter();
+
     default:
       throw new Error(`Unknown runtime type: ${type}`);
   }
@@ -66,6 +77,9 @@ export function createRuntimeAdapter(type: RuntimeType): RuntimeAdapter {
 /**
  * Obtient l'instance singleton du RuntimeAdapter.
  * Crée une nouvelle instance si le type a changé.
+ *
+ * NOTE: This is synchronous - if the type changed, it schedules async cleanup.
+ * For proper cleanup with await, use setRuntimeType() instead.
  *
  * @returns Instance de RuntimeAdapter
  */
@@ -79,10 +93,15 @@ export function getRuntimeAdapter(): RuntimeAdapter {
     // Reset init promise when adapter changes (prevents stale Promise)
     initPromise = null;
 
-    currentAdapter.destroy().catch((error) => {
+    // FIX 1.2: Store reference before nulling to ensure proper cleanup
+    const adapterToDestroy = currentAdapter;
+    currentAdapter = null;
+    currentType = null;
+
+    // Schedule async cleanup - errors are logged but don't block
+    adapterToDestroy.destroy().catch((error) => {
       logger.error('Failed to destroy previous adapter:', error);
     });
-    currentAdapter = null;
   }
 
   // Créer une nouvelle instance si nécessaire
@@ -133,6 +152,8 @@ export async function initRuntime(): Promise<RuntimeAdapter> {
  * Change le type de runtime.
  * L'ancien runtime sera détruit et un nouveau sera créé.
  *
+ * FIX 1.2: Now properly awaits destroy() to prevent Blob URL leaks
+ *
  * @param type - Nouveau type de runtime
  */
 export async function setRuntimeType(type: RuntimeType): Promise<void> {
@@ -144,6 +165,25 @@ export async function setRuntimeType(type: RuntimeType): Promise<void> {
   }
 
   logger.info(`Switching runtime from ${previousType} to ${type}`);
+
+  // FIX 1.2: AWAIT destroy() to ensure Blob URLs are properly revoked
+  if (currentAdapter) {
+    // Reset init promise first to prevent new inits during destroy
+    initPromise = null;
+
+    try {
+      logger.debug('Awaiting previous adapter destroy...');
+      await currentAdapter.destroy();
+      logger.debug('Previous adapter destroyed successfully');
+    } catch (error) {
+      logger.error('Failed to destroy previous adapter:', error);
+      // Continue despite error - we still want to switch runtimes
+    }
+
+    currentAdapter = null;
+    currentType = null;
+  }
+
   runtimeTypeStore.set(type);
 
   // Le prochain appel à getRuntimeAdapter() créera le nouveau runtime
@@ -175,6 +215,18 @@ export function isBrowserRuntimeAvailable(): boolean {
 }
 
 /**
+ * Check if OPFS is available for bavini-container
+ */
+export function isBaviniContainerAvailable(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof navigator !== 'undefined' &&
+    'storage' in navigator &&
+    'getDirectory' in navigator.storage
+  );
+}
+
+/**
  * Obtient les informations sur les runtimes disponibles.
  */
 export function getRuntimeInfo(): {
@@ -182,18 +234,28 @@ export function getRuntimeInfo(): {
   available: RuntimeType[];
   webcontainer: { available: boolean; reason?: string };
   browser: { available: boolean; reason?: string };
+  'bavini-container': { available: boolean; reason?: string };
 } {
   const browserAvailable = isBrowserRuntimeAvailable();
+  const baviniAvailable = isBaviniContainerAvailable();
+
+  const available: RuntimeType[] = ['webcontainer'];
+  if (browserAvailable) available.push('browser');
+  if (baviniAvailable) available.push('bavini-container');
 
   return {
     current: runtimeTypeStore.get(),
-    available: browserAvailable ? ['webcontainer', 'browser'] : ['webcontainer'],
+    available,
     webcontainer: {
       available: true,
     },
     browser: {
       available: browserAvailable,
       reason: browserAvailable ? undefined : 'Not available in server environment',
+    },
+    'bavini-container': {
+      available: baviniAvailable,
+      reason: baviniAvailable ? undefined : 'OPFS not available in this browser',
     },
   };
 }

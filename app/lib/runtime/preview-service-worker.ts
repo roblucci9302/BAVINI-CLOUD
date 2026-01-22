@@ -4,9 +4,12 @@
  * Manages the Service Worker that serves preview content.
  * This allows previews to have a normal origin instead of blob: URLs,
  * fixing issues with localStorage, form inputs, and browser APIs.
+ *
+ * FIX 2.2: Added event emitter for failure notifications and health check
  */
 
 import { createScopedLogger } from '~/utils/logger';
+import { TIMEOUTS } from './utils/timeout';
 
 const logger = createScopedLogger('PreviewSW');
 
@@ -25,12 +28,111 @@ let messageListenerAdded = false;
 let pendingPingResolve: ((value: boolean) => void) | null = null;
 
 /**
+ * FIX 2.2: Service Worker status tracking
+ */
+export type SWStatus = 'idle' | 'initializing' | 'ready' | 'error' | 'unresponsive';
+
+let currentStatus: SWStatus = 'idle';
+let consecutiveFailures = 0;
+const MAX_CONSECUTIVE_FAILURES = 3;
+
+/**
+ * FIX 2.2: Event listener callbacks for SW state changes
+ */
+type SWEventCallback = (status: SWStatus, error?: Error) => void;
+const statusListeners: Set<SWEventCallback> = new Set();
+
+/**
+ * FIX 2.2: Health check interval
+ */
+let healthCheckInterval: ReturnType<typeof setInterval> | null = null;
+const HEALTH_CHECK_INTERVAL_MS = 30_000; // 30 seconds
+
+/**
+ * FIX 2.2: Subscribe to Service Worker status changes
+ */
+export function onSWStatusChange(callback: SWEventCallback): () => void {
+  statusListeners.add(callback);
+  // Immediately notify of current status
+  callback(currentStatus);
+  return () => statusListeners.delete(callback);
+}
+
+/**
+ * FIX 2.2: Get current SW status
+ */
+export function getSWStatus(): SWStatus {
+  return currentStatus;
+}
+
+/**
+ * FIX 2.2: Emit status change to all listeners
+ */
+function emitStatusChange(status: SWStatus, error?: Error): void {
+  currentStatus = status;
+  for (const listener of statusListeners) {
+    try {
+      listener(status, error);
+    } catch (e) {
+      logger.warn('Error in SW status listener:', e);
+    }
+  }
+}
+
+/**
+ * FIX 2.2: Start periodic health checks
+ */
+function startHealthCheck(): void {
+  if (healthCheckInterval) return;
+
+  healthCheckInterval = setInterval(async () => {
+    if (!isReady || !swRegistration?.active) return;
+
+    const isAlive = await pingServiceWorker();
+    if (!isAlive) {
+      consecutiveFailures++;
+      logger.warn(`Health check failed (${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES})`);
+
+      if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+        emitStatusChange('unresponsive', new Error('Service Worker not responding'));
+        stopHealthCheck();
+        // Attempt recovery
+        isReady = false;
+        logger.info('Attempting Service Worker recovery...');
+        const recovered = await initPreviewServiceWorker();
+        if (recovered) {
+          consecutiveFailures = 0;
+          emitStatusChange('ready');
+        }
+      }
+    } else {
+      consecutiveFailures = 0;
+    }
+  }, HEALTH_CHECK_INTERVAL_MS);
+
+  logger.debug('Health check started');
+}
+
+/**
+ * FIX 2.2: Stop periodic health checks
+ */
+function stopHealthCheck(): void {
+  if (healthCheckInterval) {
+    clearInterval(healthCheckInterval);
+    healthCheckInterval = null;
+    logger.debug('Health check stopped');
+  }
+}
+
+/**
  * Initialize the preview Service Worker
+ * FIX 2.2: Added status emissions and health check
  */
 export async function initPreviewServiceWorker(): Promise<boolean> {
   // Check if Service Workers are supported
   if (!('serviceWorker' in navigator)) {
     logger.warn('Service Workers not supported in this browser');
+    emitStatusChange('error', new Error('Service Workers not supported'));
     return false;
   }
 
@@ -45,7 +147,10 @@ export async function initPreviewServiceWorker(): Promise<boolean> {
     // SW stopped responding, reset state and reinitialize
     logger.warn('Service Worker stopped responding, reinitializing...');
     isReady = false;
+    emitStatusChange('unresponsive');
   }
+
+  emitStatusChange('initializing');
 
   try {
     // Create ready promise
@@ -82,16 +187,24 @@ export async function initPreviewServiceWorker(): Promise<boolean> {
     const pongReceived = await pingServiceWorker();
     if (!pongReceived) {
       logger.warn('Service Worker did not respond to ping');
+      emitStatusChange('error', new Error('Service Worker not responding to ping'));
       return false;
     }
 
     isReady = true;
     readyResolve?.();
+    consecutiveFailures = 0;
+    emitStatusChange('ready');
+
+    // FIX 2.2: Start health check monitoring
+    startHealthCheck();
 
     logger.info('Preview Service Worker ready');
     return true;
   } catch (error) {
-    logger.error('Failed to register Service Worker:', error);
+    const errorObj = error instanceof Error ? error : new Error(String(error));
+    logger.error('Failed to register Service Worker:', errorObj);
+    emitStatusChange('error', errorObj);
     return false;
   }
 }
@@ -147,6 +260,7 @@ function handleGlobalMessage(event: MessageEvent) {
 /**
  * Ping the Service Worker to check if it's alive
  * Uses the global message handler instead of adding a new listener
+ * FIX 2.2: Uses TIMEOUTS constant for consistency
  */
 async function pingServiceWorker(): Promise<boolean> {
   if (!swRegistration?.active) {
@@ -159,7 +273,7 @@ async function pingServiceWorker(): Promise<boolean> {
       logger.warn('Ping timeout - Service Worker not responding');
       pendingPingResolve = null;
       resolve(false);
-    }, 3000);
+    }, TIMEOUTS.SERVICE_WORKER_PING);
 
     // Set up the resolver for this ping
     pendingPingResolve = (result: boolean) => {
@@ -341,12 +455,16 @@ export function getPreviewUrl(): string {
 
 /**
  * Unregister the Service Worker (for cleanup)
+ * FIX 2.2: Also stops health check
  */
 export async function unregisterPreviewServiceWorker(): Promise<void> {
+  stopHealthCheck();
+
   if (swRegistration) {
     await swRegistration.unregister();
     swRegistration = null;
     isReady = false;
+    emitStatusChange('idle');
     logger.info('Preview Service Worker unregistered');
   }
 }

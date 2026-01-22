@@ -116,6 +116,13 @@ export async function loadCompiler(ext: string): Promise<FrameworkCompiler> {
           compiler = new TailwindCompiler();
           break;
 
+        // FIX 3.3: SCSS/SASS compiler support
+        case 'scss':
+        case 'sass':
+          const { SCSSCompiler } = await import('./scss-compiler');
+          compiler = new SCSSCompiler();
+          break;
+
         default:
           throw new Error(`No compiler available for extension: ${normalizedExt}`);
       }
@@ -153,10 +160,11 @@ export function getCompiler(ext: string): FrameworkCompiler | null {
 
 /**
  * Check if a compiler is available for a given extension
+ * FIX 3.3: Added scss and sass support
  */
 export function hasCompilerFor(ext: string): boolean {
   const normalizedExt = ext.startsWith('.') ? ext.slice(1) : ext;
-  return ['astro', 'vue', 'svelte', 'css'].includes(normalizedExt);
+  return ['astro', 'vue', 'svelte', 'css', 'scss', 'sass'].includes(normalizedExt);
 }
 
 /**
