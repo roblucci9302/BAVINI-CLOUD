@@ -745,7 +745,10 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
       // and combine with any direct CSS output from esbuild
       const aggregatedCss = this._cssAggregator.aggregate();
       const esbuildCss = cssOutput?.text || '';
-      const css = aggregatedCss + (esbuildCss ? `\n\n/* esbuild output */\n${esbuildCss}` : '');
+      let css = aggregatedCss + (esbuildCss ? `\n\n/* esbuild output */\n${esbuildCss}` : '');
+
+      // Remove @import statements for tailwindcss/* - these are handled by CDN
+      css = this.stripTailwindImports(css);
 
       logger.info(`CSS Aggregation: ${this._cssAggregator.size} sources, ${aggregatedCss.length} chars`);
 
@@ -1296,6 +1299,23 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
           };
         });
 
+        // Handle tailwindcss imports - Tailwind CDN is injected separately
+        // This intercepts: @import 'tailwindcss/base', import 'tailwindcss', etc.
+        build.onResolve({ filter: /^tailwindcss(\/|$)/ }, (args) => {
+          logger.debug(`Intercepting Tailwind import: ${args.path} (handled by CDN)`);
+          return { path: args.path, namespace: 'tailwind-shim' };
+        });
+
+        // Load empty content for tailwindcss imports (CDN handles actual styles)
+        build.onLoad({ filter: /.*/, namespace: 'tailwind-shim' }, (args) => {
+          logger.debug(`Providing empty shim for Tailwind: ${args.path}`);
+          // Return empty CSS - Tailwind CDN browser script handles everything
+          return {
+            contents: `/* Tailwind CSS handled by CDN: ${args.path} */`,
+            loader: 'css'
+          };
+        });
+
         // Resolve @/ path aliases (e.g., @/components/Header -> /src/components/Header or /components/Header)
         // This MUST be handled BEFORE esm-sh plugin tries to resolve as npm package
         build.onResolve({ filter: /^@\// }, (args) => {
@@ -1603,6 +1623,34 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
         });
       },
     };
+  }
+
+  /**
+   * Strip Tailwind CSS @import statements from CSS content
+   * These are handled by the Tailwind CDN browser script
+   */
+  private stripTailwindImports(css: string): string {
+    // Remove @import statements for tailwindcss
+    // Patterns: @import 'tailwindcss/base', @import "tailwindcss", @import url(tailwindcss/...)
+    const patterns = [
+      // @import 'tailwindcss/base'; or @import "tailwindcss/base";
+      /@import\s+['"][^'"]*tailwindcss[^'"]*['"]\s*;?/gi,
+      // @import url('tailwindcss/...') or @import url("tailwindcss/...")
+      /@import\s+url\s*\(\s*['"]?[^)]*tailwindcss[^)]*['"]?\s*\)\s*;?/gi,
+      // @tailwind base; @tailwind components; @tailwind utilities;
+      /@tailwind\s+\w+\s*;?/gi,
+    ];
+
+    let result = css;
+    for (const pattern of patterns) {
+      const matches = result.match(pattern);
+      if (matches && matches.length > 0) {
+        logger.debug(`Stripping ${matches.length} Tailwind import(s): ${matches.join(', ')}`);
+      }
+      result = result.replace(pattern, '/* Tailwind handled by CDN */');
+    }
+
+    return result;
   }
 
   /**
@@ -3127,6 +3175,27 @@ if (container) {
         // Reset again before replace (test() modifies lastIndex)
         pattern.lastIndex = 0;
         html = html.replace(pattern, '<!-- BAVINI: Original entry script removed, using bundled code -->');
+      }
+    }
+
+    // Remove <link> tags that try to load Tailwind CSS from virtual filesystem
+    // These would fail with MIME type errors since they resolve to parent page URL
+    // Tailwind is handled by CDN or JIT compilation instead
+    const tailwindLinkPatterns = [
+      // <link rel="stylesheet" href="...tailwindcss...">
+      /<link[^>]*\s+href=["'][^"']*tailwindcss[^"']*["'][^>]*\/?>/gi,
+      // <link rel="stylesheet" href="...tailwind.css...">
+      /<link[^>]*\s+href=["'][^"']*tailwind\.css[^"']*["'][^>]*\/?>/gi,
+      // <link rel="stylesheet" href="/node_modules/tailwindcss/...">
+      /<link[^>]*\s+href=["'][^"']*\/node_modules\/tailwindcss[^"']*["'][^>]*\/?>/gi,
+    ];
+
+    for (const pattern of tailwindLinkPatterns) {
+      pattern.lastIndex = 0;
+      if (pattern.test(html)) {
+        logger.debug(`Removing Tailwind link tag matching: ${pattern}`);
+        pattern.lastIndex = 0;
+        html = html.replace(pattern, '<!-- BAVINI: Tailwind CSS link removed, handled by CDN/JIT -->');
       }
     }
 
