@@ -10,8 +10,8 @@
  * Structure:
  * - utils/     - Shared utilities (cache, paths, event loop)
  * - preview/   - Preview system configuration
- * - plugins/   - esbuild plugins (coming soon)
- * - bootstrap/ - Framework bootstrap templates (coming soon)
+ * - plugins/   - esbuild plugins (esm-sh, virtual-fs)
+ * - bootstrap/ - Framework bootstrap templates (React, Vue, Svelte, etc.)
  * =============================================================================
  */
 
@@ -66,3 +66,22 @@ export {
   createEsmShPlugin,
   getCdnStats,
 } from './plugins';
+
+// Bootstrap (Phase 3.3)
+export {
+  type BootstrapContext,
+  type BootstrapGenerator,
+  type RouteDefinition,
+  MOUNTING_PATTERNS,
+  isMountingEntryFile,
+  generateRouterCode,
+  generateRouteImports,
+  generateAppWithRouter,
+  createBootstrapEntry,
+  createVueBootstrapEntry,
+  createSvelteBootstrapEntry,
+  createAstroBootstrapEntry,
+  createPreactBootstrapEntry,
+  createNextJSBootstrapEntry,
+  createReactBootstrapEntry,
+} from './bootstrap';
