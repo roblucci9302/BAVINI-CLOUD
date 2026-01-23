@@ -43,7 +43,21 @@ export function getDeviceById(id: string): DevicePreset | undefined {
   return DEVICE_PRESETS.find((device) => device.id === id);
 }
 
-export function getDeviceDimensions(device: DevicePreset, orientation: Orientation): { width: number; height: number } {
+// FIX: Add validation helper
+export function isValidDeviceId(id: string): boolean {
+  return DEVICE_PRESETS.some((device) => device.id === id);
+}
+
+// FIX: Handle undefined device with fallback to desktop dimensions
+export function getDeviceDimensions(
+  device: DevicePreset | undefined,
+  orientation: Orientation,
+): { width: number; height: number } {
+  // Fallback to default desktop dimensions if device is undefined
+  if (!device) {
+    return { width: 1280, height: 800 };
+  }
+
   if (device.type === 'desktop' || orientation === 'portrait') {
     return { width: device.width, height: device.height };
   }

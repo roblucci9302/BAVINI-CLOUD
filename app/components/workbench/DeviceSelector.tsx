@@ -1,9 +1,9 @@
 'use client';
 
-import { memo, useMemo } from 'react';
+import { memo, useMemo, useEffect } from 'react';
 import { useStore } from '@nanostores/react';
 import { classNames } from '~/utils/classNames';
-import { DEVICE_PRESETS, type DevicePreset } from '~/utils/devices';
+import { DEVICE_PRESETS, DEFAULT_DEVICE_ID, type DevicePreset } from '~/utils/devices';
 import { selectedDeviceId, deviceOrientation } from '~/lib/stores/previews';
 
 /**
@@ -17,13 +17,24 @@ export const DeviceSelector = memo(() => {
   const currentDevice = useMemo(() => DEVICE_PRESETS.find((d) => d.id === currentDeviceId), [currentDeviceId]);
   const showRotation = currentDevice?.type !== 'desktop';
 
-  const handleDeviceSelect = (deviceId: string) => {
-    selectedDeviceId.set(deviceId);
+  // FIX: Validate that current device exists, reset to default if not
+  useEffect(() => {
+    if (!currentDevice) {
+      selectedDeviceId.set(DEFAULT_DEVICE_ID);
+    }
+  }, [currentDevice]);
 
-    // Reset orientation when switching to desktop
-    if (deviceId === 'desktop') {
+  const handleDeviceSelect = (deviceId: string) => {
+    const newDevice = DEVICE_PRESETS.find((d) => d.id === deviceId);
+
+    // FIX: Reset orientation BEFORE changing device to avoid intermediate render state
+    // This prevents the visual glitch where tablet briefly shows in landscape mode
+    // because the orientation store hadn't updated yet when device changed
+    if (newDevice?.type !== currentDevice?.type) {
       deviceOrientation.set('portrait');
     }
+
+    selectedDeviceId.set(deviceId);
   };
 
   const toggleOrientation = () => {

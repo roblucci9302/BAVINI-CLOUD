@@ -19,6 +19,8 @@ export const Preview = memo(() => {
   const inputRef = useRef<HTMLInputElement>(null);
   const fullscreenContainerRef = useRef<HTMLDivElement>(null);
   const portDropdownRef = useRef<HTMLDivElement>(null);
+  // FIX: Track RAF for cancellation to prevent multiple queued frames
+  const reloadRafRef = useRef<number | null>(null);
   const [activePreviewIndex, setActivePreviewIndex] = useState(0);
   const [isPortDropdownOpen, setIsPortDropdownOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -26,6 +28,21 @@ export const Preview = memo(() => {
   // Track whether an input in the iframe is focused (for keyboard forwarding)
   const [iframeInputFocused, setIframeInputFocused] = useState(false);
   const previews = useStore(workbenchStore.previews);
+
+  // FIX: Validate activePreviewIndex when previews array changes
+  // This prevents out-of-bounds access if a preview is removed
+  useEffect(() => {
+    if (previews.length === 0) {
+      // No previews, reset to 0
+      if (activePreviewIndex !== 0) {
+        setActivePreviewIndex(0);
+      }
+    } else if (activePreviewIndex >= previews.length) {
+      // Index out of bounds, switch to last available preview
+      setActivePreviewIndex(previews.length - 1);
+    }
+  }, [previews.length, activePreviewIndex]);
+
   const activePreview = previews[activePreviewIndex];
 
   // Note: selectedDeviceId is now handled internally by DeviceFrame
@@ -57,6 +74,15 @@ export const Preview = memo(() => {
 
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
+  // FIX: Cleanup RAF on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (reloadRafRef.current !== null) {
+        cancelAnimationFrame(reloadRafRef.current);
+      }
     };
   }, []);
 
@@ -190,13 +216,15 @@ export const Preview = memo(() => {
    */
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      // SECURITY: Validate origin
-      // Accept: same origin, 'null' (Blob URL), blob: prefix, or empty origin (srcdoc)
+      // SECURITY: Validate origin strictly
+      // Accept: same origin, 'null' (Blob URL), blob: prefix, or verified iframe source
       const isSameOrigin = event.origin === window.location.origin;
       const isBlobOrigin = event.origin === 'null' || event.origin.startsWith('blob:');
-      const isSrcdocOrigin = event.origin === '' || event.source === iframeRef.current?.contentWindow;
+      // FIX: Removed `event.origin === ''` check - too permissive and can be spoofed
+      // Only accept messages from our actual iframe contentWindow
+      const isFromOurIframe = event.source === iframeRef.current?.contentWindow;
 
-      if (!isSameOrigin && !isBlobOrigin && !isSrcdocOrigin) {
+      if (!isSameOrigin && !isBlobOrigin && !isFromOurIframe) {
         return;
       }
 
@@ -291,10 +319,15 @@ export const Preview = memo(() => {
       const blob = new Blob([iframeSrcdoc], { type: 'text/html' });
       const blobUrl = URL.createObjectURL(blob);
       window.open(blobUrl, '_blank', 'noopener,noreferrer');
-      // Revoke after a short delay to allow the new tab to load
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+      // FIX: Increased timeout from 1s to 5s to handle slow network conditions
+      // The blob URL needs to remain valid until the new tab finishes loading
+      // With noopener, we can't detect when loading completes, so we use a safe delay
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
     }
   }, [iframeUrl, iframeSrcdoc]);
+
+  // FIX: Maximum srcdoc size to prevent browser freezing (50MB)
+  const MAX_SRCDOC_SIZE = 50 * 1024 * 1024;
 
   useEffect(() => {
     if (!activePreview) {
@@ -313,6 +346,14 @@ export const Preview = memo(() => {
     if (ready) {
       // Prefer srcdoc mode (avoids blob URL origin issues with form inputs)
       if (srcdoc) {
+        // FIX: Validate srcdoc size to prevent browser freezing
+        if (srcdoc.length > MAX_SRCDOC_SIZE) {
+          const sizeMB = (srcdoc.length / 1024 / 1024).toFixed(2);
+          logger.error(`srcdoc content too large: ${sizeMB}MB (max: 50MB)`);
+          toast.error(`Le contenu est trop volumineux (${sizeMB}MB). Maximum: 50MB`);
+          return;
+        }
+
         logger.info('Using srcdoc mode for preview (recommended)');
         setUrl('about:srcdoc');
         setIframeSrcdoc(srcdoc);
@@ -364,6 +405,12 @@ export const Preview = memo(() => {
   const reloadPreview = useCallback(() => {
     if (!iframeRef.current) return;
 
+    // FIX: Cancel any pending RAF to prevent multiple queued frames
+    if (reloadRafRef.current !== null) {
+      cancelAnimationFrame(reloadRafRef.current);
+      reloadRafRef.current = null;
+    }
+
     if (iframeSrcdoc) {
       // For srcdoc mode, use React state (not DOM) for the content
       // This ensures thread-safety with React's async updates
@@ -371,10 +418,11 @@ export const Preview = memo(() => {
       iframeRef.current.srcdoc = '';
 
       // Use requestAnimationFrame to ensure the empty state is applied before reload
-      requestAnimationFrame(() => {
+      reloadRafRef.current = requestAnimationFrame(() => {
         if (iframeRef.current && contentToReload) {
           iframeRef.current.srcdoc = contentToReload;
         }
+        reloadRafRef.current = null;
       });
     } else if (iframeUrl) {
       // For URL mode (Service Worker), reassign src to trigger reload
@@ -478,19 +526,31 @@ export const Preview = memo(() => {
              *    - May have keyboard event issues in some browsers
              */
             <DeviceFrame>
-              <iframe
-                ref={iframeRef}
-                className="border-none w-full h-full bg-white"
-                src={iframeSrcdoc ? undefined : iframeUrl}
-                srcDoc={iframeSrcdoc}
-                title="Aperçu de l'application"
-                // Only use sandbox for srcdoc mode - Service Worker mode doesn't need it
-                // as it provides a real same-origin URL with natural security
-                {...(iframeSrcdoc ? {
-                  sandbox: "allow-same-origin allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-presentation allow-downloads"
-                } : {})}
-                allow="accelerometer; autoplay; camera; clipboard-read; clipboard-write; encrypted-media; fullscreen; geolocation; gyroscope; microphone; midi; payment; picture-in-picture; sync-xhr"
-              />
+              {/* FIX: Separate iframes for src vs srcdoc to avoid attribute conflicts
+                * Some browsers have undefined behavior when both src and srcDoc are set
+                */}
+              {iframeSrcdoc ? (
+                <iframe
+                  ref={iframeRef}
+                  className="border-none w-full h-full bg-white"
+                  srcDoc={iframeSrcdoc}
+                  title="Aperçu de l'application"
+                  // SECURITY NOTE: allow-same-origin + allow-scripts is needed for localStorage
+                  // but allows user code to access parent's storage. For true isolation,
+                  // use a separate subdomain. See: docs/adr/security-preview-sandbox.md
+                  sandbox="allow-same-origin allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-presentation allow-downloads"
+                  allow="accelerometer; autoplay; camera; clipboard-read; clipboard-write; encrypted-media; fullscreen; geolocation; gyroscope; microphone; midi; payment; picture-in-picture; sync-xhr"
+                />
+              ) : (
+                <iframe
+                  ref={iframeRef}
+                  className="border-none w-full h-full bg-white"
+                  src={iframeUrl}
+                  title="Aperçu de l'application"
+                  // URL mode doesn't need sandbox - natural browser security applies
+                  allow="accelerometer; autoplay; camera; clipboard-read; clipboard-write; encrypted-media; fullscreen; geolocation; gyroscope; microphone; midi; payment; picture-in-picture; sync-xhr"
+                />
+              )}
             </DeviceFrame>
           ) : (
             <div className="flex w-full h-full justify-center items-center bg-bolt-elements-background-depth-1">
@@ -513,6 +573,32 @@ export const Preview = memo(() => {
               </div>
             </div>
           )
+        ) : previews.length > 0 ? (
+          /* FIX: Show available previews when activePreview is null but others exist */
+          <div className="flex w-full h-full justify-center items-center bg-bolt-elements-background-depth-1">
+            <div className="flex flex-col items-center gap-4 text-center">
+              <div className="w-16 h-16 rounded-full bg-bolt-elements-background-depth-3 flex items-center justify-center">
+                <div className="i-ph:plug text-3xl text-bolt-elements-textTertiary" />
+              </div>
+              <div>
+                <span className="text-bolt-elements-textSecondary font-medium">Sélectionnez un aperçu</span>
+                <p className="text-bolt-elements-textTertiary text-sm mt-1 mb-3">
+                  {previews.length} port{previews.length > 1 ? 's' : ''} disponible{previews.length > 1 ? 's' : ''}
+                </p>
+                <div className="flex flex-wrap justify-center gap-2">
+                  {previews.map((preview, index) => (
+                    <button
+                      key={preview.port}
+                      onClick={() => setActivePreviewIndex(index)}
+                      className="px-3 py-1.5 rounded-lg bg-bolt-elements-background-depth-2 hover:bg-bolt-elements-background-depth-3 text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary transition-colors text-sm"
+                    >
+                      Port {preview.port}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
         ) : (
           <div className="flex w-full h-full justify-center items-center bg-bolt-elements-background-depth-1">
             <div className="flex flex-col items-center gap-4 text-center">

@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useEffect, useRef } from 'react';
+import { memo, useEffect, useRef, useMemo } from 'react';
 import { IconButton } from '~/components/ui/IconButton';
 import type { PreviewInfo } from '~/lib/stores/previews';
 
@@ -24,32 +24,31 @@ export const PortDropdown = memo(
   }: PortDropdownProps) => {
     const dropdownRef = useRef<HTMLDivElement>(null);
 
-    // sort previews, preserving original index
-    const sortedPreviews = previews
-      .map((previewInfo, index) => ({ ...previewInfo, index }))
-      .sort((a, b) => a.port - b.port);
+    // FIX: Memoize sorted previews to avoid recalculating on every render
+    const sortedPreviews = useMemo(
+      () =>
+        previews
+          .map((previewInfo, index) => ({ ...previewInfo, index }))
+          .sort((a, b) => a.port - b.port),
+      [previews],
+    );
 
-    // close dropdown if user clicks outside
+    // FIX: Simplified click-outside listener - only add when dropdown is open
     useEffect(() => {
+      if (!isDropdownOpen) return;
+
       const handleClickOutside = (event: MouseEvent) => {
         if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
           setIsDropdownOpen(false);
         }
       };
 
-      if (isDropdownOpen) {
-        window.addEventListener('mousedown', handleClickOutside);
-      } else {
-        window.removeEventListener('mousedown', handleClickOutside);
-      }
-
-      return () => {
-        window.removeEventListener('mousedown', handleClickOutside);
-      };
-    }, [isDropdownOpen]);
+      window.addEventListener('mousedown', handleClickOutside);
+      return () => window.removeEventListener('mousedown', handleClickOutside);
+    }, [isDropdownOpen, setIsDropdownOpen]);
 
     return (
-      <div className="relative z-port-dropdown" ref={dropdownRef}>
+      <div className="relative z-40" ref={dropdownRef}>
         <IconButton icon="i-ph:plug" title="Sélectionner un port" onClick={() => setIsDropdownOpen(!isDropdownOpen)} />
         {isDropdownOpen && (
           <div className="absolute right-0 mt-2 min-w-[140px] dropdown-animation rounded-lg overflow-hidden bg-[var(--bolt-glass-background-elevated)] backdrop-blur-[var(--bolt-glass-blur)] border border-[var(--bolt-glass-border)] shadow-[var(--bolt-glass-shadow)]">

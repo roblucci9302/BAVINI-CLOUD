@@ -3187,8 +3187,27 @@ root.render(<NextJSApp />);
   })();
   </script>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: system-ui, -apple-system, sans-serif; }
+    /* Base reset */
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      min-height: 100%;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      line-height: 1.5;
+    }
+
+    /* Responsive media - safety net */
+    img, video, svg, canvas {
+      max-width: 100%;
+      height: auto;
+    }
 
     /* BAVINI Design System - Default CSS Variables */
     :root {
@@ -3342,7 +3361,7 @@ root.render(<NextJSApp />);
     --color-border-hover: #475569;
   }
 
-  /* Base reset - allow SFC components to control their own backgrounds */
+  /* Base reset */
   *, *::before, *::after {
     box-sizing: border-box;
   }
@@ -3359,6 +3378,12 @@ root.render(<NextJSApp />);
     -moz-osx-font-smoothing: grayscale;
     line-height: 1.5;
     /* NOTE: No background/color set to allow SFC components to define their own */
+  }
+
+  /* Responsive media - safety net */
+  img, video, svg, canvas {
+    max-width: 100%;
+    height: auto;
   }
 
   h1, h2, h3, h4, h5, h6 {

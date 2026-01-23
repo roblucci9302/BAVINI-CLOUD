@@ -6,6 +6,13 @@
   --device-duration: 0.4s;
 }
 
+/* FIX: Accessibility - respect user's motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --device-duration: 0s;
+  }
+}
+
 /* Wrapper - centers the device */
 .device-frame-wrapper {
   width: 100%;
@@ -18,9 +25,16 @@
   transition: background var(--device-duration) var(--device-easing);
 }
 
-/* Container - holds the device */
+/* Container - holds the device, NO transition to avoid positioning glitches */
 .device-frame-container {
-  transition: all var(--device-duration) var(--device-easing);
+  /* FIX: Removed transition: all - it was causing positioning glitches
+     during device type switches (desktop → tablet). The container's role
+     is just to apply classes, the shell handles all visual transitions. */
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Shell - the device frame, all transitions happen here */
@@ -83,23 +97,51 @@
 /* ========================================
    DESKTOP MODE
    ======================================== */
+/* Container properties are now in the base .device-frame-container rule */
+
 .device-frame-container.desktop .device-frame-shell {
-  width: calc(100vw - 380px);
-  height: calc(100vh - 180px);
-  max-width: 1200px;
-  max-height: 800px;
-  min-width: 600px;
-  min-height: 400px;
-  background: #18181b;
-  border-radius: 12px;
+  /* Remplir tout l'espace disponible */
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  min-width: unset;
+  min-height: unset;
+  background: transparent;
+  border-radius: 0;
   padding: 0;
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.1),
-    0 4px 24px rgba(0, 0, 0, 0.3);
+  box-shadow: none;
+}
+
+/* ========================================
+   FULLSCREEN MODE
+   Le fullscreen est sur le parent container, pas sur le wrapper
+   ======================================== */
+:fullscreen .device-frame-wrapper {
+  background: #000;
+}
+
+/* Container properties inherited from base rule */
+
+:fullscreen .device-frame-container.desktop .device-frame-shell {
+  /* En fullscreen, prendre tout l'espace disponible */
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  min-width: unset;
+  min-height: unset;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+:fullscreen .device-frame-container.desktop .device-frame-screen {
+  border-radius: 0;
 }
 
 .device-frame-container.desktop .device-frame-screen {
-  border-radius: 8px;
+  border-radius: 0;
 }
 
 .device-frame-container.desktop .device-frame-notch,
@@ -150,8 +192,8 @@
    MOBILE MODE - Floating Shadow
    ======================================== */
 .device-frame-container.mobile .device-frame-shell {
-  width: 390px;
-  height: 820px;
+  width: 450px;
+  height: 880px;
   background: #18181b;
   border-radius: 44px;
   padding: 12px;
@@ -178,8 +220,8 @@
 
 /* Mobile Landscape */
 .device-frame-container.mobile.landscape .device-frame-shell {
-  width: 820px;
-  height: 390px;
+  width: 880px;
+  height: 450px;
 }
 
 .device-frame-container.mobile.landscape .device-frame-notch {
