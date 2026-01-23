@@ -60,12 +60,22 @@ let globalTailwindPromise: Promise<void> | null = (globalThis as any).__tailwind
 let cachedProcessor: TailwindProcessor | null = (globalThis as any).__tailwindProcessor ?? null;
 
 /**
- * LRU Cache for compiled CSS results
+ * Enhanced LRU Cache for compiled CSS results with better performance
+ *
+ * Optimizations:
+ * - Larger cache size (150 entries instead of 50)
+ * - Longer TTL (30 minutes instead of 5)
+ * - MRU ordering for better hit rate
+ * - Separate class-level cache for individual utility classes
  */
 class TailwindCache {
   private _cache = new Map<string, { css: string; timestamp: number }>();
-  private readonly _maxSize = 50;
-  private readonly _maxAge = 300000; // 5 minutes
+  private readonly _maxSize = 150; // Increased from 50
+  private readonly _maxAge = 1800000; // 30 minutes (increased from 5)
+
+  /** Class-level cache for individual Tailwind classes */
+  private _classCache = new Map<string, string>();
+  private readonly _classMaxSize = 500;
 
   get(key: string): string | null {
     const entry = this._cache.get(key);
@@ -79,38 +89,138 @@ class TailwindCache {
       return null;
     }
 
+    // Move to end for MRU ordering
+    this._cache.delete(key);
+    this._cache.set(key, entry);
+
     return entry.css;
   }
 
   set(key: string, css: string): void {
-    if (this._cache.size >= this._maxSize) {
-      // Remove oldest entry
+    // Evict oldest entries if at capacity
+    while (this._cache.size >= this._maxSize) {
       const oldest = this._cache.keys().next().value;
 
       if (oldest) {
         this._cache.delete(oldest);
+      } else {
+        break;
       }
     }
 
     this._cache.set(key, { css, timestamp: Date.now() });
   }
 
-  generateKey(source: string, contentHash: string): string {
-    // Simple hash for cache key
-    let hash = 0;
-    const combined = source + contentHash;
+  /**
+   * Get cached CSS for a specific class
+   */
+  getClass(className: string): string | null {
+    return this._classCache.get(className) ?? null;
+  }
 
-    for (let i = 0; i < combined.length; i++) {
-      const char = combined.charCodeAt(i);
-      hash = (hash << 5) - hash + char;
-      hash = hash & hash;
+  /**
+   * Cache CSS for a specific class
+   */
+  setClass(className: string, css: string): void {
+    if (this._classCache.size >= this._classMaxSize) {
+      // Remove oldest class entries (first 50)
+      const keys = Array.from(this._classCache.keys()).slice(0, 50);
+      keys.forEach((k) => this._classCache.delete(k));
     }
 
-    return hash.toString(36);
+    this._classCache.set(className, css);
+  }
+
+  /**
+   * Get multiple classes from cache
+   * @returns Object with cached classes and missing class names
+   */
+  getClasses(classNames: string[]): { cached: Map<string, string>; missing: string[] } {
+    const cached = new Map<string, string>();
+    const missing: string[] = [];
+
+    for (const className of classNames) {
+      const css = this._classCache.get(className);
+
+      if (css !== undefined) {
+        cached.set(className, css);
+      } else {
+        missing.push(className);
+      }
+    }
+
+    return { cached, missing };
+  }
+
+  generateKey(source: string, contentHash: string): string {
+    // Improved hash using FNV-1a algorithm for better distribution
+    let hash = 2166136261; // FNV offset basis
+    const combined = source + '|' + contentHash;
+
+    for (let i = 0; i < combined.length; i++) {
+      hash ^= combined.charCodeAt(i);
+      hash = Math.imul(hash, 16777619); // FNV prime
+    }
+
+    return (hash >>> 0).toString(36); // Unsigned conversion
+  }
+
+  /**
+   * Clear all caches
+   */
+  clear(): void {
+    this._cache.clear();
+    this._classCache.clear();
+    logger.debug('Tailwind caches cleared');
+  }
+
+  /**
+   * Get cache statistics
+   */
+  getStats(): { compilationSize: number; classSize: number } {
+    return {
+      compilationSize: this._cache.size,
+      classSize: this._classCache.size,
+    };
   }
 }
 
 const compilationCache = new TailwindCache();
+
+/**
+ * Extract Tailwind class names from content (static extraction)
+ * This pre-extracts classes before compilation for better caching
+ */
+function extractTailwindClasses(content: string): string[] {
+  const classSet = new Set<string>();
+
+  // Pattern for class attributes: class="..." or className="..."
+  const classAttrRegex = /(?:class|className)=["']([^"']+)["']/g;
+  let match;
+
+  while ((match = classAttrRegex.exec(content)) !== null) {
+    const classes = match[1].split(/\s+/).filter(Boolean);
+    classes.forEach((c) => classSet.add(c));
+  }
+
+  // Pattern for template literals: `${...}` in className
+  const templateRegex = /(?:class|className)=\{`([^`]+)`\}/g;
+
+  while ((match = templateRegex.exec(content)) !== null) {
+    // Extract static parts only
+    const staticParts = match[1].replace(/\$\{[^}]+\}/g, ' ').split(/\s+/).filter(Boolean);
+    staticParts.forEach((c) => classSet.add(c));
+  }
+
+  // Pattern for Tailwind arbitrary values: [...], w-[100px], etc.
+  const arbitraryRegex = /\b([a-z]+-\[[^\]]+\])/g;
+
+  while ((match = arbitraryRegex.exec(content)) !== null) {
+    classSet.add(match[1]);
+  }
+
+  return Array.from(classSet);
+}
 
 /**
  * Tailwind CSS Compiler implementation
@@ -214,12 +324,38 @@ export class TailwindCompiler implements FrameworkCompiler {
     return css.includes('@tailwind') || css.includes('@apply') || css.includes('@layer');
   }
 
+  /** Pre-extracted classes from content files */
+  private _extractedClasses: string[] = [];
+
+  /** Last content hash for cache invalidation */
+  private _lastContentHash = '';
+
   /**
    * Set content files for class extraction
    * These files are scanned to extract Tailwind class names
    */
   setContentFiles(files: ContentFile[]): void {
     this._contentFiles = files;
+
+    // Pre-extract classes when content files change
+    this._extractedClasses = [];
+
+    for (const file of files) {
+      const classes = extractTailwindClasses(file.content);
+      this._extractedClasses.push(...classes);
+    }
+
+    // Deduplicate
+    this._extractedClasses = [...new Set(this._extractedClasses)];
+
+    logger.debug(`Pre-extracted ${this._extractedClasses.length} unique Tailwind classes`);
+  }
+
+  /**
+   * Get pre-extracted classes
+   */
+  getExtractedClasses(): string[] {
+    return this._extractedClasses;
   }
 
   /**
@@ -231,19 +367,49 @@ export class TailwindCompiler implements FrameworkCompiler {
 
   /**
    * Generate a hash of content files for cache invalidation
+   * Uses FNV-1a for better distribution
    */
   private _getContentHash(): string {
-    let hash = 0;
+    let hash = 2166136261; // FNV offset basis
 
     for (const file of this._contentFiles) {
       for (let i = 0; i < file.content.length; i++) {
-        const char = file.content.charCodeAt(i);
-        hash = (hash << 5) - hash + char;
-        hash = hash & hash;
+        hash ^= file.content.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
       }
     }
 
-    return hash.toString(36);
+    return (hash >>> 0).toString(36);
+  }
+
+  /**
+   * Check if content has changed since last compilation
+   */
+  hasContentChanged(): boolean {
+    const currentHash = this._getContentHash();
+    const changed = currentHash !== this._lastContentHash;
+
+    if (changed) {
+      this._lastContentHash = currentHash;
+    }
+
+    return changed;
+  }
+
+  /**
+   * Get cache statistics for debugging
+   */
+  getCacheStats(): { compilationSize: number; classSize: number } {
+    return compilationCache.getStats();
+  }
+
+  /**
+   * Clear all caches (useful for testing or manual refresh)
+   */
+  clearCaches(): void {
+    compilationCache.clear();
+    this._extractedClasses = [];
+    this._lastContentHash = '';
   }
 
   /**

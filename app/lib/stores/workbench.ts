@@ -20,6 +20,36 @@ import { chatId } from '~/lib/persistence/useChatHistory';
 
 const logger = createScopedLogger('Workbench');
 
+/**
+ * Yield to the event loop to allow the browser to process pending events.
+ * This prevents UI freeze during heavy operations like builds.
+ *
+ * Uses scheduler.postTask if available (Chrome 94+), otherwise falls back to
+ * requestIdleCallback or setTimeout.
+ */
+async function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => {
+    // Use scheduler.postTask with background priority if available (best for not blocking UI)
+    if (typeof globalThis !== 'undefined' && 'scheduler' in globalThis) {
+      const scheduler = (globalThis as { scheduler?: { postTask?: (cb: () => void, opts: { priority: string }) => void } }).scheduler;
+
+      if (scheduler?.postTask) {
+        scheduler.postTask(() => resolve(), { priority: 'background' });
+        return;
+      }
+    }
+
+    // Fallback to requestIdleCallback if available
+    if (typeof requestIdleCallback !== 'undefined') {
+      requestIdleCallback(() => resolve(), { timeout: 50 });
+      return;
+    }
+
+    // Final fallback to setTimeout
+    setTimeout(resolve, 0);
+  });
+}
+
 // Lazy imports to avoid circular dependencies and conditional loading
 async function getWebContainerModule() {
   const { webcontainer } = await import('~/lib/webcontainer');
@@ -472,9 +502,14 @@ export class WorkbenchStore {
 
   /**
    * Execute the actual browser build (called after debounce).
+   * Uses yieldToEventLoop() to prevent UI freeze during build.
    */
   async #executeBrowserBuild(): Promise<void> {
     try {
+      // Yield to event loop BEFORE starting build to allow pending input events to be processed
+      // This prevents the "frozen input" issue where typing gets blocked during builds
+      await yieldToEventLoop();
+
       const service = await getBrowserBuildService();
 
       if (!service.isReady()) {
@@ -503,9 +538,12 @@ export class WorkbenchStore {
       for (const [path, content] of files) {
         if (path.endsWith('.tsx') || path.endsWith('.jsx')) {
           const preview = content.length > 500 ? content.substring(0, 500) + '...' : content;
-          logger.info(`📄 ${path} (${content.length} chars):\n${preview}`);
+          logger.info(`\u{1F4C4} ${path} (${content.length} chars):\n${preview}`);
         }
       }
+
+      // Yield again before the actual heavy build operation
+      await yieldToEventLoop();
 
       const result = await service.syncAndBuild(files, entryPoint);
 

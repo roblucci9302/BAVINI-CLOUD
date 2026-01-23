@@ -62,19 +62,141 @@ import { HMRManager, createHMRManager, classifyChange } from './hmr-manager';
 const logger = createScopedLogger('BrowserBuildAdapter');
 
 /**
- * Flag to track if we're using Service Worker or Blob URL fallback
- * DISABLED: Service Worker mode has iframe interception issues.
- * Using srcdoc mode with keyboard event forwarding instead.
- * TODO: Investigate SW iframe control issues and re-enable when fixed.
+ * Yield to the event loop to allow the browser to process pending events.
+ * This prevents UI freeze during heavy operations like builds.
+ * FIX: Bug #2 - Input freeze during build
  */
-let useServiceWorker = false;
-const SERVICE_WORKER_DISABLED = true; // Temporary disable flag
+async function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => {
+    // Use scheduler.postTask with background priority if available (Chrome 94+)
+    if (typeof globalThis !== 'undefined' && 'scheduler' in globalThis) {
+      const scheduler = (globalThis as { scheduler?: { postTask?: (cb: () => void, opts: { priority: string }) => void } }).scheduler;
+
+      if (scheduler?.postTask) {
+        scheduler.postTask(() => resolve(), { priority: 'background' });
+        return;
+      }
+    }
+
+    // Fallback to requestIdleCallback if available
+    if (typeof requestIdleCallback !== 'undefined') {
+      requestIdleCallback(() => resolve(), { timeout: 50 });
+      return;
+    }
+
+    // Final fallback to setTimeout
+    setTimeout(resolve, 0);
+  });
+}
 
 /**
- * Number of consecutive SW failures - after MAX_SW_FAILURES we give up
+ * Preview mode configuration
+ * FIX: Bug #3 - Service Worker iframe issues
+ *
+ * Service Worker mode provides:
+ * - Normal origin (not null from blob:)
+ * - Working localStorage and sessionStorage
+ * - Proper cookie handling
+ * - Better compatibility with some browser APIs
+ *
+ * srcdoc mode provides:
+ * - More reliable across browsers
+ * - No SW registration issues
+ * - Works in incognito/private mode
+ * - No service worker scope limitations
+ */
+export type PreviewMode = 'auto' | 'service-worker' | 'srcdoc';
+
+interface PreviewModeConfig {
+  /** Current mode preference */
+  mode: PreviewMode;
+  /** Whether SW is actually available and working */
+  swAvailable: boolean;
+  /** Whether to attempt SW mode when 'auto' */
+  autoPreferSW: boolean;
+}
+
+const previewModeConfig: PreviewModeConfig = {
+  mode: 'auto',
+  swAvailable: false,
+  autoPreferSW: false, // Default to srcdoc for reliability
+};
+
+/**
+ * Flag to track if we're using Service Worker or srcdoc fallback
+ */
+let useServiceWorker = false;
+
+/**
+ * Number of consecutive SW failures - after MAX_SW_FAILURES we disable SW for this session
  */
 let swFailureCount = 0;
 const MAX_SW_FAILURES = 3;
+
+/**
+ * Set the preview mode preference
+ * @param mode - 'auto' | 'service-worker' | 'srcdoc'
+ */
+export function setPreviewMode(mode: PreviewMode): void {
+  previewModeConfig.mode = mode;
+  logger.info(`Preview mode set to: ${mode}`);
+}
+
+/**
+ * Get current preview mode configuration
+ */
+export function getPreviewModeConfig(): Readonly<PreviewModeConfig> {
+  return { ...previewModeConfig };
+}
+
+/**
+ * Enable Service Worker preference in auto mode
+ * Call this if your preview needs localStorage, sessionStorage, or cookies
+ */
+export function enableServiceWorkerPreference(): void {
+  previewModeConfig.autoPreferSW = true;
+  logger.info('Service Worker preference enabled for auto mode');
+}
+
+/**
+ * Disable Service Worker preference in auto mode
+ */
+export function disableServiceWorkerPreference(): void {
+  previewModeConfig.autoPreferSW = false;
+  logger.info('Service Worker preference disabled for auto mode');
+}
+
+/**
+ * Reset Service Worker failure count (useful after fixing issues)
+ */
+export function resetServiceWorkerFailures(): void {
+  swFailureCount = 0;
+  logger.info('Service Worker failure count reset');
+}
+
+/**
+ * Check if Service Worker mode should be attempted
+ */
+function shouldAttemptServiceWorker(): boolean {
+  // Explicit srcdoc mode requested
+  if (previewModeConfig.mode === 'srcdoc') {
+    return false;
+  }
+
+  // Explicit SW mode requested
+  if (previewModeConfig.mode === 'service-worker') {
+    return previewModeConfig.swAvailable && swFailureCount < MAX_SW_FAILURES;
+  }
+
+  // Auto mode: only use SW if explicitly preferred and available
+  if (previewModeConfig.mode === 'auto') {
+    return previewModeConfig.autoPreferSW &&
+           previewModeConfig.swAvailable &&
+           swFailureCount < MAX_SW_FAILURES;
+  }
+
+  return false;
+}
 
 /**
  * URL du WASM esbuild
@@ -351,7 +473,7 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
 
   /**
    * Initialize Service Worker for preview (non-blocking)
-   * Falls back to Blob URLs if Service Worker registration fails
+   * FIX: Bug #3 - Improved SW initialization with proper status tracking
    */
   private async initServiceWorker(): Promise<void> {
     try {
@@ -359,15 +481,19 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
       const success = await initPreviewServiceWorker();
 
       if (success) {
-        useServiceWorker = true;
-        logger.info('Preview Service Worker initialized - using SW mode');
+        previewModeConfig.swAvailable = true;
+        useServiceWorker = previewModeConfig.mode === 'service-worker' ||
+                          (previewModeConfig.mode === 'auto' && previewModeConfig.autoPreferSW);
+        logger.info(`Preview Service Worker initialized - swAvailable: true, useServiceWorker: ${useServiceWorker}`);
       } else {
+        previewModeConfig.swAvailable = false;
         useServiceWorker = false;
-        logger.warn('Service Worker init failed - falling back to Blob URLs');
+        logger.warn('Service Worker init failed - SW mode unavailable');
       }
     } catch (error) {
+      previewModeConfig.swAvailable = false;
       useServiceWorker = false;
-      logger.warn('Service Worker initialization error, using Blob URL fallback:', error);
+      logger.warn('Service Worker initialization error:', error);
     }
   }
 
@@ -705,6 +831,10 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
 
       // Get JSX configuration for the detected framework
       const jsxConfig = getJsxConfig(this._detectedFramework);
+
+      // FIX: Bug #2 - Yield to event loop before heavy esbuild operation
+      // This allows the browser to process pending input events
+      await yieldToEventLoop();
 
       // Build with esbuild
       // FIX 2.1: Added timeout to prevent infinite hangs
@@ -1053,6 +1183,33 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
       export const Sora = createFontLoader('Sora');
       export const Fira_Code = createFontLoader('Fira_Code');
       export const JetBrains_Mono = createFontLoader('JetBrains_Mono');
+
+      // Additional display/accent fonts
+      export const Antonio = createFontLoader('Antonio');
+      export const Archivo = createFontLoader('Archivo');
+      export const Archivo_Black = createFontLoader('Archivo_Black');
+      export const Bebas_Neue = createFontLoader('Bebas_Neue');
+      export const IBM_Plex_Sans = createFontLoader('IBM_Plex_Sans');
+      export const IBM_Plex_Mono = createFontLoader('IBM_Plex_Mono');
+      export const Nunito_Sans = createFontLoader('Nunito_Sans');
+      export const Cabin = createFontLoader('Cabin');
+      export const Karla = createFontLoader('Karla');
+      export const Lexend = createFontLoader('Lexend');
+      export const Figtree = createFontLoader('Figtree');
+      export const Geist = createFontLoader('Geist');
+      export const Geist_Mono = createFontLoader('Geist_Mono');
+
+      // 2025 Trendy fonts
+      export const Syne = createFontLoader('Syne');
+      export const Space_Mono = createFontLoader('Space_Mono');
+      export const Instrument_Sans = createFontLoader('Instrument_Sans');
+      export const Bricolage_Grotesque = createFontLoader('Bricolage_Grotesque');
+      export const Darker_Grotesque = createFontLoader('Darker_Grotesque');
+      export const Unbounded = createFontLoader('Unbounded');
+      export const Onest = createFontLoader('Onest');
+      export const General_Sans = createFontLoader('General_Sans');
+      export const Clash_Display = createFontLoader('Clash_Display');
+      export const Cabinet_Grotesk = createFontLoader('Cabinet_Grotesk');
 
       // Default export for dynamic imports
       export default createFontLoader;
@@ -2877,23 +3034,32 @@ root.render(<NextJSApp />);
       // Inject bundle into HTML (with SSR content if available)
       const html = this.injectBundleWithSSR(htmlTemplate, code, css, ssrContent);
 
-      // Strategy: Use srcdoc mode (most reliable)
-      // Service Worker mode is disabled due to iframe interception issues
-      // Keyboard input is handled via event forwarding in Preview.tsx
-      if (!SERVICE_WORKER_DISABLED && useServiceWorker && isServiceWorkerReady() && swFailureCount < MAX_SW_FAILURES) {
-        logger.info(`Attempting Service Worker mode for preview (failures: ${swFailureCount}/${MAX_SW_FAILURES})`);
+      // FIX: Bug #3 - Improved preview mode selection
+      // Default: srcdoc mode (most reliable across browsers)
+      // Optional: Service Worker mode (for localStorage/cookies support)
+      if (shouldAttemptServiceWorker() && isServiceWorkerReady()) {
+        logger.info(`Attempting Service Worker mode for preview (mode: ${previewModeConfig.mode}, failures: ${swFailureCount}/${MAX_SW_FAILURES})`);
+
         const swSuccess = await this.createPreviewWithServiceWorker(html);
 
         if (swSuccess) {
-          logger.info('Preview created via Service Worker - keyboard input should work');
+          logger.info('Preview created via Service Worker');
           return;
         }
 
+        swFailureCount++;
         logger.warn(`Service Worker mode failed (${swFailureCount}/${MAX_SW_FAILURES}), falling back to srcdoc`);
-      } else if (SERVICE_WORKER_DISABLED) {
-        logger.debug('Service Worker mode disabled, using srcdoc');
-      } else if (swFailureCount >= MAX_SW_FAILURES) {
-        logger.info('Service Worker disabled after multiple failures, using srcdoc');
+
+        // If we've failed too many times, disable SW for this session
+        if (swFailureCount >= MAX_SW_FAILURES) {
+          logger.info('Service Worker disabled for this session after multiple failures');
+        }
+      } else {
+        const reason = !previewModeConfig.swAvailable ? 'SW unavailable' :
+                       previewModeConfig.mode === 'srcdoc' ? 'srcdoc mode selected' :
+                       swFailureCount >= MAX_SW_FAILURES ? 'too many SW failures' :
+                       'auto mode prefers srcdoc';
+        logger.debug(`Using srcdoc mode (${reason})`);
       }
 
       // Fallback to srcdoc mode
@@ -3036,8 +3202,8 @@ root.render(<NextJSApp />);
     const success = await setPreviewFiles(files, buildId);
 
     if (!success) {
-      logger.warn('Service Worker failed to store files, will fallback to srcdoc');
-      swFailureCount++;
+      logger.warn('Service Worker failed to store files');
+      // Note: swFailureCount is incremented by caller
       return false;
     }
 

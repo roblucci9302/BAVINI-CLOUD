@@ -5,12 +5,32 @@
  * Transforms Next.js code to work in browser-only mode by providing shims for
  * Next.js-specific imports and features.
  *
- * Supported features:
+ * ⚠️ IMPORTANT: SSR LIMITATIONS
+ * ==============================
+ * Le Browser Runtime ne supporte PAS les fonctionnalités serveur de Next.js:
+ *
+ * ❌ NON SUPPORTÉ:
+ * - getServerSideProps() - Exécution serveur uniquement
+ * - getStaticProps() - Génération statique au build
+ * - API Routes (/api/*) - Endpoints backend
+ * - Middleware (middleware.ts) - Edge runtime
+ * - Server Components (use server) - React Server Components
+ * - Server Actions - Mutations serveur
+ * - Dynamic imports côté serveur
+ * - Accès base de données direct (Prisma, Drizzle, etc.)
+ *
+ * ✅ SUPPORTÉ:
  * - next/font/google -> Google Fonts CDN
  * - next/image -> Optimized <img> tag
  * - next/link -> Regular <a> tag
  * - next/navigation -> Client-side routing shims
- * - App Router layout.tsx wrapping
+ * - App Router layout.tsx (client-side only)
+ * - Client Components ('use client')
+ *
+ * 💡 ALTERNATIVES RECOMMANDÉES:
+ * - getServerSideProps → useSWR, React Query, fetch() dans useEffect
+ * - API Routes → Services externes (Supabase, Firebase, etc.)
+ * - Server Components → Client Components avec hydratation
  * =============================================================================
  */
 
@@ -77,6 +97,10 @@ export class NextJSCompiler implements FrameworkCompiler {
     // Track font imports for this file
     this._fontImports.clear();
 
+    // 0. Check for unsupported server features and warn
+    const ssrWarnings = this.detectUnsupportedFeatures(code, filename);
+    warnings.push(...ssrWarnings);
+
     // 1. Transform next/font/google imports
     const fontResult = this.transformFontImports(code);
     code = fontResult.code;
@@ -98,11 +122,129 @@ export class NextJSCompiler implements FrameworkCompiler {
     // 6. Transform next/head imports
     code = this.transformHeadImports(code);
 
+    // 7. Remove/transform server-specific exports
+    code = this.removeServerExports(code);
+
     return {
       code,
       css: css || undefined,
       warnings: warnings.length > 0 ? warnings : undefined,
     };
+  }
+
+  /**
+   * Detect unsupported server-side features and return warnings
+   */
+  private detectUnsupportedFeatures(code: string, filename: string): string[] {
+    const warnings: string[] = [];
+
+    // getServerSideProps
+    if (code.includes('getServerSideProps')) {
+      warnings.push(
+        `[${filename}] getServerSideProps n'est pas supporté dans le Browser Runtime. ` +
+        `Utilisez useSWR, React Query ou fetch() dans useEffect à la place.`
+      );
+      logger.warn(`Unsupported feature detected: getServerSideProps in ${filename}`);
+    }
+
+    // getStaticProps
+    if (code.includes('getStaticProps')) {
+      warnings.push(
+        `[${filename}] getStaticProps n'est pas supporté dans le Browser Runtime. ` +
+        `Les données doivent être chargées côté client.`
+      );
+      logger.warn(`Unsupported feature detected: getStaticProps in ${filename}`);
+    }
+
+    // getStaticPaths
+    if (code.includes('getStaticPaths')) {
+      warnings.push(
+        `[${filename}] getStaticPaths n'est pas supporté dans le Browser Runtime.`
+      );
+      logger.warn(`Unsupported feature detected: getStaticPaths in ${filename}`);
+    }
+
+    // API routes
+    if (filename.includes('/api/') || filename.includes('/pages/api/') || filename.includes('/app/api/')) {
+      warnings.push(
+        `[${filename}] Les API Routes Next.js ne sont pas supportées dans le Browser Runtime. ` +
+        `Utilisez des services externes (Supabase, Firebase) ou des API publiques.`
+      );
+      logger.warn(`Unsupported feature detected: API Route in ${filename}`);
+    }
+
+    // Server Components ('use server')
+    if (code.includes("'use server'") || code.includes('"use server"')) {
+      warnings.push(
+        `[${filename}] Les Server Actions ('use server') ne sont pas supportés. ` +
+        `Convertissez en Client Component avec 'use client'.`
+      );
+      logger.warn(`Unsupported feature detected: Server Action in ${filename}`);
+    }
+
+    // Middleware
+    if (filename.includes('middleware.ts') || filename.includes('middleware.js')) {
+      warnings.push(
+        `[${filename}] Le middleware Next.js n'est pas supporté dans le Browser Runtime.`
+      );
+      logger.warn(`Unsupported feature detected: Middleware in ${filename}`);
+    }
+
+    // Server-only imports
+    const serverImports = ['next/server', 'next/headers', 'next/cookies'];
+    for (const serverImport of serverImports) {
+      if (code.includes(`from '${serverImport}'`) || code.includes(`from "${serverImport}"`)) {
+        warnings.push(
+          `[${filename}] L'import '${serverImport}' n'est pas disponible dans le Browser Runtime.`
+        );
+        logger.warn(`Unsupported import detected: ${serverImport} in ${filename}`);
+      }
+    }
+
+    // Database/ORM imports (common patterns)
+    const dbPatterns = ['@prisma/client', 'drizzle-orm', '@vercel/postgres', 'pg', 'mysql2'];
+    for (const dbPattern of dbPatterns) {
+      if (code.includes(`from '${dbPattern}'`) || code.includes(`from "${dbPattern}"`)) {
+        warnings.push(
+          `[${filename}] L'accès direct à la base de données (${dbPattern}) n'est pas possible ` +
+          `dans le navigateur. Utilisez une API ou un service comme Supabase.`
+        );
+        logger.warn(`Unsupported DB import detected: ${dbPattern} in ${filename}`);
+      }
+    }
+
+    return warnings;
+  }
+
+  /**
+   * Remove server-only exports that would cause errors
+   */
+  private removeServerExports(code: string): string {
+    // Remove getServerSideProps export
+    code = code.replace(
+      /export\s+(async\s+)?function\s+getServerSideProps[\s\S]*?\n\}/g,
+      '// getServerSideProps removed (server-only feature)'
+    );
+
+    // Remove getStaticProps export
+    code = code.replace(
+      /export\s+(async\s+)?function\s+getStaticProps[\s\S]*?\n\}/g,
+      '// getStaticProps removed (server-only feature)'
+    );
+
+    // Remove getStaticPaths export
+    code = code.replace(
+      /export\s+(async\s+)?function\s+getStaticPaths[\s\S]*?\n\}/g,
+      '// getStaticPaths removed (server-only feature)'
+    );
+
+    // Remove server-only imports
+    code = code.replace(
+      /import\s+.*\s+from\s*['"]next\/(server|headers|cookies)['"];?\n?/g,
+      '// Server import removed (browser runtime)\n'
+    );
+
+    return code;
   }
 
   /**

@@ -544,7 +544,8 @@ export class AstroCompiler implements FrameworkCompiler {
 
     // Replace $$result.xxx with globalThis.$$result.xxx (ONLY property access)
     // Must be done FIRST before single $ patterns
-    processed = processed.replace(/(?<!globalThis\.)(?<![\w\$])(\$\$result)\.(\w+)/g, 'globalThis.$$result.$2');
+    // NOTE: In String.replace(), $$ produces single $, so we need $$$$ to produce $$
+    processed = processed.replace(/(?<!globalThis\.)(?<![\w\$])(\$\$result)\.(\w+)/g, 'globalThis.$$$$result.$2');
 
     // Replace $result.xxx with globalThis.$result.xxx (ONLY property access)
     // Use negative lookbehind to avoid already-prefixed, word chars, and $ before the pattern
@@ -571,9 +572,10 @@ export class AstroCompiler implements FrameworkCompiler {
     // Astro compiler generates: return $$renderTemplate`<html>...</html>`;
     // This is a tagged template literal, NOT a function call!
     // We need to replace: $$renderTemplate` → globalThis.$$renderTemplate`
+    // NOTE: In String.replace(), $$ produces single $, so we need $$$$ to produce $$
     processed = processed.replace(
       /(?<!globalThis\.)(?<![\w\(])\$\$renderTemplate\s*`/g,
-      'globalThis.$$renderTemplate`'
+      'globalThis.$$$$renderTemplate`'
     );
 
     // Also handle $renderTemplate tagged template literals (single $)
@@ -591,9 +593,10 @@ export class AstroCompiler implements FrameworkCompiler {
     );
 
     // Also handle $$render tagged template literals (double $)
+    // NOTE: In String.replace(), $$ produces single $, so we need $$$$ to produce $$
     processed = processed.replace(
       /(?<!globalThis\.)(?<![\w\(])\$\$render\s*`/g,
-      'globalThis.$$render`'
+      'globalThis.$$$$render`'
     );
 
     // Replace $ prefixed function calls with globalThis.$xxx
@@ -903,33 +906,93 @@ export class AstroCompiler implements FrameworkCompiler {
 
   // CRITICAL: $$render is a TAGGED TEMPLATE LITERAL handler in Astro v2+
   // Usage: return $$render(templateStrings, ...values);
+  // FIX: Returns an async-aware render result object that properly resolves promises
   if (!g.$$render) g.$$render = function(strings, ...values) {
     console.log('[BAVINI Astro Shim] $$render (tagged template) called with', strings?.length, 'strings and', values?.length, 'values');
     if (!strings || !Array.isArray(strings)) {
       // Fallback for old-style function calls
       return strings;
     }
-    let result = strings[0] || '';
-    for (let i = 0; i < values.length; i++) {
-      const val = values[i];
-      let strVal = '';
-      if (val === null || val === undefined) {
-        strVal = '';
-      } else if (typeof val === 'string') {
-        strVal = val;
-      } else if (val && typeof val.then === 'function') {
-        strVal = '[ASYNC]';
-      } else if (Array.isArray(val)) {
-        strVal = val.map(v => typeof v === 'string' ? v : (v?.toString?.() || '')).join('');
-      } else if (val && typeof val.toString === 'function') {
-        strVal = val.toString();
-        if (strVal === '[object Object]') strVal = '';
-      } else {
-        strVal = String(val);
+
+    // Create an async-aware render result object (same pattern as $render)
+    const renderResult = {
+      strings: strings,
+      values: values,
+
+      // Async method to resolve all promises and build the final string
+      async render() {
+        let result = strings[0] || '';
+        for (let i = 0; i < values.length; i++) {
+          let val = values[i];
+
+          // Await promises
+          if (val && typeof val.then === 'function') {
+            try {
+              val = await val;
+            } catch (e) {
+              console.error('[BAVINI Astro Shim] $$render: Error awaiting promise:', e);
+              val = '';
+            }
+          }
+
+          // Recursively render nested render results
+          if (val && typeof val.render === 'function') {
+            val = await val.render();
+          }
+
+          let strVal = '';
+          if (val === null || val === undefined) {
+            strVal = '';
+          } else if (typeof val === 'string') {
+            strVal = val;
+          } else if (Array.isArray(val)) {
+            // Handle arrays of values (including promises and render results)
+            const resolvedArr = await Promise.all(val.map(async (v) => {
+              if (v && typeof v.then === 'function') v = await v;
+              if (v && typeof v.render === 'function') v = await v.render();
+              return typeof v === 'string' ? v : (v?.toString?.() || '');
+            }));
+            strVal = resolvedArr.join('');
+          } else if (val && typeof val.toString === 'function') {
+            strVal = val.toString();
+            if (strVal === '[object Object]' || strVal === '[ASYNC]') strVal = '';
+          } else {
+            strVal = String(val);
+          }
+          result += strVal + (strings[i + 1] || '');
+        }
+        return result;
+      },
+
+      // For Promise-like behavior - allows await on the result
+      then(resolve, reject) {
+        return this.render().then(resolve, reject);
+      },
+
+      // toString for sync contexts (returns placeholder if async values present)
+      toString() {
+        let hasAsync = values.some(v => v && (typeof v.then === 'function' || typeof v.render === 'function'));
+        if (!hasAsync) {
+          let result = strings[0] || '';
+          for (let i = 0; i < values.length; i++) {
+            const val = values[i];
+            let strVal = '';
+            if (val === null || val === undefined) strVal = '';
+            else if (typeof val === 'string') strVal = val;
+            else if (Array.isArray(val)) strVal = val.map(v => typeof v === 'string' ? v : (v?.toString?.() || '')).join('');
+            else if (val && typeof val.toString === 'function') {
+              strVal = val.toString();
+              if (strVal === '[object Object]') strVal = '';
+            } else strVal = String(val);
+            result += strVal + (strings[i + 1] || '');
+          }
+          return result;
+        }
+        return '[ASYNC_RENDER_RESULT]';
       }
-      result += strVal + (strings[i + 1] || '');
-    }
-    return result;
+    };
+
+    return renderResult;
   };
 
   if (!g.$$renderComponent) g.$$renderComponent = async function(result, name, Component, props, slots) {
@@ -948,30 +1011,77 @@ export class AstroCompiler implements FrameworkCompiler {
   };
 
   // CRITICAL: $$renderTemplate - tagged template literal handler
+  // FIX: Now returns async-aware render result like $$render
   if (!g.$$renderTemplate) g.$$renderTemplate = function(strings, ...values) {
     console.log('[BAVINI Astro Shim] $$renderTemplate called with', strings.length, 'strings and', values.length, 'values');
-    console.log('[BAVINI Astro Shim] First string:', strings[0]?.substring(0, 100));
-    let result = strings[0] || '';
-    for (let i = 0; i < values.length; i++) {
-      const val = values[i];
-      let strVal = '';
-      if (val === null || val === undefined) {
-        strVal = '';
-      } else if (typeof val === 'string') {
-        strVal = val;
-      } else if (val && typeof val.then === 'function') {
-        strVal = '[ASYNC_PENDING]';
-      } else if (Array.isArray(val)) {
-        strVal = val.map(v => typeof v === 'string' ? v : (v?.toString?.() || '')).join('');
-      } else if (val && typeof val.toString === 'function') {
-        strVal = val.toString();
-        if (strVal === '[object Object]') strVal = '';
-      } else {
-        strVal = String(val);
+
+    // Reuse the same async-aware pattern as $$render
+    const renderResult = {
+      strings: strings,
+      values: values,
+
+      async render() {
+        let result = strings[0] || '';
+        for (let i = 0; i < values.length; i++) {
+          let val = values[i];
+
+          // Await promises
+          if (val && typeof val.then === 'function') {
+            try { val = await val; } catch (e) { val = ''; }
+          }
+
+          // Recursively render nested render results
+          if (val && typeof val.render === 'function') {
+            val = await val.render();
+          }
+
+          let strVal = '';
+          if (val === null || val === undefined) strVal = '';
+          else if (typeof val === 'string') strVal = val;
+          else if (Array.isArray(val)) {
+            const resolvedArr = await Promise.all(val.map(async (v) => {
+              if (v && typeof v.then === 'function') v = await v;
+              if (v && typeof v.render === 'function') v = await v.render();
+              return typeof v === 'string' ? v : (v?.toString?.() || '');
+            }));
+            strVal = resolvedArr.join('');
+          } else if (val && typeof val.toString === 'function') {
+            strVal = val.toString();
+            if (strVal === '[object Object]' || strVal === '[ASYNC]') strVal = '';
+          } else strVal = String(val);
+
+          result += strVal + (strings[i + 1] || '');
+        }
+        return result;
+      },
+
+      then(resolve, reject) {
+        return this.render().then(resolve, reject);
+      },
+
+      toString() {
+        let hasAsync = values.some(v => v && (typeof v.then === 'function' || typeof v.render === 'function'));
+        if (!hasAsync) {
+          let result = strings[0] || '';
+          for (let i = 0; i < values.length; i++) {
+            const val = values[i];
+            let strVal = '';
+            if (val === null || val === undefined) strVal = '';
+            else if (typeof val === 'string') strVal = val;
+            else if (Array.isArray(val)) strVal = val.map(v => typeof v === 'string' ? v : (v?.toString?.() || '')).join('');
+            else if (val && typeof val.toString === 'function') {
+              strVal = val.toString();
+              if (strVal === '[object Object]') strVal = '';
+            } else strVal = String(val);
+            result += strVal + (strings[i + 1] || '');
+          }
+          return result;
+        }
+        return '[ASYNC_RENDER_RESULT]';
       }
-      result += strVal + (strings[i + 1] || '');
-    }
-    return result;
+    };
+
+    return renderResult;
   };
 
   // Also expose as $$result
@@ -1040,6 +1150,7 @@ ${this.getMissingAstroFunctions()}
 
   /**
    * Wrap Astro component output for browser rendering
+   * FIX: Properly resolve async render results from Astro components
    */
   private wrapForBrowser(code: string, filename: string): string {
     const componentName = this.getComponentName(filename);
@@ -1049,6 +1160,45 @@ ${code}
 
 // Browser preview wrapper
 const __astroComponent = typeof Component !== 'undefined' ? Component : (typeof $$Component !== 'undefined' ? $$Component : null);
+
+// Helper to recursively resolve render results
+async function __resolveRenderResult(value) {
+  if (value === null || value === undefined) return '';
+
+  // If it's a string, return directly
+  if (typeof value === 'string') return value;
+
+  // If it has a render() method (our async render result object), call it
+  if (value && typeof value.render === 'function') {
+    const rendered = await value.render();
+    return __resolveRenderResult(rendered);
+  }
+
+  // If it's a promise, await it and recurse
+  if (value && typeof value.then === 'function') {
+    const resolved = await value;
+    return __resolveRenderResult(resolved);
+  }
+
+  // If it's an array, resolve each item and join
+  if (Array.isArray(value)) {
+    const resolved = await Promise.all(value.map(v => __resolveRenderResult(v)));
+    return resolved.join('');
+  }
+
+  // For other objects, try toString
+  if (value && typeof value.toString === 'function') {
+    const str = value.toString();
+    // Check for placeholder strings that indicate unresolved async
+    if (str === '[ASYNC]' || str === '[ASYNC_RENDER_RESULT]' || str === '[ASYNC_PENDING]' || str === '[object Object]') {
+      console.warn('[BAVINI Astro] Unresolved async value detected:', str);
+      return '';
+    }
+    return str;
+  }
+
+  return String(value);
+}
 
 // CRITICAL: Astro components expect (result, props, slots) signature
 // The $result object must be passed as first argument
@@ -1063,7 +1213,11 @@ export default async function ${componentName}Preview(props = {}) {
       resolve: (path) => path,
     };
     // Call component with proper signature: (result, props, slots)
-    const output = await __astroComponent($result, props, {});
+    let output = await __astroComponent($result, props, {});
+
+    // FIX: Properly resolve async render results
+    output = await __resolveRenderResult(output);
+
     console.log('[BAVINI Astro] wrapForBrowser output type:', typeof output, 'length:', String(output).length);
     return output;
   }

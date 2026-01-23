@@ -10,10 +10,16 @@
  * - Deduplication by source file
  * - Deterministic ordering (base → tailwind → components)
  * - Single <style> tag output
+ * - Optional PostCSS processing (autoprefixing, minification, nesting)
  * =============================================================================
  */
 
 import { createScopedLogger } from '~/utils/logger';
+import {
+  PostCSSProcessor,
+  createPostCSSProcessor,
+  type PostCSSConfig,
+} from './css/postcss-processor';
 
 const logger = createScopedLogger('CSSAggregator');
 
@@ -283,6 +289,109 @@ export class CSSAggregator {
 
     // Lowercase for consistency
     return normalized.toLowerCase();
+  }
+
+  // ==========================================================================
+  // PostCSS Processing
+  // ==========================================================================
+
+  /** PostCSS processor instance */
+  private _postcssProcessor: PostCSSProcessor | null = null;
+
+  /** PostCSS configuration */
+  private _postcssConfig: PostCSSConfig | null = null;
+
+  /**
+   * Enable PostCSS processing
+   *
+   * @param config - PostCSS configuration options
+   */
+  enablePostCSS(config: PostCSSConfig = {}): void {
+    this._postcssConfig = config;
+    this._postcssProcessor = createPostCSSProcessor(config);
+    logger.info('PostCSS processing enabled', config);
+  }
+
+  /**
+   * Disable PostCSS processing
+   */
+  disablePostCSS(): void {
+    this._postcssConfig = null;
+    this._postcssProcessor = null;
+    logger.info('PostCSS processing disabled');
+  }
+
+  /**
+   * Check if PostCSS processing is enabled
+   */
+  isPostCSSEnabled(): boolean {
+    return this._postcssProcessor !== null;
+  }
+
+  /**
+   * Initialize PostCSS processor (loads WASM module)
+   * Call this before using aggregateWithPostCSS()
+   */
+  async initPostCSS(): Promise<boolean> {
+    if (!this._postcssProcessor) {
+      this.enablePostCSS();
+    }
+
+    if (this._postcssProcessor) {
+      return await this._postcssProcessor.init();
+    }
+
+    return false;
+  }
+
+  /**
+   * Aggregate all CSS with PostCSS processing
+   *
+   * This method:
+   * 1. Aggregates all CSS entries (like aggregate())
+   * 2. Processes the result through PostCSS (autoprefixing, minification, etc.)
+   *
+   * @returns Processed CSS string
+   */
+  async aggregateWithPostCSS(): Promise<string> {
+    // First, get aggregated CSS
+    const aggregatedCSS = this.aggregate();
+
+    if (!aggregatedCSS) {
+      return '';
+    }
+
+    // If PostCSS not enabled, return as-is
+    if (!this._postcssProcessor) {
+      return aggregatedCSS;
+    }
+
+    // Initialize if needed
+    if (!this._postcssProcessor.isReady()) {
+      await this._postcssProcessor.init();
+    }
+
+    // Process through PostCSS
+    const result = await this._postcssProcessor.process(aggregatedCSS, 'aggregated.css');
+
+    if (result.warnings.length > 0) {
+      for (const warning of result.warnings) {
+        logger.warn('PostCSS warning:', warning);
+      }
+    }
+
+    logger.info(
+      `PostCSS processed: ${aggregatedCSS.length} → ${result.css.length} chars (${result.processingTime.toFixed(1)}ms)`,
+    );
+
+    return result.css;
+  }
+
+  /**
+   * Get the PostCSS processor instance (for advanced use)
+   */
+  getPostCSSProcessor(): PostCSSProcessor | null {
+    return this._postcssProcessor;
   }
 }
 

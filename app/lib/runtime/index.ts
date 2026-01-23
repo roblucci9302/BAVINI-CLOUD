@@ -50,7 +50,17 @@ export { type RuntimeAdapter, BaseRuntimeAdapter } from './adapter';
 
 // Adapters
 export { WebContainerAdapter, createWebContainerAdapter } from './adapters/webcontainer-adapter';
-export { BrowserBuildAdapter, createBrowserBuildAdapter } from './adapters/browser-build-adapter';
+export {
+  BrowserBuildAdapter,
+  createBrowserBuildAdapter,
+  // Preview mode configuration (Bug #3 fix)
+  type PreviewMode,
+  setPreviewMode,
+  getPreviewModeConfig,
+  enableServiceWorkerPreference,
+  disableServiceWorkerPreference,
+  resetServiceWorkerFailures,
+} from './adapters/browser-build-adapter';
 
 // Factory
 export {
@@ -67,3 +77,33 @@ export {
 
 // Browser Build Service
 export { browserBuildService, BrowserBuildService } from './browser-build-service';
+
+// CSS Processing (Phase 2: PostCSS support)
+export {
+  PostCSSProcessor,
+  createPostCSSProcessor,
+  getDefaultPostCSSProcessor,
+  processCSS,
+  type PostCSSConfig,
+  type PostCSSResult,
+} from './adapters/css/postcss-processor';
+
+export {
+  CSSAggregator,
+  createCSSAggregator,
+  type CSSEntry,
+  type CSSType,
+  type CSSMetadata,
+} from './adapters/css-aggregator';
+
+// Universal Font Loader (Phase 2: Multi-framework font support)
+export {
+  UniversalFontLoader,
+  getFontLoader,
+  createFontLoader,
+  loadFont,
+  type FontWeight,
+  type FontStyle,
+  type FontOptions,
+  type LoadedFont,
+} from './adapters/fonts';
