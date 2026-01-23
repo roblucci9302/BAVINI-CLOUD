@@ -9,7 +9,7 @@
  *
  * Structure:
  * - utils/     - Shared utilities (cache, paths, event loop)
- * - preview/   - Preview system configuration
+ * - preview/   - Preview system (config, HTML templates, bundle injection, creation)
  * - plugins/   - esbuild plugins (esm-sh, virtual-fs)
  * - bootstrap/ - Framework bootstrap templates (React, Vue, Svelte, etc.)
  * =============================================================================
@@ -39,8 +39,9 @@ export {
   resolvePath,
 } from './utils/path-utils';
 
-// Preview
+// Preview (Phase 3.4)
 export {
+  // Configuration
   type PreviewMode,
   type PreviewModeConfig,
   setPreviewMode,
@@ -53,6 +54,25 @@ export {
   incrementSwFailures,
   shouldAttemptServiceWorker,
   getPreviewModeReason,
+  // HTML template generation
+  DEFAULT_CSS_VARIABLES,
+  DARK_MODE_VARIABLES,
+  generateDefaultHtml,
+  generateBaseStyles,
+  generateTailwindCdnScript,
+  generateKeyboardForwardingScript,
+  // Bundle injection
+  type SSRContent,
+  type BundleInjectionOptions,
+  injectBundle,
+  injectBundleWithSSR,
+  // Preview creation
+  type PreviewResult,
+  type ServiceWorkerFunctions,
+  verifyServiceWorkerServing,
+  createPreviewWithServiceWorker,
+  createPreviewWithSrcdoc,
+  createPreview as createPreviewWithMode,
 } from './preview';
 
 // Plugins
