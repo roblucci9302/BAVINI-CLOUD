@@ -60,167 +60,50 @@ import { withTimeout, TIMEOUTS, TimeoutError } from '../utils/timeout';
 import { HMRManager, createHMRManager, classifyChange } from './hmr-manager';
 // Phase 3 Refactoring: Import modular utilities
 import {
-  LRUCache as ModularLRUCache,
-  moduleCache as modularModuleCache,
-  yieldToEventLoop as modularYieldToEventLoop,
-  normalizePath as modularNormalizePath,
-  generateHash as modularGenerateHash,
-  isPathSafe as modularIsPathSafe,
-} from './browser-build';
-import {
-  type PreviewMode as ModularPreviewMode,
-  setPreviewMode as modularSetPreviewMode,
-  getPreviewModeConfig as modularGetPreviewModeConfig,
-  enableServiceWorkerPreference as modularEnableServiceWorkerPreference,
-  disableServiceWorkerPreference as modularDisableServiceWorkerPreference,
-  resetServiceWorkerFailures as modularResetServiceWorkerFailures,
+  // Utils (Phase 3.1)
+  LRUCache,
+  moduleCache,
+  yieldToEventLoop,
+  normalizePath,
+  generateHash,
+  isPathSafe,
+  // Preview (Phase 3.4)
+  type PreviewMode,
+  type PreviewModeConfig,
+  setPreviewMode,
+  getPreviewModeConfig,
+  enableServiceWorkerPreference,
+  disableServiceWorkerPreference,
+  resetServiceWorkerFailures,
   setServiceWorkerReady,
-  isServiceWorkerReady as modularIsServiceWorkerReady,
-  shouldAttemptServiceWorker as modularShouldAttemptServiceWorker,
-  // Phase 3.2: Plugin types (for future integration)
+  isServiceWorkerReady as isModularServiceWorkerReady,
+  shouldAttemptServiceWorker,
+  incrementSwFailures,
+  generateDefaultHtml,
+  generateBaseStyles,
+  injectBundle as modularInjectBundle,
+  injectBundleWithSSR as modularInjectBundleWithSSR,
+  type SSRContent,
+  type BundleInjectionOptions,
+  createPreviewWithSrcdoc as modularCreatePreviewWithSrcdoc,
+  // Plugins (Phase 3.2)
   type PluginContext,
-  createVirtualFsPlugin as modularCreateVirtualFsPlugin,
-  createEsmShPlugin as modularCreateEsmShPlugin,
+  createVirtualFsPlugin,
+  createEsmShPlugin,
+  // Bootstrap (Phase 3.3)
+  type BootstrapContext,
+  createBootstrapEntry,
+  isMountingEntryFile,
 } from './browser-build';
 
 const logger = createScopedLogger('BrowserBuildAdapter');
 
-/**
- * Yield to the event loop to allow the browser to process pending events.
- * This prevents UI freeze during heavy operations like builds.
- * FIX: Bug #2 - Input freeze during build
- */
-async function yieldToEventLoop(): Promise<void> {
-  return new Promise((resolve) => {
-    // Use scheduler.postTask with background priority if available (Chrome 94+)
-    if (typeof globalThis !== 'undefined' && 'scheduler' in globalThis) {
-      const scheduler = (globalThis as { scheduler?: { postTask?: (cb: () => void, opts: { priority: string }) => void } }).scheduler;
+// Note: yieldToEventLoop is now imported from './browser-build' (Phase 3.1)
+// Note: PreviewMode, setPreviewMode, etc. are now imported from './browser-build' (Phase 3.4)
 
-      if (scheduler?.postTask) {
-        scheduler.postTask(() => resolve(), { priority: 'background' });
-        return;
-      }
-    }
-
-    // Fallback to requestIdleCallback if available
-    if (typeof requestIdleCallback !== 'undefined') {
-      requestIdleCallback(() => resolve(), { timeout: 50 });
-      return;
-    }
-
-    // Final fallback to setTimeout
-    setTimeout(resolve, 0);
-  });
-}
-
-/**
- * Preview mode configuration
- * FIX: Bug #3 - Service Worker iframe issues
- *
- * Service Worker mode provides:
- * - Normal origin (not null from blob:)
- * - Working localStorage and sessionStorage
- * - Proper cookie handling
- * - Better compatibility with some browser APIs
- *
- * srcdoc mode provides:
- * - More reliable across browsers
- * - No SW registration issues
- * - Works in incognito/private mode
- * - No service worker scope limitations
- */
-export type PreviewMode = 'auto' | 'service-worker' | 'srcdoc';
-
-interface PreviewModeConfig {
-  /** Current mode preference */
-  mode: PreviewMode;
-  /** Whether SW is actually available and working */
-  swAvailable: boolean;
-  /** Whether to attempt SW mode when 'auto' */
-  autoPreferSW: boolean;
-}
-
-const previewModeConfig: PreviewModeConfig = {
-  mode: 'auto',
-  swAvailable: false,
-  autoPreferSW: false, // Default to srcdoc for reliability
-};
-
-/**
- * Flag to track if we're using Service Worker or srcdoc fallback
- */
-let useServiceWorker = false;
-
-/**
- * Number of consecutive SW failures - after MAX_SW_FAILURES we disable SW for this session
- */
-let swFailureCount = 0;
-const MAX_SW_FAILURES = 3;
-
-/**
- * Set the preview mode preference
- * @param mode - 'auto' | 'service-worker' | 'srcdoc'
- */
-export function setPreviewMode(mode: PreviewMode): void {
-  previewModeConfig.mode = mode;
-  logger.info(`Preview mode set to: ${mode}`);
-}
-
-/**
- * Get current preview mode configuration
- */
-export function getPreviewModeConfig(): Readonly<PreviewModeConfig> {
-  return { ...previewModeConfig };
-}
-
-/**
- * Enable Service Worker preference in auto mode
- * Call this if your preview needs localStorage, sessionStorage, or cookies
- */
-export function enableServiceWorkerPreference(): void {
-  previewModeConfig.autoPreferSW = true;
-  logger.info('Service Worker preference enabled for auto mode');
-}
-
-/**
- * Disable Service Worker preference in auto mode
- */
-export function disableServiceWorkerPreference(): void {
-  previewModeConfig.autoPreferSW = false;
-  logger.info('Service Worker preference disabled for auto mode');
-}
-
-/**
- * Reset Service Worker failure count (useful after fixing issues)
- */
-export function resetServiceWorkerFailures(): void {
-  swFailureCount = 0;
-  logger.info('Service Worker failure count reset');
-}
-
-/**
- * Check if Service Worker mode should be attempted
- */
-function shouldAttemptServiceWorker(): boolean {
-  // Explicit srcdoc mode requested
-  if (previewModeConfig.mode === 'srcdoc') {
-    return false;
-  }
-
-  // Explicit SW mode requested
-  if (previewModeConfig.mode === 'service-worker') {
-    return previewModeConfig.swAvailable && swFailureCount < MAX_SW_FAILURES;
-  }
-
-  // Auto mode: only use SW if explicitly preferred and available
-  if (previewModeConfig.mode === 'auto') {
-    return previewModeConfig.autoPreferSW &&
-           previewModeConfig.swAvailable &&
-           swFailureCount < MAX_SW_FAILURES;
-  }
-
-  return false;
-}
+// Re-export preview functions for backwards compatibility
+export type { PreviewMode };
+export { setPreviewMode, getPreviewModeConfig, enableServiceWorkerPreference, disableServiceWorkerPreference, resetServiceWorkerFailures };
 
 /**
  * URL du WASM esbuild
@@ -251,110 +134,7 @@ const BUNDLE_LIMITS = {
   TOTAL_ERROR_KB: 8000,
 } as const;
 
-/**
- * LRU Cache with TTL for module caching.
- * Prevents unbounded memory growth from cached CDN responses.
- *
- * FIX 2.3: Separated cachedAt (for TTL expiration) from lastAccess (for LRU eviction)
- * This ensures that frequently accessed items still expire after maxAge.
- */
-class LRUCache<K, V> {
-  private cache = new Map<K, { value: V; cachedAt: number; lastAccess: number }>();
-  private maxSize: number;
-  private maxAge: number;
-
-  constructor(maxSize: number = 100, maxAgeMs: number = 3600000) {
-    this.maxSize = maxSize;
-    this.maxAge = maxAgeMs;
-  }
-
-  get(key: K): V | undefined {
-    const entry = this.cache.get(key);
-
-    if (!entry) {
-      return undefined;
-    }
-
-    // FIX 2.3: Check expiration based on cachedAt, not lastAccess
-    // This ensures entries expire even if frequently accessed
-    if (Date.now() - entry.cachedAt > this.maxAge) {
-      this.cache.delete(key);
-      return undefined;
-    }
-
-    // Update lastAccess for LRU eviction (separate from TTL)
-    entry.lastAccess = Date.now();
-
-    return entry.value;
-  }
-
-  set(key: K, value: V): void {
-    // Evict if at capacity
-    if (this.cache.size >= this.maxSize && !this.cache.has(key)) {
-      this.evictOldest();
-    }
-
-    const now = Date.now();
-    // FIX 2.3: Store both cachedAt and lastAccess
-    this.cache.set(key, { value, cachedAt: now, lastAccess: now });
-  }
-
-  has(key: K): boolean {
-    return this.get(key) !== undefined;
-  }
-
-  private evictOldest(): void {
-    let oldest: K | null = null;
-    let oldestTime = Infinity;
-
-    // Evict based on lastAccess (LRU) - least recently accessed
-    for (const [key, entry] of this.cache.entries()) {
-      if (entry.lastAccess < oldestTime) {
-        oldest = key;
-        oldestTime = entry.lastAccess;
-      }
-    }
-
-    if (oldest !== null) {
-      this.cache.delete(oldest);
-    }
-  }
-
-  /**
-   * FIX 2.3: Proactively remove all expired entries
-   */
-  pruneExpired(): number {
-    const now = Date.now();
-    let removed = 0;
-
-    for (const [key, entry] of this.cache.entries()) {
-      if (now - entry.cachedAt > this.maxAge) {
-        this.cache.delete(key);
-        removed++;
-      }
-    }
-
-    return removed;
-  }
-
-  clear(): void {
-    this.cache.clear();
-  }
-
-  get size(): number {
-    return this.cache.size;
-  }
-}
-
-/**
- * Cache des modules résolus avec LRU et TTL.
- * - Max 150 modules en cache
- * - TTL de 1 heure
- */
-const moduleCache = new LRUCache<string, string>(
-  150,      // Max 150 modules cached
-  3600000   // 1 hour TTL
-);
+// Note: LRUCache and moduleCache are now imported from './browser-build' (Phase 3.1)
 
 /**
  * Base URL for esm.sh CDN (used to resolve relative paths in CDN responses)
@@ -498,6 +278,7 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
   /**
    * Initialize Service Worker for preview (non-blocking)
    * FIX: Bug #3 - Improved SW initialization with proper status tracking
+   * Phase 3.5: Uses modular preview config functions
    */
   private async initServiceWorker(): Promise<void> {
     try {
@@ -505,18 +286,17 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
       const success = await initPreviewServiceWorker();
 
       if (success) {
-        previewModeConfig.swAvailable = true;
-        useServiceWorker = previewModeConfig.mode === 'service-worker' ||
-                          (previewModeConfig.mode === 'auto' && previewModeConfig.autoPreferSW);
-        logger.info(`Preview Service Worker initialized - swAvailable: true, useServiceWorker: ${useServiceWorker}`);
+        setServiceWorkerReady(true);
+        const config = getPreviewModeConfig();
+        const willUseServiceWorker = config.mode === 'service-worker' ||
+                                    (config.mode === 'auto' && config.autoPreferSW);
+        logger.info(`Preview Service Worker initialized - swAvailable: true, useServiceWorker: ${willUseServiceWorker}`);
       } else {
-        previewModeConfig.swAvailable = false;
-        useServiceWorker = false;
+        setServiceWorkerReady(false);
         logger.warn('Service Worker init failed - SW mode unavailable');
       }
     } catch (error) {
-      previewModeConfig.swAvailable = false;
-      useServiceWorker = false;
+      setServiceWorkerReady(false);
       logger.warn('Service Worker initialization error:', error);
     }
   }
@@ -1000,7 +780,7 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
       ];
 
       // Generate hash
-      const hash = this.generateHash(code);
+      const hash = generateHash(code);
 
       this.emitBuildProgress('generating preview', 90);
 
@@ -2164,763 +1944,27 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
   /**
    * Create a bootstrap entry that mounts the app based on the detected framework
    * This handles React, Vue, Svelte, Astro, and Next.js-style layouts
+   *
+   * Phase 3.5: Now uses modular bootstrap module
    */
   private createBootstrapEntry(entryPath: string): string {
-    // Dispatch to framework-specific bootstrap creation
-    switch (this._detectedFramework) {
-      case 'vue':
-        return this.createVueBootstrapEntry(entryPath);
-      case 'svelte':
-        return this.createSvelteBootstrapEntry(entryPath);
-      case 'astro':
-        return this.createAstroBootstrapEntry(entryPath);
-      case 'preact':
-        return this.createPreactBootstrapEntry(entryPath);
-      case 'nextjs':
-        // Next.js uses React, but we need to handle App Router structure
-        return this.createNextJSBootstrapEntry(entryPath);
-      case 'react':
-      default:
-        return this.createReactBootstrapEntry(entryPath);
-    }
-  }
-
-  /**
-   * Create React bootstrap entry with routing support
-   */
-  private createReactBootstrapEntry(entryPath: string): string {
-    // Get the content of the entry file to analyze it
-    const entryContent = this._files.get(entryPath) || '';
-
-    // Check if this is already a mounting entry file (contains ReactDOM.render or createRoot)
-    const isMountingEntry = this.isMountingEntryFile(entryContent);
-
-    if (isMountingEntry) {
-      logger.debug(`Entry ${entryPath} is a mounting file, importing for side effects`);
-      return `import '${entryPath.replace(/\.tsx?$/, '')}';`;
-    }
-
-    // Detect routes from file structure
-    const filesList = Array.from(this._files.keys());
-    const detectedRoutes = detectRoutesFromFiles(filesList, this._files);
-    const hasMultiplePages = detectedRoutes.length > 1;
-
-    // Check if project already has a router configured
-    const allContent = Array.from(this._files.values()).join('\n');
-    const hasExistingRouter =
-      allContent.includes('react-router-dom') ||
-      allContent.includes('BrowserRouter') ||
-      allContent.includes('@tanstack/react-router');
-
-    logger.debug('Bootstrap routing detection:', {
-      detectedRoutes: detectedRoutes.length,
-      hasMultiplePages,
-      hasExistingRouter,
-    });
-
-    // Find layout and page files
-    const layoutPath = entryPath;
-    const homePage = this.findFile('/app/page') || this.findFile('/src/app/page');
-
-    // Build import statements
-    // NOTE: We don't use lazy/Suspense for page components since blob URLs
-    // don't support code splitting - everything is bundled together
-    const imports: string[] = [
-      `import React, { useState, useEffect, useRef, useMemo } from 'react';`,
-      `import { createRoot } from 'react-dom/client';`,
-    ];
-
-    let appComponent = '';
-    let routerWrapper = '';
-
-    // Generate routing-aware bootstrap if multiple pages detected
-    if (hasMultiplePages && !hasExistingRouter) {
-      // Create route imports and components
-      const routeImports: string[] = [];
-      const routeComponents: string[] = [];
-
-      // Import layout if it exists
-      if (layoutPath && layoutPath.includes('layout')) {
-        imports.push(`import RootLayout from '${layoutPath.replace(/\.tsx?$/, '')}';`);
-      }
-
-      // Generate STATIC imports for each page
-      // NOTE: We use static imports instead of lazy() because code splitting
-      // doesn't work with blob URLs - everything must be in one bundle
-      detectedRoutes.forEach((route, index) => {
-        const componentName = `Page${index}`;
-        const importPath = route.component.replace(/\.tsx?$/, '');
-        routeImports.push(`import ${componentName} from '${importPath}';`);
-        routeComponents.push(`    { path: '${route.path}', component: ${componentName} }`);
-      });
-
-      imports.push(...routeImports);
-
-      // Create the router component with HASH-BASED routing for Blob URL compatibility
-      routerWrapper = `
-// BAVINI Client-Side Router - Hash-based for Blob URL support
-const routes = [
-${routeComponents.join(',\n')}
-];
-
-// Get path from hash (e.g., #/about -> /about)
-function getHashPath() {
-  const hash = window.location.hash || '#/';
-  const path = hash.startsWith('#') ? hash.slice(1) : '/';
-  return path.split('?')[0] || '/';
-}
-
-// Memoized route matching function (defined outside component)
-function matchRouteImpl(path, routeList) {
-  const normalizedPath = path || '/';
-
-  // Exact match first (fast path)
-  const exactMatch = routeList.find(r => r.path === normalizedPath);
-  if (exactMatch) return { route: exactMatch, params: {} };
-
-  // Dynamic route matching (e.g., /products/:id)
-  for (const route of routeList) {
-    if (route.path.includes(':')) {
-      const routeParts = route.path.split('/');
-      const pathParts = normalizedPath.split('/');
-
-      if (routeParts.length === pathParts.length) {
-        const params = {};
-        let isMatch = true;
-
-        for (let i = 0; i < routeParts.length; i++) {
-          if (routeParts[i].startsWith(':')) {
-            params[routeParts[i].slice(1)] = pathParts[i];
-          } else if (routeParts[i] !== pathParts[i]) {
-            isMatch = false;
-            break;
-          }
-        }
-
-        if (isMatch) {
-          return { route, params };
-        }
-      }
-    }
-  }
-
-  // Fallback to index route
-  return { route: routeList.find(r => r.path === '/') || routeList[0], params: {} };
-}
-
-function BaviniRouter({ children, Layout }) {
-  const [currentPath, setCurrentPath] = useState(getHashPath);
-  const prevParamsRef = useRef({});
-
-  useEffect(() => {
-    // Use GLOBAL flag to prevent listener accumulation across component instances
-    // This fixes the freeze issue in complex projects with multiple remounts
-    if (window.__BAVINI_ROUTER_INITIALIZED__) {
-      // Listeners already setup by another instance, just sync state
-      const syncPath = () => setCurrentPath(getHashPath());
-      window.addEventListener('hashchange', syncPath);
-      window.addEventListener('bavini-navigate', syncPath);
-      return () => {
-        window.removeEventListener('hashchange', syncPath);
-        window.removeEventListener('bavini-navigate', syncPath);
-      };
-    }
-
-    // First instance - setup global listeners
-    window.__BAVINI_ROUTER_INITIALIZED__ = true;
-
-    const handlePathChange = () => {
-      setCurrentPath(getHashPath());
+    // Create BootstrapContext for the modular function
+    const context: BootstrapContext = {
+      files: this._files,
+      framework: this._detectedFramework,
+      findFile: (path: string) => this.findFile(path),
+      isMountingEntry: (content: string) => isMountingEntryFile(content, this._detectedFramework),
+      detectRoutes: (filesList: string[], files: Map<string, string>) => detectRoutesFromFiles(filesList, files),
+      logger: {
+        debug: (...args: unknown[]) => logger.debug(...args),
+        info: (...args: unknown[]) => logger.info(...args),
+        warn: (...args: unknown[]) => logger.warn(...args),
+        error: (...args: unknown[]) => logger.error(...args),
+      },
     };
 
-    window.addEventListener('hashchange', handlePathChange);
-    window.addEventListener('bavini-navigate', handlePathChange);
-
-    // Set global navigation handler with hash routing
-    window.__BAVINI_NAVIGATE__ = (url, options = {}) => {
-      const newHash = '#' + (url.startsWith('/') ? url : '/' + url);
-      if (options.replace) {
-        window.location.replace(newHash);
-      } else {
-        window.location.hash = newHash;
-      }
-      // Let hashchange event handle the state update - don't call setCurrentPath here
-    };
-
-    // Set initial hash if not present
-    if (!window.location.hash || window.location.hash === '#') {
-      window.location.hash = '#/';
-    }
-
-    // NOTE: We intentionally do NOT reset __BAVINI_ROUTER_INITIALIZED__ on cleanup
-    // This prevents listener accumulation during hot reloads and remounts
-    return () => {
-      window.removeEventListener('hashchange', handlePathChange);
-      window.removeEventListener('bavini-navigate', handlePathChange);
-    };
-  }, []);
-
-  // Memoize route matching to prevent recalculation on every render
-  const { route: currentRoute, params } = useMemo(
-    () => matchRouteImpl(currentPath, routes),
-    [currentPath]
-  );
-  const PageComponent = currentRoute?.component;
-
-  // Update global params only when they actually change
-  useEffect(() => {
-    const paramsStr = JSON.stringify(params);
-    const prevParamsStr = JSON.stringify(prevParamsRef.current);
-    if (paramsStr !== prevParamsStr) {
-      prevParamsRef.current = params;
-      window.__BAVINI_ROUTE_PARAMS__ = params;
-      // Dispatch event to notify useParams hooks
-      window.dispatchEvent(new CustomEvent('bavini-params-change'));
-    }
-  }, [params]);
-
-  // No Suspense needed since we use static imports (no lazy loading)
-  const content = PageComponent ? <PageComponent /> : children;
-
-  if (Layout) {
-    return <Layout>{content}</Layout>;
-  }
-
-  return content;
-}
-`;
-
-      // Create the App component with router
-      if (layoutPath && layoutPath.includes('layout')) {
-        appComponent = `
-function App() {
-  return (
-    <BaviniRouter Layout={RootLayout}>
-      {/* Fallback content if no routes match */}
-      <div>Loading...</div>
-    </BaviniRouter>
-  );
-}`;
-      } else {
-        appComponent = `
-function App() {
-  return (
-    <BaviniRouter>
-      {/* Fallback content if no routes match */}
-      <div>Loading...</div>
-    </BaviniRouter>
-  );
-}`;
-      }
-    } else if (homePage) {
-      // Simple Next.js style: layout + single page (no routing needed yet)
-      imports.push(`import RootLayout from '${layoutPath.replace(/\.tsx?$/, '')}';`);
-      imports.push(`import HomePage from '${homePage.replace(/\.tsx?$/, '')}';`);
-
-      appComponent = `
-function App() {
-  return (
-    <RootLayout>
-      <HomePage />
-    </RootLayout>
-  );
-}`;
-    } else {
-      // Standard single component app
-      const hasDefaultExport = /export\s+default\s+/.test(entryContent);
-      const hasNamedAppExport = /export\s+(function|const|class)\s+App/.test(entryContent);
-
-      if (hasDefaultExport) {
-        imports.push(`import MainComponent from '${entryPath.replace(/\.tsx?$/, '')}';`);
-        appComponent = `
-function App() {
-  return <MainComponent />;
-}`;
-      } else if (hasNamedAppExport) {
-        imports.push(`import { App as MainComponent } from '${entryPath.replace(/\.tsx?$/, '')}';`);
-        appComponent = `
-function App() {
-  return <MainComponent />;
-}`;
-      } else {
-        const appFilePath = this.findFile('/src/App') || this.findFile('/App') || this.findFile('/components/App');
-        if (appFilePath) {
-          const appContent = this._files.get(appFilePath) || '';
-          const appHasDefault = /export\s+default\s+/.test(appContent);
-          const appHasNamed = /export\s+(function|const|class)\s+App/.test(appContent);
-
-          if (appHasDefault) {
-            imports.push(`import MainComponent from '${appFilePath.replace(/\.tsx?$/, '')}';`);
-          } else if (appHasNamed) {
-            imports.push(`import { App as MainComponent } from '${appFilePath.replace(/\.tsx?$/, '')}';`);
-          } else {
-            imports.push(`import MainComponent from '${appFilePath.replace(/\.tsx?$/, '')}';`);
-          }
-        } else {
-          imports.push(`import MainComponent from '${entryPath.replace(/\.tsx?$/, '')}';`);
-        }
-
-        appComponent = `
-function App() {
-  return <MainComponent />;
-}`;
-      }
-    }
-
-    // Generate the bootstrap code
-    // NOTE: StrictMode removed to avoid double renders that can cause performance issues
-    return `
-${imports.join('\n')}
-${routerWrapper}
-${appComponent}
-
-// Mount the app
-const container = document.getElementById('root');
-if (container) {
-  try {
-    const root = createRoot(container);
-    root.render(<App />);
-  } catch (error) {
-    console.error('[BAVINI] Failed to render application:', error);
-    // XSS-safe error display using textContent
-    const errorDiv = document.createElement('div');
-    errorDiv.style.cssText = 'padding:20px;color:#dc3545;font-family:system-ui;';
-    const title = document.createElement('h2');
-    title.textContent = 'Render Error';
-    const pre = document.createElement('pre');
-    pre.style.overflow = 'auto';
-    pre.textContent = error.message || String(error);
-    errorDiv.appendChild(title);
-    errorDiv.appendChild(pre);
-    container.appendChild(errorDiv);
-  }
-} else {
-  console.error('Root element not found');
-}
-`;
-  }
-
-  /**
-   * Create Vue bootstrap entry
-   */
-  private createVueBootstrapEntry(entryPath: string): string {
-    const entryContent = this._files.get(entryPath) || '';
-
-    // Check if this is already a mounting entry file
-    if (entryContent.includes('createApp') && entryContent.includes('.mount(')) {
-      logger.debug(`Entry ${entryPath} is a Vue mounting file, importing for side effects`);
-      return `import '${entryPath.replace(/\.(ts|js|vue)$/, '')}';`;
-    }
-
-    // Find main App.vue if entry is not a .vue file
-    let appPath = entryPath;
-    if (!entryPath.endsWith('.vue')) {
-      const appVue = this.findFile('/src/App.vue') || this.findFile('/App.vue');
-      if (appVue) {
-        appPath = appVue;
-      }
-    }
-
-    return `
-import { createApp } from 'vue';
-import App from '${appPath.replace(/\.vue$/, '')}';
-
-// Mount the Vue app
-const container = document.getElementById('root') || document.getElementById('app');
-if (container) {
-  const app = createApp(App);
-  app.mount(container);
-} else {
-  console.error('Root element not found');
-}
-`;
-  }
-
-  /**
-   * Create Svelte bootstrap entry
-   */
-  private createSvelteBootstrapEntry(entryPath: string): string {
-    const entryContent = this._files.get(entryPath) || '';
-
-    // Check if this is already a mounting entry file
-    if (entryContent.includes('new ') && entryContent.includes('target:')) {
-      logger.debug(`Entry ${entryPath} is a Svelte mounting file, importing for side effects`);
-      return `import '${entryPath.replace(/\.(ts|js|svelte)$/, '')}';`;
-    }
-
-    // Find main App.svelte if entry is not a .svelte file
-    let appPath = entryPath;
-    if (!entryPath.endsWith('.svelte')) {
-      const appSvelte = this.findFile('/src/App.svelte') || this.findFile('/App.svelte');
-      if (appSvelte) {
-        appPath = appSvelte;
-      }
-    }
-
-    return `
-import App from '${appPath.replace(/\.svelte$/, '')}';
-
-// Mount the Svelte app
-const container = document.getElementById('root') || document.getElementById('app');
-if (container) {
-  const app = new App({
-    target: container,
-    props: {}
-  });
-} else {
-  console.error('Root element not found');
-}
-`;
-  }
-
-  /**
-   * Create Astro bootstrap entry
-   * Note: Astro is primarily SSG/SSR, so we render static HTML for preview
-   */
-  private createAstroBootstrapEntry(entryPath: string): string {
-    // Find the main page or layout
-    let mainPage = entryPath;
-    if (!entryPath.endsWith('.astro')) {
-      const indexAstro = this.findFile('/src/pages/index.astro') ||
-                         this.findFile('/src/pages/index') ||
-                         this.findFile('/index.astro');
-      if (indexAstro) {
-        mainPage = indexAstro;
-      }
-    }
-
-    // For Astro, we render the component and inject its output as static HTML
-    // Astro's compiled output is complex - it uses async generators and $render functions
-    return `
-import Component from '${mainPage.replace(/\.astro$/, '')}';
-
-// Helper to collect async iterator/generator output
-async function collectAsyncOutput(gen) {
-  if (!gen) return '';
-
-  // If it's already a string, return it
-  if (typeof gen === 'string') return gen;
-
-  // CRITICAL: Handle render result objects with .render() method
-  // This is the async-aware format from our $render handler
-  if (gen && typeof gen.render === 'function') {
-    console.log('[BAVINI Astro] Detected render result object, calling .render()');
-    const rendered = await gen.render();
-    return await collectAsyncOutput(rendered);
-  }
-
-  // CRITICAL: Detect Astro's template literal array format
-  // Format: ['string1', 'string2', ..., raw: Array(n)]
-  // The actual content is often in the array values, not the raw strings
-  if (Array.isArray(gen) && gen.raw !== undefined) {
-    console.log('[BAVINI Astro] Detected template literal array, processing...');
-    // This is a tagged template literal result
-    // The strings array contains the literal parts, values are interpolated
-    // But Astro often puts the HTML content in a specific pattern
-
-    // Try to find HTML content in the array
-    let html = '';
-    for (let i = 0; i < gen.length; i++) {
-      const part = gen[i];
-      if (typeof part === 'string') {
-        html += part;
-      } else if (part && typeof part === 'object') {
-        // Recursively process nested content
-        html += await collectAsyncOutput(part);
-      }
-    }
-
-    // If we got content, return it
-    if (html && html.trim()) {
-      return html;
-    }
-
-    // Fallback: try joining with empty string
-    return gen.join('');
-  }
-
-  // If it's a regular array (not template literal), process each element
-  if (Array.isArray(gen)) {
-    let html = '';
-    for (const item of gen) {
-      html += await collectAsyncOutput(item);
-    }
-    return html;
-  }
-
-  // If it has a toHTML method (Astro's Response-like object)
-  if (gen.toHTML) return await gen.toHTML();
-
-  // If it has toString that returns something useful
-  if (gen.toString && gen.toString() !== '[object Object]') {
-    const str = gen.toString();
-    if (str && str !== '[object Object]' && str !== '[object AsyncGenerator]') {
-      return str;
-    }
-  }
-
-  // If it's an async iterator/generator, collect all chunks
-  if (gen[Symbol.asyncIterator]) {
-    let html = '';
-    for await (const chunk of gen) {
-      if (typeof chunk === 'string') {
-        html += chunk;
-      } else if (chunk && chunk.toString) {
-        const chunkStr = await collectAsyncOutput(chunk);
-        html += chunkStr;
-      }
-    }
-    return html;
-  }
-
-  // If it's a regular iterator
-  if (gen[Symbol.iterator] && typeof gen !== 'string') {
-    let html = '';
-    for (const chunk of gen) {
-      if (typeof chunk === 'string') {
-        html += chunk;
-      } else if (chunk && chunk.toString) {
-        const chunkStr = await collectAsyncOutput(chunk);
-        html += chunkStr;
-      }
-    }
-    return html;
-  }
-
-  // If it's a promise, await it
-  if (gen.then) {
-    return await collectAsyncOutput(await gen);
-  }
-
-  // Last resort: try to get html property
-  if (gen.html) return gen.html;
-
-  return '';
-}
-
-// Render Astro component
-async function renderAstro() {
-  const container = document.getElementById('root') || document.getElementById('app');
-  if (!container) {
-    console.error('[BAVINI Astro] Root element not found');
-    return;
-  }
-
-  console.log('[BAVINI Astro] Starting render, Component type:', typeof Component);
-
-  try {
-    let html = '';
-
-    // Try different ways to render the Astro component
-    // CRITICAL: Astro components expect (result, props, slots) not just (props)
-    // The $result object contains createAstro and other runtime methods
-    const $result = globalThis.$result || {
-      styles: new Set(),
-      scripts: new Set(),
-      links: new Set(),
-      createAstro: (Astro, props, slots) => ({ ...Astro, props: props || {}, slots: slots || {} }),
-      resolve: (path) => path,
-    };
-
-    if (typeof Component === 'function') {
-      console.log('[BAVINI Astro] Component is a function, calling with $result...');
-      // Try with $result first (Astro v2+ pattern)
-      let result = await Component($result, {}, {});
-      console.log('[BAVINI Astro] Component result type:', typeof result, 'length:', String(result).length);
-
-      // If result is empty, try without $result (some components are wrapped differently)
-      if (!result || (typeof result === 'string' && result.length === 0)) {
-        console.log('[BAVINI Astro] Empty result, trying alternative call patterns...');
-        result = await Component({}, {});
-      }
-
-      html = await collectAsyncOutput(result);
-    } else if (Component && Component.default && typeof Component.default === 'function') {
-      console.log('[BAVINI Astro] Using Component.default');
-      const result = await Component.default($result, {}, {});
-      html = await collectAsyncOutput(result);
-    } else if (Component && typeof Component.render === 'function') {
-      console.log('[BAVINI Astro] Using Component.render');
-      const result = await Component.render($result, {}, {});
-      html = await collectAsyncOutput(result);
-    } else {
-      console.log('[BAVINI Astro] Component structure:', Object.keys(Component || {}));
-    }
-
-    console.log('[BAVINI Astro] Rendered HTML length:', html.length);
-
-    if (html) {
-      container.innerHTML = html;
-      console.log('[BAVINI Astro] HTML injected successfully');
-    } else {
-      container.innerHTML = '<div style="padding: 40px; text-align: center; color: #666;"><h2>Astro Preview</h2><p>Component rendered but produced no HTML output.</p><p>Check the console for details.</p></div>';
-    }
-  } catch (error) {
-    console.error('[BAVINI Astro] Failed to render:', error);
-    // XSS-safe error display using textContent
-    const errorDiv = document.createElement('div');
-    errorDiv.style.cssText = 'color: red; padding: 20px; font-family: monospace;';
-    const title = document.createElement('h3');
-    title.textContent = 'Astro Render Error';
-    const pre = document.createElement('pre');
-    pre.textContent = error.message || String(error);
-    errorDiv.appendChild(title);
-    errorDiv.appendChild(pre);
-    container.innerHTML = '';
-    container.appendChild(errorDiv);
-  }
-}
-
-renderAstro();
-`;
-  }
-
-  /**
-   * Create Preact bootstrap entry
-   */
-  private createPreactBootstrapEntry(entryPath: string): string {
-    const entryContent = this._files.get(entryPath) || '';
-
-    // Check if this is already a mounting entry file
-    if (entryContent.includes('render(') && entryContent.includes('preact')) {
-      logger.debug(`Entry ${entryPath} is a Preact mounting file, importing for side effects`);
-      return `import '${entryPath.replace(/\.tsx?$/, '')}';`;
-    }
-
-    // Find main App component
-    let appPath = entryPath;
-    const appFile = this.findFile('/src/App') || this.findFile('/App');
-    if (appFile) {
-      appPath = appFile;
-    }
-
-    return `
-import { h, render } from 'preact';
-import App from '${appPath.replace(/\.tsx?$/, '')}';
-
-// Mount the Preact app
-const container = document.getElementById('root') || document.getElementById('app');
-if (container) {
-  render(h(App, {}), container);
-} else {
-  console.error('Root element not found');
-}
-`;
-  }
-
-  /**
-   * Create Next.js App Router bootstrap entry
-   * Handles layout.tsx wrapping and page structure
-   */
-  private createNextJSBootstrapEntry(entryPath: string): string {
-    // Find layout and page files
-    const layoutPath = this.findFile('/src/app/layout') || this.findFile('/app/layout');
-    const pagePath = this.findFile('/src/app/page') || this.findFile('/app/page');
-
-    logger.debug('Next.js bootstrap paths:', { layoutPath, pagePath, entryPath });
-
-    // Get all page components for routing
-    const filesList = Array.from(this._files.keys());
-    const detectedRoutes = detectRoutesFromFiles(filesList, this._files);
-
-    // Build route imports
-    const routeImports: string[] = [];
-    const routeComponents: string[] = [];
-
-    detectedRoutes.forEach((route, index) => {
-      const componentName = `Page${index}`;
-      const importPath = route.component.replace(/\.tsx?$/, '');
-      routeImports.push(`import ${componentName} from '${importPath}';`);
-      routeComponents.push(`    { path: '${route.path}', component: ${componentName} }`);
-    });
-
-    // If we have a layout, wrap everything in it
-    const hasLayout = !!layoutPath;
-    const layoutImport = hasLayout
-      ? `import RootLayout from '${layoutPath!.replace(/\.tsx?$/, '')}';`
-      : '';
-
-    return `
-import React, { useState, useEffect } from 'react';
-import { createRoot } from 'react-dom/client';
-${layoutImport}
-${routeImports.join('\n')}
-
-// Route configuration
-const routes = [
-${routeComponents.join(',\n')}
-];
-
-// Get path from hash for client-side routing
-function getHashPath() {
-  const hash = window.location.hash || '#/';
-  return hash.startsWith('#') ? hash.slice(1) : '/';
-}
-
-// Match route to path
-function matchRoute(path) {
-  const normalizedPath = path || '/';
-
-  // Exact match first
-  const exactMatch = routes.find(r => r.path === normalizedPath);
-  if (exactMatch) return { route: exactMatch, params: {} };
-
-  // Dynamic route matching
-  for (const route of routes) {
-    if (route.path.includes(':')) {
-      const routeParts = route.path.split('/');
-      const pathParts = normalizedPath.split('/');
-
-      if (routeParts.length === pathParts.length) {
-        const params = {};
-        let isMatch = true;
-
-        for (let i = 0; i < routeParts.length; i++) {
-          if (routeParts[i].startsWith(':')) {
-            params[routeParts[i].slice(1)] = pathParts[i];
-          } else if (routeParts[i] !== pathParts[i]) {
-            isMatch = false;
-            break;
-          }
-        }
-
-        if (isMatch) return { route, params };
-      }
-    }
-  }
-
-  // Fallback to index
-  return { route: routes[0], params: {} };
-}
-
-// Next.js App Router Wrapper
-function NextJSApp() {
-  const [currentPath, setCurrentPath] = useState(getHashPath);
-
-  useEffect(() => {
-    const handleHashChange = () => setCurrentPath(getHashPath());
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
-
-  const { route, params } = matchRoute(currentPath);
-  const PageComponent = route?.component || (() => <div>Page not found</div>);
-
-  // Store params for useParams hook
-  if (typeof window !== 'undefined') {
-    window.__BAVINI_ROUTE_PARAMS__ = params;
-  }
-
-  const pageContent = <PageComponent />;
-
-  ${hasLayout ? 'return <RootLayout>{pageContent}</RootLayout>;' : 'return pageContent;'}
-}
-
-// Mount the app
-const container = document.getElementById('root') || document.getElementById('app') || document.body;
-const root = createRoot(container);
-root.render(<NextJSApp />);
-`;
+    // Use modular bootstrap entry creation
+    return createBootstrapEntry(entryPath, this._detectedFramework, context);
   }
 
   /**
@@ -2987,36 +2031,7 @@ root.render(<NextJSApp />);
     return css;
   }
 
-  /**
-   * Check if a file is a mounting entry file (handles its own React mounting)
-   * These files typically contain ReactDOM.render() or createRoot().render() calls
-   */
-  private isMountingEntryFile(content: string): boolean {
-    // Check for ReactDOM.render or createRoot patterns
-    const mountingPatterns = [
-      /ReactDOM\.render\s*\(/,           // ReactDOM.render(
-      /ReactDOM\.createRoot\s*\(/,       // ReactDOM.createRoot(
-      /createRoot\s*\([^)]*\)\.render/,  // createRoot(...).render
-      /\.render\s*\(\s*<.*>/,            // .render(<Component>)
-    ];
-
-    return mountingPatterns.some(pattern => pattern.test(content));
-  }
-
-  /**
-   * Generate simple hash
-   */
-  private generateHash(content: string): string {
-    let hash = 0;
-
-    for (let i = 0; i < content.length; i++) {
-      const char = content.charCodeAt(i);
-      hash = (hash << 5) - hash + char;
-      hash = hash & hash;
-    }
-
-    return Math.abs(hash).toString(16);
-  }
+  // Note: isMountingEntryFile and generateHash are now imported from './browser-build' (Phase 3.3 & 3.1)
 
   /**
    * Create preview using Service Worker (preferred) or Blob URL (fallback)
@@ -3061,8 +2076,10 @@ root.render(<NextJSApp />);
       // FIX: Bug #3 - Improved preview mode selection
       // Default: srcdoc mode (most reliable across browsers)
       // Optional: Service Worker mode (for localStorage/cookies support)
-      if (shouldAttemptServiceWorker() && isServiceWorkerReady()) {
-        logger.info(`Attempting Service Worker mode for preview (mode: ${previewModeConfig.mode}, failures: ${swFailureCount}/${MAX_SW_FAILURES})`);
+      // Phase 3.5: Uses modular preview config functions
+      const config = getPreviewModeConfig();
+      if (shouldAttemptServiceWorker() && isModularServiceWorkerReady()) {
+        logger.info(`Attempting Service Worker mode for preview (mode: ${config.mode})`);
 
         const swSuccess = await this.createPreviewWithServiceWorker(html);
 
@@ -3071,17 +2088,11 @@ root.render(<NextJSApp />);
           return;
         }
 
-        swFailureCount++;
-        logger.warn(`Service Worker mode failed (${swFailureCount}/${MAX_SW_FAILURES}), falling back to srcdoc`);
-
-        // If we've failed too many times, disable SW for this session
-        if (swFailureCount >= MAX_SW_FAILURES) {
-          logger.info('Service Worker disabled for this session after multiple failures');
-        }
+        const failureCount = incrementSwFailures();
+        logger.warn(`Service Worker mode failed (${failureCount} failures), falling back to srcdoc`);
       } else {
-        const reason = !previewModeConfig.swAvailable ? 'SW unavailable' :
-                       previewModeConfig.mode === 'srcdoc' ? 'srcdoc mode selected' :
-                       swFailureCount >= MAX_SW_FAILURES ? 'too many SW failures' :
+        const reason = !config.swAvailable ? 'SW unavailable' :
+                       config.mode === 'srcdoc' ? 'srcdoc mode selected' :
                        'auto mode prefers srcdoc';
         logger.debug(`Using srcdoc mode (${reason})`);
       }
@@ -3242,7 +2253,7 @@ root.render(<NextJSApp />);
     // We trust the SW since setPreviewFiles confirmed the files are stored.
 
     // Reset failure count on success
-    swFailureCount = 0;
+    resetServiceWorkerFailures();
 
     // Create preview object with a cache-busting query param
     const preview: PreviewInfo = {
@@ -4085,7 +3096,7 @@ ${hasCustomColors ? `<style type="text/tailwindcss">
       errors: [],
       warnings: [],
       buildTime,
-      hash: this.generateHash(code + css),
+      hash: generateHash(code + css),
     };
   }
 
