@@ -19,6 +19,7 @@
 | 2026-01-23 | Limitation #2: Next.js SSR Docs | IMPLÉMENTÉ |
 | 2026-01-23 | Limitation #3: Tailwind JIT Optimisation | IMPLÉMENTÉ |
 | 2026-01-23 | Limitation #4: Universal Fonts Loader | IMPLÉMENTÉ |
+| 2026-01-23 | Phase 3: Refactoring browser-build-adapter | EN COURS |
 
 ---
 
@@ -351,53 +352,49 @@ loader.inject();  // Injecte dans <head>
 
 ## Phase 3: Dette Technique (Priorité MOYENNE)
 
-### Refactoring: browser-build-adapter.ts (3989 lignes)
+### Refactoring: browser-build-adapter.ts (4128 lignes) - EN COURS
 
 **Problème**: Fichier trop volumineux, difficile à maintenir et tester.
 
-**Plan de refactoring**:
+**Statut**: EN COURS (2026-01-23)
 
+**Structure créée**:
 ```
-browser-build-adapter.ts (3989 lignes)
-    │
-    ├── → core/
-    │       ├── browser-build-adapter.ts (500 lignes - orchestrateur)
-    │       ├── esbuild-manager.ts (300 lignes)
-    │       └── build-config.ts (200 lignes)
-    │
-    ├── → preview/
-    │       ├── preview-manager.ts (400 lignes)
-    │       ├── blob-url-generator.ts (200 lignes)
-    │       └── device-emulator.ts (200 lignes)
-    │
-    ├── → hmr/
-    │       ├── hmr-manager.ts (300 lignes)
-    │       └── hmr-client.ts (200 lignes)
-    │
-    ├── → plugins/
-    │       ├── plugin-manager.ts (200 lignes)
-    │       ├── virtual-fs-plugin.ts (300 lignes)
-    │       └── npm-resolver-plugin.ts (400 lignes)
-    │
-    └── → utils/
-            ├── file-watcher.ts (200 lignes)
-            ├── dependency-graph.ts (300 lignes)
-            └── build-cache.ts (200 lignes)
+app/lib/runtime/adapters/browser-build/
+├── index.ts                    # Point d'entrée du module
+├── utils/
+│   ├── index.ts               # Exports utils
+│   ├── build-cache.ts         # LRU Cache avec TTL (✅ CRÉÉ)
+│   ├── event-loop.ts          # yieldToEventLoop (✅ CRÉÉ)
+│   └── path-utils.ts          # Utilitaires de chemin (✅ CRÉÉ)
+├── preview/
+│   ├── index.ts               # Exports preview
+│   └── preview-config.ts      # Configuration preview (✅ CRÉÉ)
+├── plugins/                    # (À FAIRE)
+│   ├── virtual-fs-plugin.ts
+│   └── esm-sh-plugin.ts
+└── bootstrap/                  # (À FAIRE)
+    └── framework-entries.ts
 ```
 
-**Approche progressive**:
+**Fichiers créés (Phase 3.1)**:
+- `browser-build/index.ts` - Point d'entrée principal
+- `browser-build/utils/build-cache.ts` - LRUCache avec stats
+- `browser-build/utils/event-loop.ts` - yieldToEventLoop + processInChunks
+- `browser-build/utils/path-utils.ts` - normalizePath, generateHash, isPathSafe, etc.
+- `browser-build/preview/preview-config.ts` - Configuration PreviewMode
 
-1. **Étape 1**: Extraire les plugins esbuild
-2. **Étape 2**: Extraire la gestion HMR
-3. **Étape 3**: Extraire la génération de preview
-4. **Étape 4**: Refactorer le core
+**Intégration**:
+- `browser-build-adapter.ts` importe maintenant les modules (avec alias pour éviter conflits)
+- Migration progressive: garder le code existant + ajouter imports
 
-**Règles**:
-- Chaque nouveau fichier < 500 lignes
-- Tests unitaires pour chaque extraction
-- Pas de changement de comportement (refactoring pur)
+**Prochaines étapes**:
+1. [ ] Extraire createVirtualFsPlugin → plugins/
+2. [ ] Extraire createEsmShPlugin → plugins/
+3. [ ] Extraire bootstrap entries → bootstrap/
+4. [ ] Remplacer progressivement le code dupliqué
 
-**Estimation**: 16-20 heures (sur plusieurs jours)
+**Estimation restante**: 12-15 heures
 
 ---
 

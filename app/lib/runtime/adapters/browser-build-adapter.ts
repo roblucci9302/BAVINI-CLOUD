@@ -58,6 +58,26 @@ import {
 import { withTimeout, TIMEOUTS, TimeoutError } from '../utils/timeout';
 // FIX 3.1: Import HMR manager
 import { HMRManager, createHMRManager, classifyChange } from './hmr-manager';
+// Phase 3 Refactoring: Import modular utilities
+import {
+  LRUCache as ModularLRUCache,
+  moduleCache as modularModuleCache,
+  yieldToEventLoop as modularYieldToEventLoop,
+  normalizePath as modularNormalizePath,
+  generateHash as modularGenerateHash,
+  isPathSafe as modularIsPathSafe,
+} from './browser-build';
+import {
+  type PreviewMode as ModularPreviewMode,
+  setPreviewMode as modularSetPreviewMode,
+  getPreviewModeConfig as modularGetPreviewModeConfig,
+  enableServiceWorkerPreference as modularEnableServiceWorkerPreference,
+  disableServiceWorkerPreference as modularDisableServiceWorkerPreference,
+  resetServiceWorkerFailures as modularResetServiceWorkerFailures,
+  setServiceWorkerReady,
+  isServiceWorkerReady as modularIsServiceWorkerReady,
+  shouldAttemptServiceWorker as modularShouldAttemptServiceWorker,
+} from './browser-build';
 
 const logger = createScopedLogger('BrowserBuildAdapter');
 
