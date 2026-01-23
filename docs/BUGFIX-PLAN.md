@@ -370,9 +370,11 @@ app/lib/runtime/adapters/browser-build/
 ├── preview/
 │   ├── index.ts               # Exports preview
 │   └── preview-config.ts      # Configuration preview (✅ CRÉÉ)
-├── plugins/                    # (À FAIRE)
-│   ├── virtual-fs-plugin.ts
-│   └── esm-sh-plugin.ts
+├── plugins/
+│   ├── index.ts               # Exports plugins (✅ CRÉÉ)
+│   ├── types.ts               # Types PluginContext (✅ CRÉÉ)
+│   ├── virtual-fs-plugin.ts   # Plugin filesystem virtuel (✅ CRÉÉ)
+│   └── esm-sh-plugin.ts       # Plugin CDN npm (✅ CRÉÉ)
 └── bootstrap/                  # (À FAIRE)
     └── framework-entries.ts
 ```
@@ -384,17 +386,24 @@ app/lib/runtime/adapters/browser-build/
 - `browser-build/utils/path-utils.ts` - normalizePath, generateHash, isPathSafe, etc.
 - `browser-build/preview/preview-config.ts` - Configuration PreviewMode
 
+**Fichiers créés (Phase 3.2)**:
+- `browser-build/plugins/types.ts` - Interface PluginContext
+- `browser-build/plugins/virtual-fs-plugin.ts` - Plugin filesystem virtuel (~350 lignes)
+- `browser-build/plugins/esm-sh-plugin.ts` - Plugin CDN npm (~160 lignes)
+- `browser-build/plugins/index.ts` - Exports plugins
+
 **Intégration**:
 - `browser-build-adapter.ts` importe maintenant les modules (avec alias pour éviter conflits)
 - Migration progressive: garder le code existant + ajouter imports
+- Plugins extraits avec interface PluginContext pour injection de dépendances
 
 **Prochaines étapes**:
-1. [ ] Extraire createVirtualFsPlugin → plugins/
-2. [ ] Extraire createEsmShPlugin → plugins/
+1. [x] Extraire createVirtualFsPlugin → plugins/ ✅
+2. [x] Extraire createEsmShPlugin → plugins/ ✅
 3. [ ] Extraire bootstrap entries → bootstrap/
 4. [ ] Remplacer progressivement le code dupliqué
 
-**Estimation restante**: 12-15 heures
+**Estimation restante**: 8-10 heures
 
 ---
 

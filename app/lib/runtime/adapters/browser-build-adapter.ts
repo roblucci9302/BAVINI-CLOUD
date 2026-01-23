@@ -77,6 +77,10 @@ import {
   setServiceWorkerReady,
   isServiceWorkerReady as modularIsServiceWorkerReady,
   shouldAttemptServiceWorker as modularShouldAttemptServiceWorker,
+  // Phase 3.2: Plugin types (for future integration)
+  type PluginContext,
+  createVirtualFsPlugin as modularCreateVirtualFsPlugin,
+  createEsmShPlugin as modularCreateEsmShPlugin,
 } from './browser-build';
 
 const logger = createScopedLogger('BrowserBuildAdapter');

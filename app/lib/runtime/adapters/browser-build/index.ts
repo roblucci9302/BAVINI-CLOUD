@@ -54,3 +54,15 @@ export {
   shouldAttemptServiceWorker,
   getPreviewModeReason,
 } from './preview';
+
+// Plugins
+export {
+  type PluginContext,
+  type PluginFactory,
+  type CSSResult,
+  type CompilerResult,
+  type ContentFile,
+  createVirtualFsPlugin,
+  createEsmShPlugin,
+  getCdnStats,
+} from './plugins';
