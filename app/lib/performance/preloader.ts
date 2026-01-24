@@ -3,13 +3,7 @@
  *
  * Preloads heavy modules during idle time to improve perceived performance.
  * Uses requestIdleCallback to avoid blocking the main thread.
- *
- * Phase 2 Optimization: Also initializes dependency pre-warming for faster
- * npm/pnpm installs in WebContainer.
  */
-
-import { initDependencyPrewarming } from '~/lib/webcontainer/dependency-prewarmer';
-import { dependencyCache } from '~/lib/webcontainer/dependency-cache';
 
 type PreloadFn = () => Promise<unknown>;
 
@@ -141,51 +135,6 @@ export function initPreloading(): void {
 
   // Schedule idle preloading after initial render
   schedulePreload('afterIdle');
-
-  /*
-   * Initialize dependency cache and pre-warming (Phase 2 optimization)
-   * This preps the cache for faster npm/pnpm installs
-   */
-  initDependencyCacheAndPrewarming();
-}
-
-/**
- * Initialize dependency caching system
- * This runs in the background during idle time
- */
-async function initDependencyCacheAndPrewarming(): Promise<void> {
-  // Defer to next idle period - don't run immediately
-  const scheduleCallback =
-    'requestIdleCallback' in window
-      ? (fn: () => void) =>
-          (window as Window & { requestIdleCallback: (fn: () => void) => void }).requestIdleCallback(fn)
-      : (fn: () => void) => setTimeout(fn, 1000);
-
-  scheduleCallback(async () => {
-    try {
-      // Initialize the IndexedDB cache
-      await dependencyCache.init();
-
-      // Get cache stats for logging
-      const stats = await dependencyCache.getStats();
-
-      if (import.meta.env.DEV) {
-        console.log(
-          '%c[PRELOADER] Dependency cache initialized',
-          'background: #9c27b0; color: white; padding: 2px 6px;',
-          `${stats.totalEntries} entries, ${(stats.totalSizeBytes / 1024 / 1024).toFixed(2)}MB`,
-        );
-      }
-
-      // Start pre-warming common dependencies during idle time
-      initDependencyPrewarming();
-    } catch (error) {
-      // Silently fail - caching is optional
-      if (import.meta.env.DEV) {
-        console.warn('[PRELOADER] Failed to initialize dependency cache:', error);
-      }
-    }
-  });
 }
 
 /**

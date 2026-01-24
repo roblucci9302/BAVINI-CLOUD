@@ -474,3 +474,6 @@ export function isRecoverableError(error: unknown): boolean {
 
   return false;
 }
+
+// Re-export user-friendly error utilities
+export * from './user-messages';

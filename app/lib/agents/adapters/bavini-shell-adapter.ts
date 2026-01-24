@@ -1,22 +1,42 @@
 /**
- * Adaptateur Shell pour les agents BAVINI
+ * =============================================================================
+ * BAVINI Cloud - Shell Adapter for Agents
+ * =============================================================================
+ * Adaptateur Shell pour les agents BAVINI.
+ * Remplace ShellAdapter en utilisant CommandExecutor et MountManager.
  *
- * Fournit des opérations shell de haut niveau:
- * - Commandes NPM (install, run, test, build)
- * - Commandes Git
- * - Processus long-running (serveurs)
- * - Gestion des timeouts
+ * Caractéristiques:
+ * - Interface identique à ShellAdapter pour migration transparente
+ * - Utilise CommandExecutor pour les commandes shell
+ * - Support du mode strict avec flux d'approbation
+ * - Pas de dépendance à WebContainer
+ * =============================================================================
  */
 
-import type { WebContainer, WebContainerProcess } from '@webcontainer/api';
-import { webcontainer } from '~/lib/webcontainer';
+import type { MountManager } from '~/lib/runtime/filesystem';
+import { getSharedMountManager } from '~/lib/runtime/filesystem';
+import { CommandExecutor } from '~/lib/runtime/terminal/command-executor';
+import type {
+  CommandContext,
+  CommandResult,
+  ParsedCommand,
+  ShellState,
+} from '~/lib/runtime/terminal/types';
 import { createScopedLogger } from '~/utils/logger';
 import type { AgentType, ToolExecutionResult } from '../types';
-import { checkCommand, isBlocked, requiresApproval, type CommandCheckResult } from '../security/command-whitelist';
-import { createProposedAction, type ProposedAction, type ShellCommandDetails } from '../security/action-validator';
+import {
+  checkCommand,
+  isBlocked,
+  type CommandCheckResult,
+} from '../security/command-whitelist';
+import {
+  createProposedAction,
+  type ProposedAction,
+  type ShellCommandDetails,
+} from '../security/action-validator';
 import { addAgentLog } from '~/lib/stores/agents';
 
-const logger = createScopedLogger('ShellAdapter');
+const logger = createScopedLogger('BaviniShellAdapter');
 
 /*
  * ============================================================================
@@ -24,7 +44,7 @@ const logger = createScopedLogger('ShellAdapter');
  * ============================================================================
  */
 
-export interface ShellConfig {
+export interface BaviniShellConfig {
   /** Agent propriétaire */
   agentName: AgentType;
 
@@ -37,31 +57,24 @@ export interface ShellConfig {
   /** Timeout par défaut en ms */
   defaultTimeout?: number;
 
+  /** Working directory initial */
+  cwd?: string;
+
+  /** Variables d'environnement */
+  env?: Record<string, string>;
+
   /** Callback d'approbation */
   onApprovalRequired?: (action: ProposedAction) => Promise<boolean>;
+
+  /** Callback pour notifier une action */
+  onActionExecuted?: (action: ProposedAction, result: ToolExecutionResult) => void;
 }
 
-export interface ProcessHandle {
-  /** ID unique du processus */
-  id: string;
-
-  /** Commande exécutée */
+export interface ShellResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
   command: string;
-
-  /** Processus WebContainer */
-  process: WebContainerProcess;
-
-  /** Output accumulé */
-  output: string;
-
-  /** Est-il terminé ? */
-  completed: boolean;
-
-  /** Code de sortie */
-  exitCode?: number;
-
-  /** Callback de kill */
-  kill: () => void;
 }
 
 export interface NpmRunOptions {
@@ -106,18 +119,33 @@ export interface GitCommandOptions {
  * ============================================================================
  */
 
-export class ShellAdapter {
-  private config: ShellConfig;
-  private container: Promise<WebContainer>;
-  private runningProcesses: Map<string, ProcessHandle> = new Map();
-  private processCounter = 0;
+export class BaviniShellAdapter {
+  private config: BaviniShellConfig;
+  private fs: MountManager;
+  private executor: CommandExecutor;
+  private shellState: ShellState;
 
-  constructor(config: ShellConfig) {
+  constructor(config: BaviniShellConfig, fs?: MountManager) {
     this.config = {
-      defaultTimeout: 60000, // 1 minute par défaut
+      defaultTimeout: 60000,
+      cwd: '/home',
       ...config,
     };
-    this.container = webcontainer;
+    this.fs = fs ?? getSharedMountManager();
+    this.executor = new CommandExecutor();
+    this.shellState = {
+      cwd: this.config.cwd ?? '/home',
+      env: {
+        HOME: '/home',
+        PATH: '/usr/bin:/bin',
+        PWD: this.config.cwd ?? '/home',
+        USER: 'bavini',
+        SHELL: '/bin/sh',
+        ...this.config.env,
+      },
+      history: [],
+      lastExitCode: 0,
+    };
   }
 
   /*
@@ -164,7 +192,7 @@ export class ShellAdapter {
    * npm test
    */
   async npmTest(timeout?: number): Promise<ToolExecutionResult> {
-    return this.executeCommand('npm test', timeout || 120000);
+    return this.executeCommand('npm run test', timeout || 120000);
   }
 
   /**
@@ -172,79 +200,6 @@ export class ShellAdapter {
    */
   async npmBuild(timeout?: number): Promise<ToolExecutionResult> {
     return this.executeCommand('npm run build', timeout || 180000);
-  }
-
-  /**
-   * Démarrer un serveur de développement (processus long-running)
-   */
-  async startDevServer(command = 'npm run dev'): Promise<ProcessHandle | null> {
-    /*
-     * Les serveurs de dev ne passent pas par l'approbation normale
-     * car ils sont gérés différemment
-     */
-    const check = checkCommand(command);
-
-    if (check.level === 'blocked') {
-      this.log('error', `Blocked command: ${command}`);
-      return null;
-    }
-
-    try {
-      const wc = await this.container;
-      const id = `process-${++this.processCounter}`;
-
-      let output = '';
-      const process = await wc.spawn('jsh', ['-c', command], {
-        env: { npm_config_yes: 'true' },
-      });
-
-      const handle: ProcessHandle = {
-        id,
-        command,
-        process,
-        output: '',
-        completed: false,
-        kill: () => process.kill(),
-      };
-
-      // Collecter l'output en streaming
-      const reader = process.output.getReader();
-      const readOutput = async () => {
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-
-            if (done) {
-              break;
-            }
-
-            output += value;
-            handle.output = output;
-          }
-        } catch {
-          // Process killed
-        }
-      };
-
-      readOutput();
-
-      // Surveiller la terminaison
-      process.exit.then((code) => {
-        handle.completed = true;
-        handle.exitCode = code;
-        this.runningProcesses.delete(id);
-      });
-
-      this.runningProcesses.set(id, handle);
-      this.log('info', `Started long-running process: ${command} (${id})`);
-
-      return handle;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      this.log('error', `Failed to start process: ${message}`);
-
-      return null;
-    }
   }
 
   /*
@@ -259,7 +214,6 @@ export class ShellAdapter {
   async gitCommand(options: GitCommandOptions): Promise<ToolExecutionResult> {
     const { operation, args = [], timeout = 30000 } = options;
 
-    // Construire la commande
     let command = `git ${operation}`;
 
     if (args.length > 0) {
@@ -271,7 +225,6 @@ export class ShellAdapter {
       return this.executeCommand(command, timeout, true);
     }
 
-    // Les autres commandes suivent les règles normales
     return this.executeCommand(command, timeout);
   }
 
@@ -343,58 +296,77 @@ export class ShellAdapter {
       }
     }
 
-    // Exécuter la commande
+    // Parser la commande
+    const parsed = this.parseCommand(command);
+
+    // Créer le contexte d'exécution
+    let stdout = '';
+    let stderr = '';
+
+    const context: CommandContext = {
+      fs: this.fs,
+      state: this.shellState,
+      stdout: (data: string) => {
+        stdout += data;
+      },
+      stderr: (data: string) => {
+        stderr += data;
+      },
+      dimensions: { cols: 120, rows: 40 },
+    };
+
+    // Exécuter avec timeout
     try {
-      const wc = await this.container;
-      let output = '';
+      const resultPromise = this.executor.execute(parsed, context);
 
-      const process = await wc.spawn('jsh', ['-c', command], {
-        env: { npm_config_yes: 'true' },
-      });
-
-      // Collecter l'output
-      const reader = process.output.getReader();
-      const readOutput = async () => {
-        while (true) {
-          const { done, value } = await reader.read();
-
-          if (done) {
-            break;
-          }
-
-          output += value;
-        }
-      };
-
-      // Race entre timeout et exécution
-      const timeoutPromise = new Promise<number>((_, reject) => {
+      const timeoutPromise = new Promise<CommandResult>((_, reject) => {
         setTimeout(() => {
-          process.kill();
           reject(new Error(`Command timed out after ${effectiveTimeout}ms`));
         }, effectiveTimeout);
       });
 
-      await readOutput();
+      const result = await Promise.race([resultPromise, timeoutPromise]);
 
-      const exitCode = await Promise.race([process.exit, timeoutPromise]);
+      // Mettre à jour l'état du shell si nécessaire
+      if (result.stateUpdates) {
+        this.shellState = { ...this.shellState, ...result.stateUpdates };
+      }
+      this.shellState.lastExitCode = result.exitCode;
 
       const executionTime = Date.now() - startTime;
 
       this.log(
-        exitCode === 0 ? 'debug' : 'warn',
-        `Command completed: ${command} (exit: ${exitCode}, ${executionTime}ms)`,
+        result.exitCode === 0 ? 'debug' : 'warn',
+        `Command completed: ${command} (exit: ${result.exitCode}, ${executionTime}ms)`,
       );
 
-      return {
-        success: exitCode === 0,
-        output: {
-          stdout: output.trim(),
-          exitCode,
-          command,
-        },
-        error: exitCode !== 0 ? `Command exited with code ${exitCode}` : undefined,
+      const shellResult: ShellResult = {
+        stdout: stdout.trim(),
+        stderr: stderr.trim(),
+        exitCode: result.exitCode,
+        command,
+      };
+
+      const toolResult: ToolExecutionResult = {
+        success: result.exitCode === 0,
+        output: shellResult,
+        error: result.exitCode !== 0 ? `Command exited with code ${result.exitCode}` : undefined,
         executionTime,
       };
+
+      // Notifier le callback si présent
+      if (this.config.onActionExecuted && needsApproval) {
+        const action = createProposedAction(
+          'shell_command',
+          this.config.agentName,
+          `Execute: ${command.substring(0, 50)}`,
+          { type: 'shell_command', command, commandCheck: check },
+        );
+        action.status = 'approved';
+        this.config.onActionExecuted(action, toolResult);
+      }
+
+      return toolResult;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       this.log('error', `Command failed: ${command} - ${message}`);
@@ -406,6 +378,22 @@ export class ShellAdapter {
         executionTime: Date.now() - startTime,
       };
     }
+  }
+
+  /**
+   * Parse une commande en structure ParsedCommand
+   */
+  private parseCommand(command: string): ParsedCommand {
+    const trimmed = command.trim();
+    const parts = trimmed.split(/\s+/);
+    const cmd = parts[0] || '';
+    const args = parts.slice(1);
+
+    return {
+      command: cmd,
+      args,
+      raw: trimmed,
+    };
   }
 
   /**
@@ -437,57 +425,53 @@ export class ShellAdapter {
 
   /*
    * --------------------------------------------------------------------------
-   * GESTION DES PROCESSUS
-   * --------------------------------------------------------------------------
-   */
-
-  /**
-   * Obtenir un processus en cours
-   */
-  getProcess(id: string): ProcessHandle | undefined {
-    return this.runningProcesses.get(id);
-  }
-
-  /**
-   * Lister les processus en cours
-   */
-  listProcesses(): ProcessHandle[] {
-    return Array.from(this.runningProcesses.values());
-  }
-
-  /**
-   * Tuer un processus
-   */
-  killProcess(id: string): boolean {
-    const handle = this.runningProcesses.get(id);
-
-    if (handle) {
-      handle.kill();
-      this.runningProcesses.delete(id);
-      this.log('info', `Killed process: ${id}`);
-
-      return true;
-    }
-
-    return false;
-  }
-
-  /**
-   * Tuer tous les processus
-   */
-  killAllProcesses(): void {
-    for (const handle of this.runningProcesses.values()) {
-      handle.kill();
-    }
-    this.runningProcesses.clear();
-    this.log('info', 'Killed all processes');
-  }
-
-  /*
-   * --------------------------------------------------------------------------
    * UTILITAIRES
    * --------------------------------------------------------------------------
    */
+
+  /**
+   * Obtenir le répertoire de travail actuel
+   */
+  getCwd(): string {
+    return this.shellState.cwd;
+  }
+
+  /**
+   * Changer le répertoire de travail
+   */
+  async setCwd(path: string): Promise<boolean> {
+    const absolutePath = path.startsWith('/') ? path : `${this.shellState.cwd}/${path}`;
+
+    const exists = await this.fs.exists(absolutePath);
+    if (!exists) {
+      this.log('warn', `Directory not found: ${absolutePath}`);
+      return false;
+    }
+
+    const stat = await this.fs.stat(absolutePath);
+    if (!stat.isDirectory) {
+      this.log('warn', `Not a directory: ${absolutePath}`);
+      return false;
+    }
+
+    this.shellState.cwd = absolutePath;
+    this.shellState.env.PWD = absolutePath;
+    return true;
+  }
+
+  /**
+   * Obtenir les variables d'environnement
+   */
+  getEnv(): Record<string, string | undefined> {
+    return { ...this.shellState.env };
+  }
+
+  /**
+   * Définir une variable d'environnement
+   */
+  setEnv(key: string, value: string): void {
+    this.shellState.env[key] = value;
+  }
 
   /**
    * Vérifier si une commande est safe (lecture seule)
@@ -512,10 +496,39 @@ export class ShellAdapter {
   }
 
   /**
+   * Vérifier si une commande existe
+   */
+  hasCommand(name: string): boolean {
+    return this.executor.hasCommand(name);
+  }
+
+  /**
+   * Lister les commandes disponibles
+   */
+  listCommands(): string[] {
+    return this.executor.listCommands();
+  }
+
+  /**
    * Logger avec contexte agent
    */
   private log(level: 'debug' | 'info' | 'warn' | 'error', message: string): void {
-    logger[level](message);
+    const prefixedMessage = `[${this.config.agentName}] ${message}`;
+
+    switch (level) {
+      case 'debug':
+        logger.debug(prefixedMessage);
+        break;
+      case 'info':
+        logger.info(prefixedMessage);
+        break;
+      case 'warn':
+        logger.warn(prefixedMessage);
+        break;
+      case 'error':
+        logger.error(prefixedMessage);
+        break;
+    }
 
     addAgentLog(this.config.agentName, {
       level,
@@ -527,7 +540,7 @@ export class ShellAdapter {
   /**
    * Mettre à jour la configuration
    */
-  updateConfig(config: Partial<ShellConfig>): void {
+  updateConfig(config: Partial<BaviniShellConfig>): void {
     this.config = { ...this.config, ...config };
   }
 }
@@ -541,45 +554,6 @@ export class ShellAdapter {
 /**
  * Créer un adaptateur shell pour un agent
  */
-export function createShellAdapter(config: ShellConfig): ShellAdapter {
-  return new ShellAdapter(config);
-}
-
-/**
- * Map des adaptateurs par agent
- */
-const shellAdapterMap = new Map<AgentType, ShellAdapter>();
-
-/**
- * Obtenir ou créer un adaptateur shell pour un agent
- */
-export function getShellAdapterForAgent(
-  agentName: AgentType,
-  config?: Partial<Omit<ShellConfig, 'agentName'>>,
-): ShellAdapter {
-  let adapter = shellAdapterMap.get(agentName);
-
-  if (!adapter) {
-    adapter = new ShellAdapter({
-      agentName,
-      strictMode: true,
-      ...config,
-    });
-    shellAdapterMap.set(agentName, adapter);
-  } else if (config) {
-    adapter.updateConfig(config);
-  }
-
-  return adapter;
-}
-
-/**
- * Réinitialiser tous les adaptateurs shell
- */
-export function resetAllShellAdapters(): void {
-  // Tuer tous les processus d'abord
-  for (const adapter of shellAdapterMap.values()) {
-    adapter.killAllProcesses();
-  }
-  shellAdapterMap.clear();
+export function createBaviniShellAdapter(config: BaviniShellConfig, fs?: MountManager): BaviniShellAdapter {
+  return new BaviniShellAdapter(config, fs);
 }

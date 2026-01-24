@@ -47,6 +47,7 @@ import type {
   TaskResult,
   TaskStatus,
   AgentType,
+  AgentMessage,
   ToolDefinition,
   OrchestrationDecision,
   ExecutionPlan,
@@ -812,7 +813,7 @@ export class Orchestrator extends BaseAgent {
     return {
       task,
       agentName: this.getName(),
-      messageHistory: [...this.messageHistory],
+      messageHistory: [...this.msgHistory.getMessages()],
       partialResults: this.currentPlan
         ? {
             output: `Plan en cours: ${this.currentPlan.id}`,
@@ -852,9 +853,9 @@ export class Orchestrator extends BaseAgent {
     const analysisPrompt = this.buildAnalysisPrompt(task);
 
     // Appeler le LLM pour la décision
-    this.messageHistory = [{ role: 'user', content: analysisPrompt }];
+    const routingMessages: AgentMessage[] = [{ role: 'user', content: analysisPrompt }];
 
-    const response = await this.callLLM(this.messageHistory);
+    const response = await this.callLLM(routingMessages);
 
     // Parser la réponse pour extraire la décision
     const decision = this.parseDecision(response);

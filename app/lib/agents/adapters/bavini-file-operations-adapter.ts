@@ -1,21 +1,22 @@
 /**
- * File Operations Adapter for BAVINI agents
+ * =============================================================================
+ * BAVINI Cloud - File Operations Adapter for Agents
+ * =============================================================================
+ * Adaptateur pour les opérations de fichiers avancées (glob, grep, etc.)
+ * Utilise MountManager au lieu de WebContainer.
  *
- * Provides high-level file operations:
- * - Cached reads
- * - Search (glob, grep)
- * - Editing with diff
- * - Batch operations
+ * Remplace FileOperationsAdapter pour le runtime browser.
+ * =============================================================================
  */
 
-import type { WebContainer } from '@webcontainer/api';
-import { webcontainer } from '~/lib/webcontainer';
+import type { MountManager } from '~/lib/runtime/filesystem';
+import { getSharedMountManager } from '~/lib/runtime/filesystem';
 import { createScopedLogger } from '~/utils/logger';
 import type { AgentType, ToolExecutionResult, CodeSnippet } from '../types';
 import { addAgentLog } from '~/lib/stores/agents';
 import { LRUCache } from '../utils/lru-cache';
 
-const logger = createScopedLogger('FileOperationsAdapter');
+const logger = createScopedLogger('BaviniFileOperationsAdapter');
 
 /*
  * ============================================================================
@@ -97,21 +98,21 @@ export interface FileInfo {
  */
 
 /** Default cache configuration */
-const FILE_CACHE_MAX_SIZE = 100; // Maximum cached files
+const FILE_CACHE_MAX_SIZE = 100;
 const FILE_CACHE_TTL_MS = 30000; // 30 seconds TTL
 
-export class FileOperationsAdapter {
+export class BaviniFileOperationsAdapter {
   private agentName: AgentType;
   private taskId?: string;
-  private container: Promise<WebContainer>;
+  private fs: MountManager;
 
   // LRU cache with size limit and TTL for frequent reads
   private readCache: LRUCache<string>;
 
-  constructor(agentName: AgentType, taskId?: string) {
+  constructor(agentName: AgentType, taskId?: string, fs?: MountManager) {
     this.agentName = agentName;
     this.taskId = taskId;
-    this.container = webcontainer;
+    this.fs = fs ?? getSharedMountManager();
 
     // Initialize LRU cache with bounded size and TTL
     this.readCache = new LRUCache<string>({
@@ -134,10 +135,11 @@ export class FileOperationsAdapter {
    */
   async readFile(filePath: string, useCache = true): Promise<ToolExecutionResult> {
     const startTime = Date.now();
+    const absolutePath = this.toAbsolutePath(filePath);
 
     // Check LRU cache (TTL is handled automatically)
     if (useCache) {
-      const cached = this.readCache.get(filePath);
+      const cached = this.readCache.get(absolutePath);
 
       if (cached !== undefined) {
         return {
@@ -149,11 +151,21 @@ export class FileOperationsAdapter {
     }
 
     try {
-      const wc = await this.container;
-      const content = await wc.fs.readFile(filePath, 'utf-8');
+      const exists = await this.fs.exists(absolutePath);
+
+      if (!exists) {
+        return {
+          success: false,
+          output: null,
+          error: `File not found: ${filePath}`,
+          executionTime: Date.now() - startTime,
+        };
+      }
+
+      const content = await this.fs.readTextFile(absolutePath);
 
       // Cache the content (LRU eviction handled automatically)
-      this.readCache.set(filePath, content);
+      this.readCache.set(absolutePath, content);
 
       this.log('debug', `Read file: ${filePath} (${content.length} chars)`);
 
@@ -164,16 +176,6 @@ export class FileOperationsAdapter {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-
-      if (message.includes('ENOENT')) {
-        return {
-          success: false,
-          output: null,
-          error: `File not found: ${filePath}`,
-          executionTime: Date.now() - startTime,
-        };
-      }
-
       this.log('error', `Failed to read file ${filePath}: ${message}`);
 
       return {
@@ -250,23 +252,22 @@ export class FileOperationsAdapter {
 
   /**
    * Search for files by glob pattern
-   * Note: Simplified implementation - use a glob lib in production
    */
   async glob(options: GlobOptions): Promise<ToolExecutionResult> {
     const startTime = Date.now();
     const { pattern, cwd = '.', ignore = ['node_modules', '.git'], dot = false } = options;
 
     try {
-      const wc = await this.container;
+      const basePath = this.toAbsolutePath(cwd);
       const matches: string[] = [];
 
       // Recursive function to traverse directories
       const walk = async (dir: string): Promise<void> => {
         try {
-          const entries = await wc.fs.readdir(dir, { withFileTypes: true });
+          const entries = await this.fs.readdirWithTypes(dir);
 
           for (const entry of entries) {
-            const fullPath = `${dir}/${entry.name}`;
+            const fullPath = dir === '/' ? `/${entry.name}` : `${dir}/${entry.name}`;
 
             // Skip hidden files if dot=false
             if (!dot && entry.name.startsWith('.')) {
@@ -278,7 +279,7 @@ export class FileOperationsAdapter {
               continue;
             }
 
-            if (entry.isDirectory()) {
+            if (entry.isDirectory) {
               await walk(fullPath);
             } else {
               // Check if file matches pattern
@@ -292,7 +293,7 @@ export class FileOperationsAdapter {
         }
       };
 
-      await walk(cwd);
+      await walk(basePath);
 
       this.log('debug', `Glob "${pattern}": found ${matches.length} files`);
 
@@ -424,7 +425,7 @@ export class FileOperationsAdapter {
   /**
    * Apply edit operations to a file
    * Note: These operations only prepare content,
-   * actual writing must go through WebContainerAdapter
+   * actual writing must go through FSAdapter
    */
   async prepareEdit(filePath: string, operations: EditOperation[]): Promise<ToolExecutionResult> {
     const startTime = Date.now();
@@ -540,23 +541,43 @@ export class FileOperationsAdapter {
    */
 
   /**
+   * Convert relative path to absolute
+   */
+  private toAbsolutePath(path: string): string {
+    if (path.startsWith('/')) {
+      return path;
+    }
+
+    if (path === '.') {
+      return '/';
+    }
+
+    return '/' + path;
+  }
+
+  /**
    * Get file information
    */
   async getFileInfo(filePath: string): Promise<FileInfo | null> {
     try {
-      const wc = await this.container;
-      const content = await wc.fs.readFile(filePath, 'utf-8');
+      const absolutePath = this.toAbsolutePath(filePath);
+      const exists = await this.fs.exists(absolutePath);
 
+      if (!exists) {
+        return null;
+      }
+
+      const stat = await this.fs.stat(absolutePath);
       const parts = filePath.split('/');
-      const name = parts[parts.length - 1];
+      const name = parts[parts.length - 1] || filePath;
       const extension = name.includes('.') ? name.split('.').pop() || '' : '';
 
       return {
         path: filePath,
         name,
         extension,
-        size: content.length,
-        isDirectory: false,
+        size: stat.size ?? 0,
+        isDirectory: stat.isDirectory,
       };
     } catch {
       return null;
@@ -578,7 +599,8 @@ export class FileOperationsAdapter {
     const paths = Array.isArray(filePaths) ? filePaths : [filePaths];
 
     for (const path of paths) {
-      this.readCache.delete(path);
+      const absolutePath = this.toAbsolutePath(path);
+      this.readCache.delete(absolutePath);
     }
   }
 
@@ -617,8 +639,12 @@ export class FileOperationsAdapter {
  */
 
 /**
- * Create an adapter for an agent
+ * Create a BAVINI file operations adapter for an agent
  */
-export function createFileOperationsAdapter(agentName: AgentType, taskId?: string): FileOperationsAdapter {
-  return new FileOperationsAdapter(agentName, taskId);
+export function createBaviniFileOperationsAdapter(
+  agentName: AgentType,
+  taskId?: string,
+  fs?: MountManager,
+): BaviniFileOperationsAdapter {
+  return new BaviniFileOperationsAdapter(agentName, taskId, fs);
 }

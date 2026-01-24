@@ -3,6 +3,8 @@
  * BAVINI CLOUD - Runtime Factory Tests
  * =============================================================================
  * Tests pour la factory de runtime et le feature flag.
+ *
+ * NOTE: WebContainer has been removed. BAVINI uses only browser-based runtime.
  * =============================================================================
  */
 
@@ -16,47 +18,47 @@ import { atom } from 'nanostores';
 
 describe('RuntimeFactory Logic', () => {
   describe('RuntimeType Store', () => {
-    it('should default to webcontainer', () => {
-      type RuntimeType = 'webcontainer' | 'browser';
-      const runtimeTypeStore = atom<RuntimeType>('webcontainer');
-
-      expect(runtimeTypeStore.get()).toBe('webcontainer');
-    });
-
-    it('should allow switching to browser', () => {
-      type RuntimeType = 'webcontainer' | 'browser';
-      const runtimeTypeStore = atom<RuntimeType>('webcontainer');
-
-      runtimeTypeStore.set('browser');
+    it('should default to browser (BAVINI native runtime)', () => {
+      type RuntimeType = 'browser' | 'bavini-container';
+      const runtimeTypeStore = atom<RuntimeType>('browser');
 
       expect(runtimeTypeStore.get()).toBe('browser');
     });
 
+    it('should allow switching to bavini-container', () => {
+      type RuntimeType = 'browser' | 'bavini-container';
+      const runtimeTypeStore = atom<RuntimeType>('browser');
+
+      runtimeTypeStore.set('bavini-container');
+
+      expect(runtimeTypeStore.get()).toBe('bavini-container');
+    });
+
     it('should notify subscribers on change', () => {
-      type RuntimeType = 'webcontainer' | 'browser';
-      const runtimeTypeStore = atom<RuntimeType>('webcontainer');
+      type RuntimeType = 'browser' | 'bavini-container';
+      const runtimeTypeStore = atom<RuntimeType>('browser');
       const changes: RuntimeType[] = [];
 
       const unsubscribe = runtimeTypeStore.subscribe((value) => {
         changes.push(value);
       });
 
+      runtimeTypeStore.set('bavini-container');
       runtimeTypeStore.set('browser');
-      runtimeTypeStore.set('webcontainer');
 
       unsubscribe();
 
       // First call is initial value, then two changes
-      expect(changes).toEqual(['webcontainer', 'browser', 'webcontainer']);
+      expect(changes).toEqual(['browser', 'bavini-container', 'browser']);
     });
   });
 
   describe('Singleton Pattern', () => {
     it('should reuse adapter instance when type unchanged', () => {
-      type RuntimeType = 'webcontainer' | 'browser';
+      type RuntimeType = 'browser' | 'bavini-container';
       let currentAdapter: object | null = null;
       let currentType: RuntimeType | null = null;
-      const runtimeTypeStore = atom<RuntimeType>('webcontainer');
+      const runtimeTypeStore = atom<RuntimeType>('browser');
 
       const createAdapter = (type: RuntimeType) => ({ type, id: Math.random() });
 
@@ -78,10 +80,10 @@ describe('RuntimeFactory Logic', () => {
     });
 
     it('should create new adapter when type changes', () => {
-      type RuntimeType = 'webcontainer' | 'browser';
+      type RuntimeType = 'browser' | 'bavini-container';
       let currentAdapter: { type: RuntimeType; id: number } | null = null;
       let currentType: RuntimeType | null = null;
-      const runtimeTypeStore = atom<RuntimeType>('webcontainer');
+      const runtimeTypeStore = atom<RuntimeType>('browser');
 
       const createAdapter = (type: RuntimeType) => ({ type, id: Math.random() });
 
@@ -97,17 +99,17 @@ describe('RuntimeFactory Logic', () => {
       };
 
       const adapter1 = getAdapter();
-      expect(adapter1.type).toBe('webcontainer');
+      expect(adapter1.type).toBe('browser');
 
-      runtimeTypeStore.set('browser');
+      runtimeTypeStore.set('bavini-container');
       const adapter2 = getAdapter();
 
-      expect(adapter2.type).toBe('browser');
+      expect(adapter2.type).toBe('bavini-container');
       expect(adapter1).not.toBe(adapter2);
     });
 
     it('should destroy previous adapter when switching', async () => {
-      type RuntimeType = 'webcontainer' | 'browser';
+      type RuntimeType = 'browser' | 'bavini-container';
       const destroyCalls: RuntimeType[] = [];
 
       interface MockAdapter {
@@ -117,7 +119,7 @@ describe('RuntimeFactory Logic', () => {
 
       let currentAdapter: MockAdapter | null = null;
       let currentType: RuntimeType | null = null;
-      const runtimeTypeStore = atom<RuntimeType>('webcontainer');
+      const runtimeTypeStore = atom<RuntimeType>('browser');
 
       const createAdapter = (type: RuntimeType): MockAdapter => ({
         type,
@@ -142,18 +144,18 @@ describe('RuntimeFactory Logic', () => {
         return currentAdapter;
       };
 
-      await getAdapter(); // webcontainer
-      runtimeTypeStore.set('browser');
       await getAdapter(); // browser
+      runtimeTypeStore.set('bavini-container');
+      await getAdapter(); // bavini-container
 
-      expect(destroyCalls).toEqual(['webcontainer']);
+      expect(destroyCalls).toEqual(['browser']);
     });
   });
 
   describe('setRuntimeType', () => {
     it('should not change if already set to same type', () => {
-      type RuntimeType = 'webcontainer' | 'browser';
-      const runtimeTypeStore = atom<RuntimeType>('webcontainer');
+      type RuntimeType = 'browser' | 'bavini-container';
+      const runtimeTypeStore = atom<RuntimeType>('browser');
       const changes: RuntimeType[] = [];
 
       runtimeTypeStore.subscribe((value) => {
@@ -168,79 +170,78 @@ describe('RuntimeFactory Logic', () => {
         runtimeTypeStore.set(type);
       };
 
-      setRuntimeType('webcontainer'); // Same, should not trigger
-      setRuntimeType('browser'); // Different, should trigger
+      setRuntimeType('browser'); // Same, should not trigger
+      setRuntimeType('bavini-container'); // Different, should trigger
 
       // Initial + one change
-      expect(changes).toEqual(['webcontainer', 'browser']);
+      expect(changes).toEqual(['browser', 'bavini-container']);
     });
   });
 
   describe('getRuntimeInfo', () => {
     it('should return current runtime type', () => {
-      type RuntimeType = 'webcontainer' | 'browser';
-      const runtimeTypeStore = atom<RuntimeType>('webcontainer');
+      type RuntimeType = 'browser' | 'bavini-container';
+      const runtimeTypeStore = atom<RuntimeType>('browser');
 
       const getRuntimeInfo = () => ({
         current: runtimeTypeStore.get(),
-        available: ['webcontainer'] as RuntimeType[],
-        webcontainer: { available: true },
-        browser: { available: false, reason: 'Not implemented yet' },
+        available: ['browser', 'bavini-container'] as RuntimeType[],
+        browser: { available: true },
+        'bavini-container': { available: true },
       });
 
       const info = getRuntimeInfo();
 
-      expect(info.current).toBe('webcontainer');
-      expect(info.available).toContain('webcontainer');
-      expect(info.webcontainer.available).toBe(true);
-      expect(info.browser.available).toBe(false);
+      expect(info.current).toBe('browser');
+      expect(info.available).toContain('browser');
+      expect(info.browser.available).toBe(true);
     });
   });
 
   describe('isBrowserRuntimeAvailable', () => {
-    it('should return false when not implemented', () => {
+    it('should return true when in browser environment', () => {
       const isBrowserRuntimeAvailable = () => {
-        // TODO: Check if esbuild-wasm is loaded
-        return false;
+        return typeof window !== 'undefined';
       };
 
-      expect(isBrowserRuntimeAvailable()).toBe(false);
+      // In test environment, we have jsdom
+      expect(isBrowserRuntimeAvailable()).toBe(true);
     });
   });
 });
 
 describe('Error Handling', () => {
   it('should throw for unknown runtime type', () => {
-    type RuntimeType = 'webcontainer' | 'browser';
+    type RuntimeType = 'browser' | 'bavini-container';
 
     const createAdapter = (type: string) => {
       switch (type) {
-        case 'webcontainer':
-          return { name: 'WebContainer' };
         case 'browser':
-          throw new Error('BrowserBuildAdapter not implemented yet');
+          return { name: 'BrowserBuild' };
+        case 'bavini-container':
+          return { name: 'BaviniContainer' };
         default:
           throw new Error(`Unknown runtime type: ${type}`);
       }
     };
 
-    expect(() => createAdapter('webcontainer')).not.toThrow();
-    expect(() => createAdapter('browser')).toThrow('not implemented');
+    expect(() => createAdapter('browser')).not.toThrow();
+    expect(() => createAdapter('bavini-container')).not.toThrow();
     expect(() => createAdapter('invalid')).toThrow('Unknown runtime type');
   });
 });
 
 describe('Feature Flag Integration', () => {
   it('should allow feature flag control from settings', () => {
-    type RuntimeType = 'webcontainer' | 'browser';
-    const runtimeTypeStore = atom<RuntimeType>('webcontainer');
+    type RuntimeType = 'browser' | 'bavini-container';
+    const runtimeTypeStore = atom<RuntimeType>('browser');
 
     // Simulate settings store
     interface Settings {
       buildEngine: RuntimeType;
     }
 
-    const settingsStore = atom<Settings>({ buildEngine: 'webcontainer' });
+    const settingsStore = atom<Settings>({ buildEngine: 'browser' });
 
     // Sync runtime type with settings
     const unsubscribe = settingsStore.subscribe((settings) => {
@@ -248,15 +249,15 @@ describe('Feature Flag Integration', () => {
     });
 
     // Change setting
-    settingsStore.set({ buildEngine: 'browser' });
+    settingsStore.set({ buildEngine: 'bavini-container' });
 
-    expect(runtimeTypeStore.get()).toBe('browser');
+    expect(runtimeTypeStore.get()).toBe('bavini-container');
 
     unsubscribe();
   });
 
   it('should persist runtime choice', () => {
-    type RuntimeType = 'webcontainer' | 'browser';
+    type RuntimeType = 'browser' | 'bavini-container';
 
     // Simulate localStorage
     const storage: Record<string, string> = {};
@@ -266,52 +267,53 @@ describe('Feature Flag Integration', () => {
     };
 
     const loadRuntimeType = (): RuntimeType => {
-      return (storage['runtime-type'] as RuntimeType) || 'webcontainer';
+      return (storage['runtime-type'] as RuntimeType) || 'browser';
     };
 
-    saveRuntimeType('browser');
-    expect(loadRuntimeType()).toBe('browser');
+    saveRuntimeType('bavini-container');
+    expect(loadRuntimeType()).toBe('bavini-container');
 
     // Clear
     delete storage['runtime-type'];
-    expect(loadRuntimeType()).toBe('webcontainer');
+    expect(loadRuntimeType()).toBe('browser');
   });
 });
 
 describe('Graceful Degradation', () => {
-  it('should fallback to webcontainer if browser runtime fails', async () => {
-    type RuntimeType = 'webcontainer' | 'browser';
-    const runtimeTypeStore = atom<RuntimeType>('webcontainer');
-    let currentAdapter: { name: string } | null = null;
+  it('should handle runtime initialization failure gracefully', async () => {
+    type RuntimeType = 'browser' | 'bavini-container';
+    const runtimeTypeStore = atom<RuntimeType>('browser');
+    let initAttempts = 0;
 
     const createAdapter = async (type: RuntimeType) => {
-      if (type === 'browser') {
-        throw new Error('esbuild-wasm failed to load');
+      initAttempts++;
+
+      // Simulate first attempt failing, second succeeding (retry logic)
+      if (initAttempts === 1 && type === 'bavini-container') {
+        throw new Error('OPFS initialization failed');
       }
 
-      return { name: 'WebContainer' };
+      return { name: type === 'browser' ? 'BrowserBuild' : 'BaviniContainer' };
     };
 
     const initRuntime = async () => {
       const type = runtimeTypeStore.get();
 
       try {
-        currentAdapter = await createAdapter(type);
+        return await createAdapter(type);
       } catch (_error) {
-        // Fallback to webcontainer
-        console.warn('Browser runtime failed, falling back to WebContainer');
-        runtimeTypeStore.set('webcontainer');
-        currentAdapter = await createAdapter('webcontainer');
+        // Fallback to browser runtime
+        console.warn('Runtime initialization failed, falling back to browser');
+        runtimeTypeStore.set('browser');
+        return await createAdapter('browser');
       }
-
-      return currentAdapter;
     };
 
-    // Try browser first
-    runtimeTypeStore.set('browser');
+    // Try bavini-container first (will fail)
+    runtimeTypeStore.set('bavini-container');
     const adapter = await initRuntime();
 
-    expect(adapter.name).toBe('WebContainer');
-    expect(runtimeTypeStore.get()).toBe('webcontainer');
+    expect(adapter.name).toBe('BrowserBuild');
+    expect(runtimeTypeStore.get()).toBe('browser');
   });
 });

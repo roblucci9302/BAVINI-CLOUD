@@ -67,8 +67,8 @@ interface FilePreview {
 }
 
 interface BaseChatProps {
-  textareaRef?: React.RefObject<HTMLTextAreaElement | null> | undefined;
-  fileInputRef?: React.RefObject<HTMLInputElement | null> | undefined;
+  textareaRef?: React.RefObject<HTMLTextAreaElement> | undefined;
+  fileInputRef?: React.RefObject<HTMLInputElement> | undefined;
   messageRef?: RefCallback<HTMLDivElement> | undefined;
   scrollRef?: RefCallback<HTMLDivElement> | undefined;
   showChat?: boolean;

@@ -15,7 +15,7 @@ import { createExploreAgent, ExploreAgent } from '../agents/explore-agent';
 import { createCoderAgent, CoderAgent } from '../agents/coder-agent';
 import { createTesterAgent, TesterAgent } from '../agents/tester-agent';
 import { createFixerAgent, FixerAgent } from '../agents/fixer-agent';
-import { createMockFileSystem } from '../utils/webcontainer-adapter';
+import { createMockFileSystem } from '../utils/mock-filesystem';
 import { createMockWritableFileSystem } from '../tools/write-tools';
 import { createMockTestRunner } from '../tools/test-tools';
 import { createSwarmCoordinator, PREDEFINED_RULES } from '../utils/swarm-coordinator';

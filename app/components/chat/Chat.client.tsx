@@ -63,11 +63,19 @@ const loadToastCss = () => {
 import { AgentChatIntegration, UserQuestionModal } from '~/components/agent';
 import { PlanPreview, PlanModeFloatingIndicator } from '~/components/plan';
 import { TaskProgress, TaskProgressIndicatorFloating } from '~/components/todos';
+import { AuthModal } from '~/components/auth/AuthModal';
 import { useMessageParser, usePromptEnhancer, useShortcuts, useSnapScroll } from '~/lib/hooks';
 import { useChatHistory } from '~/lib/persistence';
 import { chatStore } from '~/lib/stores/chat';
 import { workbenchStore } from '~/lib/stores/workbench';
+import { canMakeRequest, incrementRequestCount, remainingRequestsStore } from '~/lib/stores/auth';
+import { isSupabaseConfigured } from '~/lib/supabase/client';
 import { fileModificationsToHTML } from '~/utils/diff';
+import {
+  createUserFriendlyError,
+  formatErrorForToast,
+  getUserFriendlyErrorFromStatus,
+} from '~/lib/errors/user-messages';
 import { cubicEasingFn } from '~/utils/easings';
 import { createScopedLogger, renderLogger } from '~/utils/logger';
 import { BaseChat } from './BaseChat';
@@ -512,6 +520,9 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
   const [editingMessageIndex, setEditingMessageIndex] = useState<number | null>(null);
   const [editingMessageContent, setEditingMessageContent] = useState('');
 
+  // Auth modal state
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
   const { showChat, mode } = useStore(chatStore);
   const multiAgentEnabled = useStore(multiAgentEnabledStore);
 
@@ -809,6 +820,13 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
         return;
       }
 
+      // Auth check (only if Supabase is configured)
+      if (isSupabaseConfigured() && !canMakeRequest()) {
+        // Show auth modal instead of toast
+        setShowAuthModal(true);
+        return;
+      }
+
       await workbenchStore.saveAllFiles();
 
       const fileModifications = workbenchStore.getFileModifications();
@@ -873,7 +891,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
           setSelectedFiles([]);
         } catch (error) {
           logger.error('Error converting files to base64:', error);
-          toast.error('Erreur lors du traitement des images');
+          toast.error('Erreur lors du traitement des images. Vérifiez que vos fichiers sont valides et réessayez.');
 
           return;
         }
@@ -933,7 +951,28 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
         });
 
         if (!response.ok) {
-          throw new Error(`API error: ${response.statusText}`);
+          // Get retry-after header for rate limiting
+          const retryAfter = response.headers.get('Retry-After');
+          const retryAfterSeconds = retryAfter ? parseInt(retryAfter, 10) : undefined;
+
+          // Try to get error details from response body
+          let errorMessage = response.statusText;
+          try {
+            const errorBody = await response.json() as { error?: { message?: string } | string };
+            if (typeof errorBody.error === 'object' && errorBody.error?.message) {
+              errorMessage = errorBody.error.message;
+            } else if (typeof errorBody.error === 'string') {
+              errorMessage = errorBody.error;
+            }
+          } catch {
+            // Ignore JSON parsing errors
+          }
+
+          // Create user-friendly error
+          const friendlyError = getUserFriendlyErrorFromStatus(response.status, errorMessage, retryAfterSeconds);
+          toast.error(formatErrorForToast(friendlyError));
+
+          throw new Error(`API error: ${response.status} - ${errorMessage}`);
         }
 
         const reader = response.body?.getReader();
@@ -998,7 +1037,8 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
                     updateAgentStatus(parsed.agent, parsed.status);
                   } else if (parsed.type === 'error') {
                     logger.error('Agent error:', parsed.error);
-                    toast.error(parsed.error || "Erreur de l'agent");
+                    const friendlyError = createUserFriendlyError({ code: 'AGENT_001', message: parsed.error });
+                    toast.error(formatErrorForToast(friendlyError));
                   }
                 } catch (e) {
                   // Log parsing errors for debugging
@@ -1137,6 +1177,11 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
         // Store in history
         storeMessageHistory([...messages, userMessage, assistantMessage]).catch((error) => toast.error(error.message));
 
+        // Increment rate limit counter on successful response
+        if (isSupabaseConfigured()) {
+          incrementRequestCount();
+        }
+
         if (multiAgentEnabled) {
           // Utiliser 'completed' pour déclencher le retrait différé (visible 1.5s)
           updateAgentStatus('orchestrator', 'completed');
@@ -1154,7 +1199,8 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
         } else {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
           logger.error('Request failed:', errorMessage);
-          toast.error('Une erreur est survenue lors du traitement de votre demande');
+          const friendlyError = createUserFriendlyError(error);
+          toast.error(formatErrorForToast(friendlyError));
 
           if (multiAgentEnabled) {
             updateAgentStatus('orchestrator', 'failed');
@@ -1412,6 +1458,13 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
         messageIndex={editingMessageIndex ?? 0}
         onSave={handleSaveEdit}
         onCancel={handleCancelEdit}
+      />
+
+      {/* Auth Modal - shown when user tries to send without being logged in */}
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        message="Créez un compte gratuit pour commencer à générer du code"
       />
     </>
   );

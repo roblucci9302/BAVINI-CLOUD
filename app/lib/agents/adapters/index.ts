@@ -1,43 +1,44 @@
 /**
+ * =============================================================================
  * Exports des adaptateurs pour le système d'agents BAVINI
+ * =============================================================================
+ *
+ * Tous les adaptateurs utilisent maintenant le runtime BAVINI natif.
+ * WebContainer a été complètement supprimé.
+ * =============================================================================
  */
 
-// WebContainer Adapter
+// BAVINI Filesystem Adapter
 export {
-  WebContainerAdapter,
-  createWebContainerAdapter,
-  getAdapterForAgent,
-  resetAllAdapters,
-  type AdapterConfig,
+  BaviniFSAdapter,
+  createBaviniFSAdapter,
+  type BaviniFSConfig,
   type FileReadResult,
   type DirectoryListResult,
   type DirectoryEntry,
-  type ShellResult,
-} from './webcontainer-adapter';
+} from './bavini-fs-adapter';
 
-// File Operations Adapter
+// BAVINI Shell Adapter
 export {
-  FileOperationsAdapter,
-  createFileOperationsAdapter,
+  BaviniShellAdapter,
+  createBaviniShellAdapter,
+  type BaviniShellConfig,
+  type ShellResult,
+  type NpmRunOptions,
+  type NpmInstallOptions,
+  type GitCommandOptions,
+} from './bavini-shell-adapter';
+
+// BAVINI File Operations Adapter
+export {
+  BaviniFileOperationsAdapter,
+  createBaviniFileOperationsAdapter,
   type GlobOptions,
   type GrepOptions,
   type GrepMatch,
   type EditOperation,
   type FileInfo,
-} from './file-operations-adapter';
-
-// Shell Adapter
-export {
-  ShellAdapter,
-  createShellAdapter,
-  getShellAdapterForAgent,
-  resetAllShellAdapters,
-  type ShellConfig,
-  type ProcessHandle,
-  type NpmRunOptions,
-  type NpmInstallOptions,
-  type GitCommandOptions,
-} from './shell-adapter';
+} from './bavini-file-operations-adapter';
 
 // Agent Executor
 export {
@@ -48,3 +49,27 @@ export {
   type ToolCallRequest,
   type ExecutionContext,
 } from './agent-executor';
+
+// Adapter Factory (point d'entrée principal)
+export {
+  createFSAdapter,
+  createShellAdapter,
+  createFileOperationsAdapter,
+  getFSAdapterForAgent,
+  getShellAdapterForAgent,
+  getFileOperationsAdapterForAgent,
+  getActiveRuntime,
+  setRuntimeOverride,
+  resetRuntimeCache,
+  resetFSAdapters,
+  resetShellAdapters,
+  resetFileOperationsAdapters,
+  resetAllAdaptersAndCache,
+  type RuntimeType,
+  type CommonAdapterConfig,
+  type FSAdapterFactoryConfig,
+  type ShellAdapterFactoryConfig,
+  type IFSAdapter,
+  type IShellAdapter,
+  type IFileOperationsAdapter,
+} from './adapter-factory';

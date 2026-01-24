@@ -121,7 +121,7 @@ export class StreamingSSREngine {
     return new ReadableStream<StreamingChunk>({
       start: (controller) => {
         this._activeStreams.set(streamId, controller);
-        this._status = 'running';
+        this._status = 'executing';
 
         // Set timeout
         const timeoutId = setTimeout(() => {
@@ -215,7 +215,7 @@ export class StreamingSSREngine {
     return new ReadableStream<StreamingChunk>({
       start: async (controller) => {
         this._activeStreams.set(streamId, controller);
-        this._status = 'running';
+        this._status = 'executing';
 
         const timeoutId = setTimeout(() => {
           logger.warn(`Stream ${streamId} timed out after ${timeoutMs}ms`);

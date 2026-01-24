@@ -48,8 +48,7 @@ export type {
 // Adapter interface
 export { type RuntimeAdapter, BaseRuntimeAdapter } from './adapter';
 
-// Adapters
-export { WebContainerAdapter, createWebContainerAdapter } from './adapters/webcontainer-adapter';
+// Adapters (BAVINI Runtime only - WebContainer has been removed)
 export {
   BrowserBuildAdapter,
   createBrowserBuildAdapter,

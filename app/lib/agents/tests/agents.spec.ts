@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { AgentRegistry } from '../core/agent-registry';
 import { ExploreAgent, createExploreAgent } from '../agents/explore-agent';
 import { Orchestrator, createOrchestrator } from '../agents/orchestrator';
-import { createMockFileSystem } from '../utils/webcontainer-adapter';
+import { createMockFileSystem } from '../utils/mock-filesystem';
 import type { Task, AgentStatus } from '../types';
 
 // Mock du client Anthropic

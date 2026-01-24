@@ -1,3 +1,8 @@
+/**
+ * Route index - Interface Chat principale
+ * Le produit EST la landing page
+ */
+
 import { json } from '@remix-run/cloudflare';
 import type { MetaFunction } from '@remix-run/react';
 import { lazy, Suspense, useState, useEffect } from 'react';
@@ -7,6 +12,8 @@ import { Chat } from '~/components/chat/Chat.client';
 import { Header } from '~/components/header/Header';
 import { SkipLink } from '~/components/ui/SkipLink';
 import { ErrorBoundary, MinimalErrorFallback } from '~/components/ui/ErrorBoundary';
+// DISABLED: Auth system temporarily disabled for development
+// import { initAuth } from '~/lib/stores/auth';
 
 // Lazy load AgentSystemProvider - only load when needed
 const AgentSystemProvider = lazy(() =>
@@ -15,8 +22,8 @@ const AgentSystemProvider = lazy(() =>
 
 export const meta: MetaFunction = () => {
   return [
-    { title: 'BAVINI' },
-    { name: 'description', content: 'Discutez avec BAVINI, votre assistant IA de développement web' },
+    { title: 'BAVINI - Créez des applications web avec l\'IA' },
+    { name: 'description', content: 'Décrivez ce que vous voulez créer. BAVINI génère le code, vous montre un aperçu en temps réel, et vous permet d\'itérer instantanément.' },
   ];
 };
 
@@ -45,6 +52,16 @@ function DeferredAgentProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+// DISABLED: Auth system temporarily disabled for development
+// Initialize auth on client side
+// function AuthInitializer({ children }: { children: React.ReactNode }) {
+//   useEffect(() => {
+//     initAuth();
+//   }, []);
+//
+//   return <>{children}</>;
+// }
+
 export default function Index() {
   return (
     <div className="flex flex-col h-full w-full">
@@ -55,9 +72,12 @@ export default function Index() {
       <main id="main-content" tabIndex={-1} className="flex-1 overflow-hidden">
         <ClientOnly fallback={<BaseChat />}>
           {() => (
-            <DeferredAgentProvider>
-              <Chat />
-            </DeferredAgentProvider>
+            // DISABLED: AuthInitializer temporarily disabled for development
+            // <AuthInitializer>
+              <DeferredAgentProvider>
+                <Chat />
+              </DeferredAgentProvider>
+            // </AuthInitializer>
           )}
         </ClientOnly>
       </main>

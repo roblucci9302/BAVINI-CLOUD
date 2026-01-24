@@ -32,10 +32,4 @@ export default defineConfig({
   optimizeDeps: {
     include: ['react', 'react-dom', '@supabase/supabase-js'],
   },
-  test: {
-    globals: true,
-    environment: 'jsdom',
-    setupFiles: ['./src/test/setup.ts'],
-    include: ['src/**/*.{test,spec}.{ts,tsx}'],
-  },
 });

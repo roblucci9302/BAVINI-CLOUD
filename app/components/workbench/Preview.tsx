@@ -5,7 +5,7 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
 import { IconButton } from '~/components/ui/IconButton';
 import { workbenchStore } from '~/lib/stores/workbench';
-import { previewErrorStore } from '~/lib/stores/previews';
+import { previewErrorStore, type PreviewInfo } from '~/lib/stores/previews';
 import { isShellRunning } from '~/lib/runtime/action-runner';
 import { PortDropdown } from './PortDropdown';
 import { DeviceSelector } from './DeviceSelector';
@@ -586,7 +586,7 @@ export const Preview = memo(() => {
                   {previews.length} port{previews.length > 1 ? 's' : ''} disponible{previews.length > 1 ? 's' : ''}
                 </p>
                 <div className="flex flex-wrap justify-center gap-2">
-                  {previews.map((preview, index) => (
+                  {previews.map((preview: PreviewInfo, index: number) => (
                     <button
                       key={preview.port}
                       onClick={() => setActivePreviewIndex(index)}

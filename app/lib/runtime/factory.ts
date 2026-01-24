@@ -3,13 +3,14 @@
  * BAVINI CLOUD - Runtime Factory
  * =============================================================================
  * Factory pour créer et gérer les instances de RuntimeAdapter.
- * Permet de switcher entre WebContainer et BrowserBuild via feature flag.
+ *
+ * NOTE: WebContainer has been removed. BAVINI uses only browser-based runtime
+ * with OPFS filesystem and esbuild-wasm for builds.
  * =============================================================================
  */
 
 import { atom, type WritableAtom } from 'nanostores';
 import type { RuntimeAdapter } from './adapter';
-import { WebContainerAdapter } from './adapters/webcontainer-adapter';
 import { BrowserBuildAdapter } from './adapters/browser-build-adapter';
 import { createScopedLogger } from '~/utils/logger';
 
@@ -18,18 +19,20 @@ const logger = createScopedLogger('RuntimeFactory');
 /**
  * Types de runtime disponibles.
  *
- * - 'webcontainer': Full Node.js environment via WebContainer (StackBlitz)
- * - 'browser': Client-side bundling with esbuild-wasm
- * - 'bavini-container': OPFS filesystem + browser terminal (Phase 1)
+ * - 'browser': Client-side bundling with esbuild-wasm (default)
+ * - 'bavini-container': OPFS filesystem + browser terminal
+ *
+ * NOTE: 'webcontainer' has been removed - BAVINI uses native browser runtime only.
  */
-export type RuntimeType = 'webcontainer' | 'browser' | 'bavini-container';
+export type RuntimeType = 'browser' | 'bavini-container';
 
 /**
  * Feature flag pour choisir le runtime.
  *
- * - 'webcontainer': Utilise WebContainer (StackBlitz) - comportement actuel
- * - 'browser': Utilise esbuild-wasm dans le browser - nouveau système
- * - 'bavini-container': OPFS filesystem + browser terminal (Phase 1)
+ * - 'browser': Utilise esbuild-wasm dans le browser (default)
+ * - 'bavini-container': OPFS filesystem + browser terminal
+ *
+ * NOTE: 'webcontainer' has been removed from BAVINI.
  *
  * @default 'browser'
  */
@@ -57,14 +60,11 @@ export function createRuntimeAdapter(type: RuntimeType): RuntimeAdapter {
   logger.info(`Creating runtime adapter: ${type}`);
 
   switch (type) {
-    case 'webcontainer':
-      return new WebContainerAdapter();
-
     case 'browser':
       return new BrowserBuildAdapter();
 
     case 'bavini-container':
-      // For Phase 1, bavini-container uses the same build system as browser
+      // bavini-container uses the same build system as browser
       // but with OPFS filesystem and BrowserTerminalStore for terminal
       // The terminal integration is handled separately via BrowserTerminalStore
       return new BrowserBuildAdapter();
@@ -232,23 +232,19 @@ export function isBaviniContainerAvailable(): boolean {
 export function getRuntimeInfo(): {
   current: RuntimeType;
   available: RuntimeType[];
-  webcontainer: { available: boolean; reason?: string };
   browser: { available: boolean; reason?: string };
   'bavini-container': { available: boolean; reason?: string };
 } {
   const browserAvailable = isBrowserRuntimeAvailable();
   const baviniAvailable = isBaviniContainerAvailable();
 
-  const available: RuntimeType[] = ['webcontainer'];
+  const available: RuntimeType[] = [];
   if (browserAvailable) available.push('browser');
   if (baviniAvailable) available.push('bavini-container');
 
   return {
     current: runtimeTypeStore.get(),
     available,
-    webcontainer: {
-      available: true,
-    },
     browser: {
       available: browserAvailable,
       reason: browserAvailable ? undefined : 'Not available in server environment',

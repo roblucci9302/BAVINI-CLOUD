@@ -50,6 +50,7 @@ vi.mock('~/lib/stores/agents', () => ({
 // Mock adapters
 const mockReadFile = vi.fn();
 const mockWriteFile = vi.fn();
+const mockCreateFile = vi.fn();
 const mockDeleteFile = vi.fn();
 const mockListDirectory = vi.fn();
 const mockGlob = vi.fn();
@@ -61,26 +62,21 @@ const mockNpmTest = vi.fn();
 const mockNpmBuild = vi.fn();
 const mockGitCommand = vi.fn();
 
-vi.mock('./webcontainer-adapter', () => ({
-  WebContainerAdapter: vi.fn(),
-  createWebContainerAdapter: vi.fn(() => ({
+// Mock the adapter factory (BAVINI adapters)
+vi.mock('./adapter-factory', () => ({
+  createFSAdapter: vi.fn(() => ({
     writeFile: mockWriteFile,
+    createFile: mockCreateFile,
     deleteFile: mockDeleteFile,
     listDirectory: mockListDirectory,
+    readFile: vi.fn(),
+    exists: vi.fn(),
+    stat: vi.fn(),
+    createDirectory: vi.fn(),
+    deleteDirectory: vi.fn(),
+    copyFile: vi.fn(),
+    rename: vi.fn(),
   })),
-}));
-
-vi.mock('./file-operations-adapter', () => ({
-  FileOperationsAdapter: vi.fn(),
-  createFileOperationsAdapter: vi.fn(() => ({
-    readFile: mockReadFile,
-    glob: mockGlob,
-    grep: mockGrep,
-  })),
-}));
-
-vi.mock('./shell-adapter', () => ({
-  ShellAdapter: vi.fn(),
   createShellAdapter: vi.fn(() => ({
     executeCommand: mockExecuteCommand,
     npmInstall: mockNpmInstall,
@@ -88,7 +84,26 @@ vi.mock('./shell-adapter', () => ({
     npmTest: mockNpmTest,
     npmBuild: mockNpmBuild,
     gitCommand: mockGitCommand,
+    gitStatus: vi.fn(),
+    gitDiff: vi.fn(),
+    gitAdd: vi.fn(),
+    gitCommit: vi.fn(),
+    getCwd: vi.fn(() => '/'),
+    setCwd: vi.fn(),
+    getEnv: vi.fn(() => ({})),
+    setEnv: vi.fn(),
   })),
+  createFileOperationsAdapter: vi.fn(() => ({
+    readFile: mockReadFile,
+    readFiles: vi.fn(),
+    glob: mockGlob,
+    grep: mockGrep,
+    getFileInfo: vi.fn(),
+    clearCache: vi.fn(),
+    invalidateCache: vi.fn(),
+  })),
+  getActiveRuntime: vi.fn(() => 'browser'),
+  resetAllAdaptersAndCache: vi.fn(),
 }));
 
 describe('AgentExecutor', () => {
@@ -110,6 +125,7 @@ describe('AgentExecutor', () => {
     // Reset all mock implementations to return success by default
     mockReadFile.mockResolvedValue({ success: true, output: 'file content' });
     mockWriteFile.mockResolvedValue({ success: true, output: null });
+    mockCreateFile.mockResolvedValue({ success: true, output: null });
     mockDeleteFile.mockResolvedValue({ success: true, output: null });
     mockListDirectory.mockResolvedValue({ success: true, output: ['file1.ts', 'file2.ts'] });
     mockGlob.mockResolvedValue({ success: true, output: ['src/index.ts'] });
@@ -212,7 +228,7 @@ describe('AgentExecutor', () => {
     });
 
     describe('create_file tool', () => {
-      it('should execute create_file tool (alias for write_file)', async () => {
+      it('should execute create_file tool', async () => {
         const request: ToolCallRequest = {
           name: 'create_file',
           input: { path: '/src/created.ts', content: 'export {}' },
@@ -221,7 +237,7 @@ describe('AgentExecutor', () => {
         const result = await executor.executeTool(request, context);
 
         expect(result.success).toBe(true);
-        expect(mockWriteFile).toHaveBeenCalledWith('/src/created.ts', 'export {}');
+        expect(mockCreateFile).toHaveBeenCalledWith('/src/created.ts', 'export {}');
       });
     });
 
@@ -970,7 +986,7 @@ describe('AgentExecutor', () => {
 
   describe('adapter caching', () => {
     it('should reuse adapters for the same agent', async () => {
-      const { createFileOperationsAdapter } = await import('./file-operations-adapter');
+      const { createFileOperationsAdapter } = await import('./adapter-factory');
 
       const context: ExecutionContext = {
         agentName: 'coder',
@@ -984,7 +1000,7 @@ describe('AgentExecutor', () => {
     });
 
     it('should create separate adapters for different agents', async () => {
-      const { createFileOperationsAdapter } = await import('./file-operations-adapter');
+      const { createFileOperationsAdapter } = await import('./adapter-factory');
 
       await executor.executeTool({ name: 'read_file', input: { path: '/a.ts' } }, { agentName: 'coder' });
 

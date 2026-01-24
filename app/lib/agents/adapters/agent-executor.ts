@@ -19,9 +19,15 @@ import {
   type FileModifyDetails,
   type FileDeleteDetails,
 } from '../security/action-validator';
-import { WebContainerAdapter, createWebContainerAdapter } from './webcontainer-adapter';
-import { FileOperationsAdapter, createFileOperationsAdapter } from './file-operations-adapter';
-import { ShellAdapter, createShellAdapter } from './shell-adapter';
+// BAVINI Adapters via Factory
+import {
+  createFSAdapter,
+  createShellAdapter,
+  createFileOperationsAdapter,
+  type IFSAdapter,
+  type IShellAdapter,
+  type IFileOperationsAdapter,
+} from './adapter-factory';
 import {
   pendingBatchStore,
   approvalModalOpenStore,
@@ -93,9 +99,9 @@ export class AgentExecutor {
   private adapters: Map<
     AgentType,
     {
-      wc: WebContainerAdapter;
-      files: FileOperationsAdapter;
-      shell: ShellAdapter;
+      fs: IFSAdapter;
+      files: IFileOperationsAdapter;
+      shell: IShellAdapter;
     }
   > = new Map();
 
@@ -173,7 +179,7 @@ export class AgentExecutor {
           break;
 
         case 'list_directory':
-          result = await adapters.wc.listDirectory(input.path as string);
+          result = await adapters.fs.listDirectory(input.path as string);
           break;
 
         case 'glob':
@@ -196,18 +202,21 @@ export class AgentExecutor {
           });
           break;
 
-        // Write operations - go through WebContainerAdapter with its own approval flow
+        // Write operations - go through FSAdapter with its own approval flow
         case 'write_file':
+          result = await adapters.fs.writeFile(input.path as string, input.content as string);
+          break;
+
         case 'create_file':
-          result = await adapters.wc.writeFile(input.path as string, input.content as string);
+          result = await adapters.fs.createFile(input.path as string, input.content as string);
           break;
 
         case 'edit_file':
-          result = await adapters.wc.writeFile(input.path as string, input.newContent as string);
+          result = await adapters.fs.writeFile(input.path as string, input.newContent as string);
           break;
 
         case 'delete_file':
-          result = await adapters.wc.deleteFile(input.path as string);
+          result = await adapters.fs.deleteFile(input.path as string);
           break;
 
         // Shell commands
@@ -379,6 +388,7 @@ export class AgentExecutor {
 
   /**
    * Get or create adapters for an agent
+   * Uses the adapter factory to create appropriate adapters based on runtime
    */
   private getAdaptersForAgent(agentName: AgentType, taskId?: string) {
     let adapters = this.adapters.get(agentName);
@@ -389,8 +399,11 @@ export class AgentExecutor {
         return this.requestBatchApproval(batch);
       };
 
+      // Use the unified adapter factory
+      // This will create BAVINI adapters (browser runtime) or WebContainer adapters
+      // based on the current runtime configuration
       adapters = {
-        wc: createWebContainerAdapter({
+        fs: createFSAdapter({
           agentName,
           taskId,
           strictMode: this.config.controlMode === 'strict',

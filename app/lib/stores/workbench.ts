@@ -51,32 +51,9 @@ async function yieldToEventLoop(): Promise<void> {
 }
 
 // Lazy imports to avoid circular dependencies and conditional loading
-async function getWebContainerModule() {
-  const { webcontainer } = await import('~/lib/webcontainer');
-  return webcontainer;
-}
-
-async function getWebContainerFilesStore() {
-  const { FilesStore } = await import('./files');
-  const webcontainer = await getWebContainerModule();
-  return new FilesStore(webcontainer);
-}
-
-async function getWebContainerActionRunner() {
-  const { ActionRunner } = await import('~/lib/runtime/action-runner');
-  const webcontainer = await getWebContainerModule();
-  return new ActionRunner(webcontainer);
-}
-
 async function getBrowserActionRunner() {
   const { BrowserActionRunner } = await import('~/lib/runtime/browser-action-runner');
   return new BrowserActionRunner();
-}
-
-async function getTerminalStore() {
-  const { TerminalStore } = await import('./terminal');
-  const webcontainer = await getWebContainerModule();
-  return new TerminalStore(webcontainer);
 }
 
 async function getBrowserBuildService() {
@@ -141,8 +118,8 @@ async function loadFilesFromCheckpointHelper(currentChatId: string): Promise<voi
   }
 }
 
-// Union type for action runners
-type ActionRunnerType = Awaited<ReturnType<typeof getWebContainerActionRunner>> | Awaited<ReturnType<typeof getBrowserActionRunner>>;
+// Union type for action runners (browser-only in BAVINI)
+type ActionRunnerType = Awaited<ReturnType<typeof getBrowserActionRunner>>;
 
 export interface ArtifactState {
   id: string;
@@ -158,10 +135,8 @@ type Artifacts = MapStore<Record<string, ArtifactState>>;
 export type WorkbenchViewType = 'code' | 'preview';
 
 export class WorkbenchStore {
-  // Stores - initialized lazily based on runtime mode
+  // Stores - initialized lazily (browser mode only in BAVINI)
   #previewsStore: PreviewsStore | null = null;
-  #webContainerFilesStore: Awaited<ReturnType<typeof getWebContainerFilesStore>> | null = null;
-  #terminalStore: Awaited<ReturnType<typeof getTerminalStore>> | null = null;
   #editorStore: EditorStore | null = null;
 
   #initialized = false;
@@ -237,7 +212,7 @@ export class WorkbenchStore {
   }
 
   /**
-   * Initialize runtime and related stores based on mode.
+   * Initialize runtime and related stores (browser mode only in BAVINI).
    */
   async #initRuntime(): Promise<void> {
     if (this.#initialized) {
@@ -248,11 +223,8 @@ export class WorkbenchStore {
 
     logger.info(`Initializing workbench with runtime type: ${this.#runtimeType}`);
 
-    if (this.#runtimeType === 'browser') {
-      await this.#initBrowserMode();
-    } else {
-      await this.#initWebContainerMode();
-    }
+    // BAVINI uses browser mode only
+    await this.#initBrowserMode();
   }
 
   /**
@@ -406,59 +378,6 @@ export class WorkbenchStore {
     }
 
     await this.#executeBrowserBuild();
-  }
-
-  /**
-   * Initialize WebContainer mode (legacy).
-   */
-  async #initWebContainerMode(): Promise<void> {
-    logger.info('Initializing WebContainer Mode...');
-
-    // Initialize WebContainer-based stores
-    this.#webContainerFilesStore = await getWebContainerFilesStore();
-    this.#webContainerFilesStore.init();
-
-    // Sync files to stable atom (track for cleanup)
-    const filesCleanup = this.#webContainerFilesStore.files.subscribe((files) => {
-      this.#filesAtom.set(files);
-    });
-    this.#cleanupFunctions.push(filesCleanup);
-
-    this.#editorStore = new EditorStore(this.#webContainerFilesStore as any);
-
-    const webcontainer = await getWebContainerModule();
-    this.#previewsStore = new PreviewsStore(webcontainer);
-    this.#previewsStore.setMode('webcontainer');
-    this.#previewsStore.init();
-
-    // Sync previews from store to stable atom (track for cleanup)
-    const previewsCleanup = this.#previewsStore.previews.subscribe((previews) => {
-      this.#previewsAtom.set(previews);
-    });
-    this.#cleanupFunctions.push(previewsCleanup);
-
-    // Sync editor store's atoms with stable atoms (track for cleanup)
-    if (this.#editorStore) {
-      const selectedFileCleanup = this.#editorStore.selectedFile.subscribe((filePath) => {
-        this.#selectedFileAtom.set(filePath);
-      });
-      this.#cleanupFunctions.push(selectedFileCleanup);
-
-      const currentDocCleanup = this.#editorStore.currentDocument.subscribe((doc) => {
-        this.#currentDocumentAtom.set(doc);
-      });
-      this.#cleanupFunctions.push(currentDocCleanup);
-    }
-
-    this.#terminalStore = await getTerminalStore();
-
-    // Sync terminal visibility (track for cleanup)
-    if (this.#terminalStore.showTerminal) {
-      const terminalCleanup = this.#terminalStore.showTerminal.subscribe((show) => {
-        this.#showTerminalAtom.set(show);
-      });
-      this.#cleanupFunctions.push(terminalCleanup);
-    }
   }
 
   /**
@@ -950,37 +869,25 @@ export class WorkbenchStore {
   }
 
   get filesCount(): number {
-    if (this.#runtimeType === 'browser') {
-      return browserFilesStore.filesCount;
-    }
-    return this.#webContainerFilesStore?.filesCount ?? 0;
+    return browserFilesStore.filesCount;
   }
 
   get showTerminal() {
     return this.#showTerminalAtom;
   }
 
-  toggleTerminal(value?: boolean) {
-    if (this.#runtimeType === 'browser') {
-      logger.debug('Terminal not available in browser mode');
-      return;
-    }
-
-    const newValue = value ?? !this.#showTerminalAtom.get();
-    this.#showTerminalAtom.set(newValue);
-    this.#terminalStore?.toggleTerminal(newValue);
+  toggleTerminal(_value?: boolean) {
+    // Terminal not available in BAVINI browser mode
+    logger.debug('Terminal not available in browser mode');
   }
 
-  attachTerminal(terminal: ITerminal) {
-    if (this.#runtimeType === 'browser') {
-      logger.debug('Terminal not available in browser mode');
-      return;
-    }
-    this.#terminalStore?.attachTerminal(terminal);
+  attachTerminal(_terminal: ITerminal) {
+    // Terminal not available in BAVINI browser mode
+    logger.debug('Terminal not available in browser mode');
   }
 
-  onTerminalResize(cols: number, rows: number) {
-    this.#terminalStore?.onTerminalResize(cols, rows);
+  onTerminalResize(_cols: number, _rows: number) {
+    // Terminal not available in BAVINI browser mode
   }
 
   setDocuments(files: FileMap) {
@@ -1008,8 +915,7 @@ export class WorkbenchStore {
       return;
     }
 
-    const filesStore = this.#runtimeType === 'browser' ? browserFilesStore : this.#webContainerFilesStore;
-    const originalContent = filesStore?.getFile(filePath)?.content;
+    const originalContent = browserFilesStore.getFile(filePath)?.content;
     const unsavedChanges = originalContent !== undefined && originalContent !== newContent;
 
     this.#editorStore?.updateFile(filePath, newContent);
@@ -1066,13 +972,9 @@ export class WorkbenchStore {
       return;
     }
 
-    if (this.#runtimeType === 'browser') {
-      await browserFilesStore.saveFile(filePath, document.value);
-      // Trigger a debounced build after manual file save
-      this.#triggerBrowserBuild();
-    } else {
-      await this.#webContainerFilesStore?.saveFile(filePath, document.value);
-    }
+    await browserFilesStore.saveFile(filePath, document.value);
+    // Trigger a debounced build after manual file save
+    this.#triggerBrowserBuild();
 
     const newUnsavedFiles = new Set(this.unsavedFiles.get());
     newUnsavedFiles.delete(filePath);
@@ -1097,8 +999,7 @@ export class WorkbenchStore {
     }
 
     const { filePath } = currentDocument;
-    const filesStore = this.#runtimeType === 'browser' ? browserFilesStore : this.#webContainerFilesStore;
-    const file = filesStore?.getFile(filePath);
+    const file = browserFilesStore.getFile(filePath);
 
     if (!file) {
       return;
@@ -1114,53 +1015,33 @@ export class WorkbenchStore {
   }
 
   getFileModifications() {
-    if (this.#runtimeType === 'browser') {
-      return browserFilesStore.getFileModifications();
-    }
-    return this.#webContainerFilesStore?.getFileModifications() ?? [];
+    return browserFilesStore.getFileModifications();
   }
 
   resetAllFileModifications() {
-    if (this.#runtimeType === 'browser') {
-      browserFilesStore.resetFileModifications();
-    } else {
-      this.#webContainerFilesStore?.resetFileModifications();
-    }
+    browserFilesStore.resetFileModifications();
   }
 
   getOriginalContent(filePath: string): string | undefined {
-    if (this.#runtimeType === 'browser') {
-      return browserFilesStore.getOriginalContent(filePath);
-    }
-    return this.#webContainerFilesStore?.getOriginalContent(filePath);
+    return browserFilesStore.getOriginalContent(filePath);
   }
 
   isFileModified(filePath: string): boolean {
-    if (this.#runtimeType === 'browser') {
-      return browserFilesStore.isFileModified(filePath);
-    }
-    return this.#webContainerFilesStore?.isFileModified(filePath) ?? false;
+    return browserFilesStore.isFileModified(filePath);
   }
 
   async restoreFromSnapshot(snapshot: FileMap): Promise<{ filesWritten: number; filesDeleted: number }> {
-    if (this.#runtimeType === 'browser') {
-      // In browser mode, just set all files
-      const files = new Map<string, string>();
-      for (const [path, entry] of Object.entries(snapshot)) {
-        if (entry?.type === 'file') {
-          files.set(path, entry.content);
-        }
+    // BAVINI uses browser mode only
+    const files = new Map<string, string>();
+    for (const [path, entry] of Object.entries(snapshot)) {
+      if (entry?.type === 'file') {
+        files.set(path, entry.content);
       }
-      await browserFilesStore.writeFiles(files);
-      this.setDocuments(snapshot);
-      this.unsavedFiles.set(new Set<string>());
-      return { filesWritten: files.size, filesDeleted: 0 };
     }
-
-    const result = await this.#webContainerFilesStore?.restoreFromSnapshot(snapshot) ?? { filesWritten: 0, filesDeleted: 0 };
+    await browserFilesStore.writeFiles(files);
     this.setDocuments(snapshot);
     this.unsavedFiles.set(new Set<string>());
-    return result;
+    return { filesWritten: files.size, filesDeleted: 0 };
   }
 
   abortAllActions() {
@@ -1196,15 +1077,10 @@ export class WorkbenchStore {
     // Create the artifact asynchronously and track the promise
     const createPromise = (async () => {
       // Create appropriate action runner based on mode
-      let runner: ActionRunnerType;
-
-      if (this.#runtimeType === 'browser') {
-        runner = await getBrowserActionRunner();
-        // Set build trigger for browser action runner
-        (runner as any).setBuildTrigger(() => this.#triggerBrowserBuild());
-      } else {
-        runner = await getWebContainerActionRunner();
-      }
+      // BAVINI uses browser action runner only
+      const runner = await getBrowserActionRunner();
+      // Set build trigger for browser action runner
+      (runner as any).setBuildTrigger(() => this.#triggerBrowserBuild());
 
       this.artifacts.setKey(messageId, {
         id,
@@ -1233,7 +1109,7 @@ export class WorkbenchStore {
     this.artifacts.setKey(messageId, { ...artifact, ...state });
 
     // Trigger a build when artifact is closed (all files have been written)
-    if (state.closed && this.#runtimeType === 'browser') {
+    if (state.closed) {
       const files = browserFilesStore.getAllFiles();
       logger.info(`Artifact closed with ${files.size} files:`, Array.from(files.keys()));
       logger.info('Triggering final build');
