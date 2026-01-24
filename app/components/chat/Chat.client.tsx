@@ -63,13 +63,15 @@ const loadToastCss = () => {
 import { AgentChatIntegration, UserQuestionModal } from '~/components/agent';
 import { PlanPreview, PlanModeFloatingIndicator } from '~/components/plan';
 import { TaskProgress, TaskProgressIndicatorFloating } from '~/components/todos';
-import { AuthModal } from '~/components/auth/AuthModal';
+// DISABLED: Auth system temporarily disabled for development
+// import { AuthModal } from '~/components/auth/AuthModal';
 import { useMessageParser, usePromptEnhancer, useShortcuts, useSnapScroll } from '~/lib/hooks';
 import { useChatHistory } from '~/lib/persistence';
 import { chatStore } from '~/lib/stores/chat';
 import { workbenchStore } from '~/lib/stores/workbench';
-import { canMakeRequest, incrementRequestCount, remainingRequestsStore } from '~/lib/stores/auth';
-import { isSupabaseConfigured } from '~/lib/supabase/client';
+// DISABLED: Auth system temporarily disabled for development
+// import { canMakeRequest, incrementRequestCount, remainingRequestsStore } from '~/lib/stores/auth';
+// import { isSupabaseConfigured } from '~/lib/supabase/client';
 import { fileModificationsToHTML } from '~/utils/diff';
 import {
   createUserFriendlyError,
@@ -820,12 +822,12 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
         return;
       }
 
-      // Auth check (only if Supabase is configured)
-      if (isSupabaseConfigured() && !canMakeRequest()) {
-        // Show auth modal instead of toast
-        setShowAuthModal(true);
-        return;
-      }
+      // DISABLED: Auth check temporarily disabled for development
+      // if (isSupabaseConfigured() && !canMakeRequest()) {
+      //   // Show auth modal instead of toast
+      //   setShowAuthModal(true);
+      //   return;
+      // }
 
       await workbenchStore.saveAllFiles();
 
@@ -1177,10 +1179,10 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
         // Store in history
         storeMessageHistory([...messages, userMessage, assistantMessage]).catch((error) => toast.error(error.message));
 
-        // Increment rate limit counter on successful response
-        if (isSupabaseConfigured()) {
-          incrementRequestCount();
-        }
+        // DISABLED: Increment rate limit counter temporarily disabled for development
+        // if (isSupabaseConfigured()) {
+        //   incrementRequestCount();
+        // }
 
         if (multiAgentEnabled) {
           // Utiliser 'completed' pour déclencher le retrait différé (visible 1.5s)
@@ -1460,12 +1462,12 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
         onCancel={handleCancelEdit}
       />
 
-      {/* Auth Modal - shown when user tries to send without being logged in */}
-      <AuthModal
+      {/* DISABLED: Auth Modal temporarily disabled for development */}
+      {/* <AuthModal
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
         message="Créez un compte gratuit pour commencer à générer du code"
-      />
+      /> */}
     </>
   );
 });
