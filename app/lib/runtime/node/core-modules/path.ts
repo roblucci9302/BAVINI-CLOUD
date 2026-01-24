@@ -95,11 +95,18 @@ export function resolve(...paths: string[]): string {
     resolvedAbsolute = path.charCodeAt(0) === 47;
   }
 
-  // Normalize and remove trailing slash
+  // Normalize the path
   resolvedPath = normalize(resolvedPath);
 
+  // Remove trailing slash (except for root)
+  if (resolvedPath.length > 1 && resolvedPath.endsWith('/')) {
+    resolvedPath = resolvedPath.slice(0, -1);
+  }
+
   if (resolvedAbsolute) {
-    return '/' + resolvedPath.replace(/^\//, '');
+    const result = '/' + resolvedPath.replace(/^\//, '');
+    // Remove trailing slash from result (except for root "/")
+    return result.length > 1 && result.endsWith('/') ? result.slice(0, -1) : result;
   }
 
   return resolvedPath.length > 0 ? resolvedPath : '.';

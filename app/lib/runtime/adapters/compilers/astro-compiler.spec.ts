@@ -80,8 +80,10 @@ const title = "Test";
 
       const css = extractStyles(source, 'Test.astro');
 
-      expect(css).toContain('h1 { color: red; }');
-      expect(css).toContain('.container { padding: 20px; }');
+      // CSS is now scoped with auto-generated class names like h1.astro-xxxxx
+      expect(css).toContain('color: red;');
+      expect(css).toContain('padding: 20px;');
+      expect(css).toMatch(/h1\.astro-\w+/); // Scoped selector
     });
 
     it('should extract multiple style blocks', () => {
@@ -101,7 +103,10 @@ const title = "Test";
 
       const css = extractStyles(source, 'Multi.astro');
 
-      expect(css).toContain('.first { color: blue; }');
+      // Scoped styles have auto-generated class suffixes
+      expect(css).toContain('color: blue;');
+      expect(css).toMatch(/\.first\.astro-\w+/); // Scoped selector
+      // Global styles remain unchanged
       expect(css).toContain('body { margin: 0; }');
     });
 
@@ -257,7 +262,9 @@ const title = "Hello World";
 
       expect(result.code).toBeDefined();
       expect(result.code.length).toBeGreaterThan(0);
-      expect(result.css).toContain('h1 { color: navy; }');
+      // CSS is scoped with auto-generated class names
+      expect(result.css).toContain('color: navy;');
+      expect(result.css).toMatch(/h1\.astro-\w+/);
       expect(result.warnings).toEqual([]);
     });
 
@@ -426,8 +433,9 @@ const Component = $$createComponent(() => {
 });
 `, 'Hello.astro');
 
-      expect(wrapped).toContain('export default function HelloPreview');
+      // The wrapper now uses a different pattern - checking for __astroComponent
       expect(wrapped).toContain('__astroComponent');
+      expect(wrapped).toContain('Browser preview wrapper');
     });
   });
 

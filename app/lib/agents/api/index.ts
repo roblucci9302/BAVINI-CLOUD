@@ -22,6 +22,24 @@ export { createStreamChunk, enqueueChunk, sendAgentStatus, sendText, sendError, 
 // Error detection
 export { detectErrorsInOutput, buildFixerPrompt } from './error-detection';
 
+// Verification loop (Phase 0 Task 2.4)
+export {
+  type VerificationConfig,
+  type CodeSnapshot,
+  type FixAttemptResult,
+  type VerificationResult,
+  type VerificationMetrics,
+  DEFAULT_VERIFICATION_CONFIG,
+  createSnapshot,
+  shouldRetry,
+  verifyFix,
+  buildRetryFixerPrompt,
+  runAutoFixWithVerification,
+  getVerificationMetrics,
+  resetVerificationMetrics,
+  formatMetricsReport,
+} from './verification';
+
 // Orchestration
 export { analyzeAndDecide } from './orchestration';
 

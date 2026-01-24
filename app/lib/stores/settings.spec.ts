@@ -90,10 +90,11 @@ describe('settings store', () => {
   });
 
   describe('buildSettingsStore', () => {
-    it('should default to webcontainer engine', () => {
+    it('should default to browser engine', () => {
       const buildSettings = buildSettingsStore.get();
 
-      expect(buildSettings.engine).toBe('webcontainer');
+      // BAVINI defaults to browser engine (not webcontainer)
+      expect(buildSettings.engine).toBe('browser');
     });
 
     it('should update engine via setBuildEngine', () => {

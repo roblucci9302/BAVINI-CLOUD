@@ -15,4 +15,11 @@ export type {
 } from './types';
 
 export { createVirtualFsPlugin } from './virtual-fs-plugin';
-export { createEsmShPlugin, getCdnStats } from './esm-sh-plugin';
+export {
+  type ModuleCache,
+  createEsmShPlugin,
+  getCdnStats,
+  resetCdnStats,
+  warmupCache,
+  prefetchPackages,
+} from './esm-sh-plugin';

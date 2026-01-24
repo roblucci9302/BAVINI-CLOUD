@@ -31,6 +31,10 @@ import {
   detectErrorsInOutput,
   buildFixerPrompt,
   analyzeAndDecide,
+  // Verification loop (Phase 0 Task 2.4)
+  runAutoFixWithVerification,
+  DEFAULT_VERIFICATION_CONFIG,
+  getVerificationMetrics,
 } from '~/lib/agents/api';
 
 // Server-only prompts
@@ -718,7 +722,13 @@ ${issuesList}
 
 /*
  * ============================================================================
- * AUTO-FIX PIPELINE (for non-code agents)
+ * AUTO-FIX PIPELINE WITH VERIFICATION (Phase 0 Task 2.4)
+ * ============================================================================
+ * Enhanced auto-fix pipeline with:
+ * - Verification loop (retry if fix doesn't resolve errors)
+ * - Configurable max retries (default: 3)
+ * - Rollback on failure
+ * - Metrics tracking
  * ============================================================================
  */
 
@@ -736,33 +746,90 @@ async function runAutoFixPipeline(
     return;
   }
 
-  logger.info(`Detected ${errors.length} error(s), invoking fixer agent`);
+  logger.info(`Detected ${errors.length} error(s), invoking fixer agent with verification loop`);
 
   // Notify client about error detection
-  sendText(controller, encoder, '\n\n---\n\n⚠️ **Erreurs détectées, correction automatique en cours...**\n\n');
+  sendText(controller, encoder, '\n\n---\n\n⚠️ **Erreurs détectées, correction automatique avec vérification en cours...**\n\n');
   sendAgentStatus(controller, encoder, 'fixer', 'executing');
 
-  // Build fixer context with detected errors
-  const fixerPrompt = buildFixerPrompt(errors, sourceAgent);
-
   const fixerModel = getAnthropicModel(getAPIKey(context.cloudflare.env));
-  const fixerResult = await _streamText({
-    model: fixerModel,
-    system: getAgentSystemPrompt('fixer'),
-    maxOutputTokens: 32768, // Increased from 16K to 32K for complete fixes
-    messages: [
-      ...agentMessages,
-      { role: 'assistant' as const, content: fullAgentOutput },
-      { role: 'user' as const, content: fixerPrompt },
-    ],
-  });
 
-  for await (const chunk of fixerResult.textStream) {
-    sendText(controller, encoder, chunk);
+  // Define the fixer function for the verification loop
+  const runFixer = async (prompt: string, messages: ChatMessage[]): Promise<string> => {
+    const fixerResult = await _streamText({
+      model: fixerModel,
+      system: getAgentSystemPrompt('fixer'),
+      maxOutputTokens: 32768,
+      messages,
+    });
+
+    let output = '';
+
+    for await (const chunk of fixerResult.textStream) {
+      output += chunk;
+      sendText(controller, encoder, chunk);
+    }
+
+    return output;
+  };
+
+  // Run verification loop with retries
+  const verificationResult = await runAutoFixWithVerification(
+    runFixer,
+    fullAgentOutput,
+    sourceAgent,
+    agentMessages,
+    {
+      maxRetries: DEFAULT_VERIFICATION_CONFIG.maxRetries,
+      rollbackOnFailure: DEFAULT_VERIFICATION_CONFIG.rollbackOnFailure,
+      verbose: false,
+    },
+  );
+
+  // Report results
+  if (verificationResult.success) {
+    sendText(
+      controller,
+      encoder,
+      `\n\n✅ **Correction réussie** (tentative ${verificationResult.totalAttempts}/${DEFAULT_VERIFICATION_CONFIG.maxRetries})\n`,
+    );
+  } else if (verificationResult.rolledBack) {
+    sendText(
+      controller,
+      encoder,
+      `\n\n⚠️ **Correction échouée après ${verificationResult.totalAttempts} tentatives - rollback effectué**\n`,
+    );
+    sendText(
+      controller,
+      encoder,
+      `Erreurs restantes: ${verificationResult.finalErrors.map((e) => e.message).join(', ')}\n`,
+    );
+  } else {
+    sendText(
+      controller,
+      encoder,
+      `\n\n⚠️ **Correction partielle après ${verificationResult.totalAttempts} tentatives**\n`,
+    );
+  }
+
+  // Log metrics periodically
+  const metrics = getVerificationMetrics();
+
+  if (metrics.totalFixOperations % 10 === 0) {
+    logger.info('Verification metrics checkpoint', {
+      total: metrics.totalFixOperations,
+      successRate: `${(metrics.successRate * 100).toFixed(1)}%`,
+      avgAttempts: metrics.averageAttempts.toFixed(2),
+    });
   }
 
   sendAgentStatus(controller, encoder, 'fixer', 'completed');
-  logger.info('Fixer agent completed error correction');
+  logger.info('Fixer agent completed with verification', {
+    success: verificationResult.success,
+    attempts: verificationResult.totalAttempts,
+    rolledBack: verificationResult.rolledBack,
+    durationMs: verificationResult.totalDurationMs,
+  });
 }
 
 /*

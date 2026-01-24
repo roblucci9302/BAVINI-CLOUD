@@ -195,52 +195,50 @@ describe('withRetry', () => {
   });
 
   it('should throw after max attempts exceeded', async () => {
-    const fn = vi.fn().mockRejectedValue(new Error('always fails'));
+    const fn = vi.fn().mockImplementation(async () => {
+      throw new Error('always fails');
+    });
+
+    let caughtError: Error | null = null;
 
     const resultPromise = withRetry(fn, {
       maxAttempts: 2,
       timeoutMs: 1000,
       backoffMs: 100,
+    }).catch((err) => {
+      caughtError = err;
     });
 
     // Advance through all attempts and backoffs
     await vi.runAllTimersAsync();
+    await resultPromise;
 
-    try {
-      await resultPromise;
-      expect.fail('Should have thrown');
-    } catch (error) {
-      expect((error as Error).message).toBe('always fails');
-    }
-
+    expect(caughtError).not.toBeNull();
+    expect(caughtError!.message).toBe('always fails');
     expect(fn).toHaveBeenCalledTimes(2);
   });
 
   it('should use exponential backoff', async () => {
-    let callCount = 0;
+    const fn = vi.fn().mockImplementation(async () => {
+      throw new Error('fail');
+    });
 
-    const fn = vi
-      .fn()
-      .mockImplementation(() => {
-        callCount++;
-        return Promise.reject(new Error('fail'));
-      });
+    let caughtError: Error | null = null;
 
     const resultPromise = withRetry(fn, {
       maxAttempts: 4,
       timeoutMs: 1000,
       backoffMs: 100,
+    }).catch((err) => {
+      caughtError = err;
     });
 
     // Run through all retries
     await vi.runAllTimersAsync();
+    await resultPromise;
 
-    try {
-      await resultPromise;
-      expect.fail('Should have thrown');
-    } catch {
-      // Expected to throw
-    }
+    expect(caughtError).not.toBeNull();
+    expect(caughtError!.message).toBe('fail');
 
     // Verify all attempts were made
     expect(fn).toHaveBeenCalledTimes(4);

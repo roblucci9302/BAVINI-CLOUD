@@ -104,11 +104,10 @@ vi.mock('./BaseChat.module.scss', () => ({
   },
 }));
 
-// Mock react-resizable-panels to avoid layout errors in tests (v4 API)
+// Mock react-resizable-panels to avoid layout errors in tests
 vi.mock('react-resizable-panels', () => ({
   Panel: ({ children, className }: any) => <div className={className} data-testid="panel">{children}</div>,
-  // v4 renamed PanelGroup to Group
-  Group: React.forwardRef(({ children, className }: any, ref: any) => {
+  PanelGroup: React.forwardRef(({ children, className }: any, ref: any) => {
     // Expose imperative handle methods required by the component
     React.useImperativeHandle(ref, () => ({
       setLayout: vi.fn(),
@@ -116,8 +115,7 @@ vi.mock('react-resizable-panels', () => ({
     }));
     return <div className={className} data-testid="panel-group">{children}</div>;
   }),
-  // v4 renamed PanelResizeHandle to Separator
-  Separator: ({ className }: any) => <div className={className} data-testid="panel-resize-handle" />,
+  PanelResizeHandle: ({ className }: any) => <div className={className} data-testid="panel-resize-handle" />,
 }));
 
 // Import after mocks

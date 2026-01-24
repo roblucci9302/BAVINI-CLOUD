@@ -82,9 +82,13 @@ export {
   type CSSResult,
   type CompilerResult,
   type ContentFile,
+  type ModuleCache,
   createVirtualFsPlugin,
   createEsmShPlugin,
   getCdnStats,
+  resetCdnStats,
+  warmupCache,
+  prefetchPackages,
 } from './plugins';
 
 // Bootstrap (Phase 3.3)

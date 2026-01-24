@@ -103,10 +103,12 @@ describe('ImportFixer', () => {
       expect(fixer.canFix(code, context)).toBe(true);
     });
 
-    it('should detect missing component imports', () => {
+    it('should detect missing Lucide icon imports', () => {
+      // ImportFixer only detects known imports: React hooks, Lucide icons
+      // EXTERNAL_UI_IMPORTS is intentionally empty (BAVINI uses native HTML)
       const code = `
         export function App() {
-          return <Button>Click me</Button>;
+          return <Search className="w-4 h-4" />;
         }
       `;
       expect(fixer.canFix(code, context)).toBe(true);

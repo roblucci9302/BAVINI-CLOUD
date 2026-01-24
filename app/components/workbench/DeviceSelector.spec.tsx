@@ -24,6 +24,7 @@ vi.mock('~/utils/devices', () => ({
     { id: 'tablet', name: 'Tablette', type: 'tablet', icon: 'i-ph:device-tablet', width: 768, height: 1024 },
     { id: 'mobile', name: 'Mobile', type: 'mobile', icon: 'i-ph:device-mobile', width: 375, height: 812 },
   ],
+  DEFAULT_DEVICE_ID: 'desktop',
 }));
 
 // Mock framer-motion
@@ -64,12 +65,12 @@ describe('DeviceSelector', () => {
 
   describe('device selection', () => {
     it('should select desktop by default', () => {
-      const { container } = render(<DeviceSelector />);
+      render(<DeviceSelector />);
 
       const desktopButton = screen.getByTitle('Bureau');
 
-      // Desktop should be selected (has cyan accent color)
-      expect(desktopButton.className).toContain('text-[#0ea5e9]');
+      // Desktop should be selected (has purple accent color)
+      expect(desktopButton.className).toContain('text-[#8b5cf6]');
     });
 
     it('should select device on click', () => {
@@ -80,11 +81,14 @@ describe('DeviceSelector', () => {
       expect(mockSelectedDeviceId.get()).toBe('tablet');
     });
 
-    it('should reset orientation when switching to desktop', () => {
+    it('should reset orientation when switching to desktop from mobile', () => {
+      // Start with mobile selected in landscape
+      mockSelectedDeviceId.set('mobile');
       mockDeviceOrientation.set('landscape');
 
       render(<DeviceSelector />);
 
+      // Click desktop - should reset orientation since type changes
       fireEvent.click(screen.getByTitle('Bureau'));
 
       expect(mockDeviceOrientation.get()).toBe('portrait');
@@ -145,7 +149,7 @@ describe('DeviceSelector', () => {
       render(<DeviceSelector />);
 
       const tabletButton = screen.getByTitle('Tablette');
-      expect(tabletButton.className).toContain('text-[#0ea5e9]');
+      expect(tabletButton.className).toContain('text-[#8b5cf6]');
     });
 
     it('should show unselected device with default color', () => {
@@ -154,7 +158,7 @@ describe('DeviceSelector', () => {
       render(<DeviceSelector />);
 
       const tabletButton = screen.getByTitle('Tablette');
-      expect(tabletButton.className).toContain('text-bolt-elements-textSecondary');
+      expect(tabletButton.className).toContain('text-bolt-elements-textTertiary');
     });
   });
 });

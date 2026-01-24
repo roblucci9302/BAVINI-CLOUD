@@ -8,6 +8,14 @@ vi.mock('~/lib/stores/workbench', () => ({
   },
 }));
 
+// mock runtime to avoid esbuild-wasm import in test environment
+vi.mock('~/lib/runtime', () => {
+  const { atom } = require('nanostores');
+  return {
+    runtimeTypeStore: atom('browser'),
+  };
+});
+
 // import after mocking
 import { useShortcuts, shortcutEventEmitter } from './useShortcuts';
 import { shortcutsStore } from '~/lib/stores/settings';

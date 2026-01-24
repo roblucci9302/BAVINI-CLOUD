@@ -68,9 +68,11 @@ describe('SkillLoader', () => {
     it('should separate content from frontmatter', () => {
       const skill = loadFrontendDesignSkill();
 
-      // Content should not contain the frontmatter markers
-      expect(skill.content).not.toContain('---');
+      // Content should not contain frontmatter metadata (but may contain --- as HR)
       expect(skill.content).not.toContain('name: frontend-design');
+      expect(skill.content).not.toContain('description:');
+      // Content should start with actual skill content, not frontmatter
+      expect(skill.content).not.toMatch(/^---\s*\n\s*name:/);
     });
   });
 

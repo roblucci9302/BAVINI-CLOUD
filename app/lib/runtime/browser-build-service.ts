@@ -10,6 +10,7 @@
 import { BrowserBuildAdapter } from './adapters/browser-build-adapter';
 import type { PreviewInfo, BuildOptions, BundleResult, FileMap } from './types';
 import { createScopedLogger } from '~/utils/logger';
+import { warmupCache, moduleCache } from './adapters/browser-build';
 
 const logger = createScopedLogger('BrowserBuildService');
 
@@ -87,6 +88,15 @@ class BrowserBuildService {
     // Initialize the adapter (loads esbuild-wasm)
     logger.info('Initializing BrowserBuildAdapter...');
     await this.adapter.init();
+
+    // Warm up CDN cache with common packages in background
+    // This runs in parallel and doesn't block initialization
+    logger.info('Starting CDN cache warmup (background)...');
+    warmupCache(moduleCache, logger).then(() => {
+      logger.info('CDN cache warmup complete');
+    }).catch((error) => {
+      logger.warn('CDN cache warmup failed (non-blocking):', error);
+    });
 
     // Set preview mode to browser via lazy import
     try {

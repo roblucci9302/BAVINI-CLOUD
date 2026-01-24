@@ -150,8 +150,8 @@ const DEFAULT_VERIFICATION_CONFIG: PostFixVerificationConfig = {
   enabled: true,
   timeout: 60000,
   verifyTypes: ['typecheck'],
-  rollbackOnFailure: false,
-  maxRetries: 1,
+  rollbackOnFailure: true,   // FIX Phase 0: Enabled by default for safer fixes
+  maxRetries: 3,             // FIX Phase 0: More retry attempts before giving up
 };
 
 /**
