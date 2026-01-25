@@ -39,6 +39,13 @@ export {
   resolvePath,
 } from './utils/path-utils';
 
+export {
+  BUNDLE_LIMITS,
+  type BundleSizeCheckResult,
+  checkBundleSizeLimits,
+  logBundleSize,
+} from './utils/bundle-limits';
+
 // Preview (Phase 3.4)
 export {
   // Configuration
@@ -109,3 +116,31 @@ export {
   createNextJSBootstrapEntry,
   createReactBootstrapEntry,
 } from './bootstrap';
+
+// Next.js Shims (Phase 1.2 Refactoring)
+export {
+  NEXTJS_SHIMS,
+  isNextJsImport,
+  getNextJsShim,
+  hasNextJsShim,
+} from './nextjs-shims';
+
+// CSS Utilities (Phase 1.2 Refactoring)
+export {
+  extractTailwindCustomColors,
+  stripTailwindImports,
+  extractGoogleFontsCSS,
+  findFileWithExtensions,
+  WEB_EXTENSIONS,
+  INDEX_FILES,
+} from './css';
+
+// Vanilla Build (Phase 1.2 Refactoring)
+export {
+  type VanillaBuildContext,
+  type VanillaBuildCallbacks,
+  buildVanillaProject,
+  createVanillaPreview,
+  collectCssFiles,
+  collectJsFiles,
+} from './vanilla-build';

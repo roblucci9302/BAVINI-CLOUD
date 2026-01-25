@@ -6,50 +6,6 @@ import { memo, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { cssTransition, toast, ToastContainer } from 'react-toastify';
 import { ErrorBoundary } from '~/components/ui/ErrorBoundary';
 
-// Lazy load framer-motion pour éviter le bundle initial
-type AnimateFunction = (
-  selector: string,
-  keyframes: Record<string, unknown>,
-  options?: Record<string, unknown>,
-) => Promise<void>;
-type AnimationScope = React.RefObject<HTMLDivElement>;
-
-function useLazyAnimate(): [AnimationScope, AnimateFunction] {
-  const scopeRef = useRef<HTMLDivElement>(null);
-  const animateFnRef = useRef<AnimateFunction | null>(null);
-  const [, forceUpdate] = useState(0);
-
-  useEffect(() => {
-    import('framer-motion').then((mod) => {
-      // Store the animate function for later use
-      const { animate } = mod;
-
-      animateFnRef.current = async (
-        selector: string,
-        keyframes: Record<string, unknown>,
-        options?: Record<string, unknown>,
-      ) => {
-        if (scopeRef.current) {
-          const element = scopeRef.current.querySelector(selector);
-
-          if (element) {
-            await animate(element, keyframes, options);
-          }
-        }
-      };
-      forceUpdate((n) => n + 1);
-    });
-  }, []);
-
-  const animateFn: AnimateFunction = useCallback(async (selector, keyframes, options) => {
-    if (animateFnRef.current) {
-      await animateFnRef.current(selector, keyframes, options);
-    }
-  }, []);
-
-  return [scopeRef, animateFn];
-}
-
 // Charger le CSS de toast de manière lazy
 let toastCssLoaded = false;
 const loadToastCss = () => {
@@ -65,7 +21,9 @@ import { PlanPreview, PlanModeFloatingIndicator } from '~/components/plan';
 import { TaskProgress, TaskProgressIndicatorFloating } from '~/components/todos';
 // DISABLED: Auth system temporarily disabled for development
 // import { AuthModal } from '~/components/auth/AuthModal';
-import { useMessageParser, usePromptEnhancer, useShortcuts, useSnapScroll } from '~/lib/hooks';
+import { useMessageParser, usePromptEnhancer, useShortcuts, useSnapScroll, useLazyAnimate, useMessageEditing, type SendMessageFn } from '~/lib/hooks';
+import { fetchWithRetry } from '~/utils/fetch-with-retry';
+import { compressImage, terminateCompressionWorker, fileToDataURL } from '~/lib/image-compression';
 import { useChatHistory } from '~/lib/persistence';
 import { chatStore } from '~/lib/stores/chat';
 import { workbenchStore } from '~/lib/stores/workbench';
@@ -182,323 +140,6 @@ interface FilePreview {
 const ALLOWED_FILE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
-/*
- * ============================================================================
- * FETCH WITH RETRY & EXPONENTIAL BACKOFF
- * ============================================================================
- */
-
-/**
- * Retry configuration for fetch requests
- */
-interface RetryConfig {
-  maxRetries?: number;
-  initialDelayMs?: number;
-  maxDelayMs?: number;
-  retryOn5xx?: boolean;
-  retryOn429?: boolean;
-}
-
-const DEFAULT_RETRY_CONFIG: Required<RetryConfig> = {
-  maxRetries: 3,
-  initialDelayMs: 1000,
-  maxDelayMs: 10000,
-  retryOn5xx: true,
-  retryOn429: true,
-};
-
-/**
- * Fetch with automatic retry and exponential backoff.
- * Handles server errors (5xx) and rate limiting (429).
- *
- * @param url - URL to fetch
- * @param options - Fetch options
- * @param retryConfig - Retry configuration
- * @returns Response from the fetch
- * @throws Error if all retries are exhausted
- */
-async function fetchWithRetry(
-  url: string,
-  options: RequestInit = {},
-  retryConfig: RetryConfig = {},
-): Promise<Response> {
-  const config = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
-  let lastError: Error | null = null;
-
-  for (let attempt = 0; attempt < config.maxRetries; attempt++) {
-    try {
-      const response = await fetch(url, options);
-
-      // Handle 5xx server errors with retry
-      if (config.retryOn5xx && response.status >= 500 && attempt < config.maxRetries - 1) {
-        const delay = Math.min(config.initialDelayMs * Math.pow(2, attempt), config.maxDelayMs);
-        logger.warn(`Server error ${response.status}, retrying in ${delay}ms (attempt ${attempt + 1}/${config.maxRetries})`);
-        await new Promise((r) => setTimeout(r, delay));
-        continue;
-      }
-
-      // Handle 429 rate limiting with Retry-After header
-      if (config.retryOn429 && response.status === 429 && attempt < config.maxRetries - 1) {
-        const retryAfter = response.headers.get('Retry-After');
-        const delay = retryAfter
-          ? Math.min(parseInt(retryAfter, 10) * 1000, config.maxDelayMs)
-          : Math.min(config.initialDelayMs * Math.pow(2, attempt), config.maxDelayMs);
-
-        logger.warn(`Rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/${config.maxRetries})`);
-        await new Promise((r) => setTimeout(r, delay));
-        continue;
-      }
-
-      // Success or non-retryable error
-      return response;
-    } catch (error) {
-      // Network errors - retry with backoff
-      lastError = error instanceof Error ? error : new Error(String(error));
-
-      if (attempt < config.maxRetries - 1) {
-        const delay = Math.min(config.initialDelayMs * Math.pow(2, attempt), config.maxDelayMs);
-        logger.warn(`Fetch error: ${lastError.message}, retrying in ${delay}ms (attempt ${attempt + 1}/${config.maxRetries})`);
-        await new Promise((r) => setTimeout(r, delay));
-      }
-    }
-  }
-
-  throw lastError || new Error('Fetch failed after retries');
-}
-
-// Image compression settings
-const MAX_IMAGE_DIMENSION = 1920; // Max width/height in pixels
-const COMPRESSION_QUALITY = 0.8; // 0-1, only for JPEG/WebP
-
-// Seuil pour utiliser le worker (500KB) - en dessous, main thread est plus rapide
-const WORKER_COMPRESSION_THRESHOLD = 500 * 1024;
-
-// Worker singleton pour la compression d'images avec idle timeout
-let compressionWorker: Worker | null = null;
-let workerIdCounter = 0;
-let workerIdleTimeout: ReturnType<typeof setTimeout> | null = null;
-
-// Terminate worker after 30s of inactivity to free resources
-const WORKER_IDLE_TIMEOUT_MS = 30_000;
-
-/**
- * Terminate the compression worker and cleanup resources.
- * Call this on component unmount or when cleaning up.
- */
-const terminateCompressionWorker = (): void => {
-  if (workerIdleTimeout) {
-    clearTimeout(workerIdleTimeout);
-    workerIdleTimeout = null;
-  }
-
-  if (compressionWorker) {
-    compressionWorker.terminate();
-    compressionWorker = null;
-    logger.debug('Compression worker terminated');
-  }
-};
-
-/**
- * Schedule worker termination after idle timeout.
- * Resets the timer on each call.
- */
-const scheduleWorkerTermination = (): void => {
-  // Clear existing timeout
-  if (workerIdleTimeout) {
-    clearTimeout(workerIdleTimeout);
-  }
-
-  // Schedule new termination
-  workerIdleTimeout = setTimeout(() => {
-    if (compressionWorker) {
-      compressionWorker.terminate();
-      compressionWorker = null;
-      workerIdleTimeout = null;
-      logger.debug('Compression worker terminated due to inactivity');
-    }
-  }, WORKER_IDLE_TIMEOUT_MS);
-};
-
-/**
- * Obtient ou crée le worker de compression d'images.
- * OPTIMIZED: Schedules automatic termination after idle timeout.
- */
-const getCompressionWorker = (): Worker => {
-  // Reset idle timeout on each access
-  scheduleWorkerTermination();
-
-  if (!compressionWorker) {
-    compressionWorker = new Worker(new URL('../../workers/image-compression.worker.ts', import.meta.url), {
-      type: 'module',
-    });
-    logger.debug('Compression worker created');
-  }
-
-  return compressionWorker;
-};
-
-/**
- * Compresse une image volumineuse via Web Worker (>500KB)
- * Évite de bloquer le thread principal pour les grandes images
- */
-const compressImageWithWorker = async (file: File): Promise<File> => {
-  try {
-    // Créer un ImageBitmap pour le transfert au worker
-    const imageBitmap = await createImageBitmap(file);
-
-    return new Promise((resolve) => {
-      const worker = getCompressionWorker();
-      const requestId = `compress-${++workerIdCounter}`;
-
-      const handleMessage = (event: MessageEvent) => {
-        const response = event.data;
-
-        if (response.id !== requestId) {
-          return;
-        }
-
-        worker.removeEventListener('message', handleMessage);
-
-        if (response.type === 'success' && response.result) {
-          const { blob, wasCompressed, mimeType } = response.result;
-
-          if (wasCompressed) {
-            const compressedFile = new File([blob], file.name, {
-              type: mimeType,
-              lastModified: Date.now(),
-            });
-            resolve(compressedFile);
-          } else {
-            resolve(file);
-          }
-        } else {
-          // En cas d'erreur, retourner le fichier original
-          logger.warn('Worker compression failed:', response.error);
-          resolve(file);
-        }
-      };
-
-      worker.addEventListener('message', handleMessage);
-
-      // Envoyer l'image au worker (transfert de l'ImageBitmap)
-      worker.postMessage(
-        {
-          id: requestId,
-          type: 'compress',
-          payload: {
-            imageData: imageBitmap,
-            fileName: file.name,
-            mimeType: file.type,
-            originalSize: file.size,
-          },
-        },
-        [imageBitmap], // Transférer l'ImageBitmap (pas de copie)
-      );
-    });
-  } catch (error) {
-    logger.warn('Failed to use worker for compression:', error);
-    return file;
-  }
-};
-
-/**
- * Compresse une image sur le main thread (pour petites images <500KB)
- * Plus rapide que le worker pour les petites images (pas d'overhead)
- */
-const compressImageMainThread = async (file: File): Promise<File> => {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-
-    img.onload = () => {
-      let { width, height } = img;
-
-      // Calculate new dimensions while maintaining aspect ratio
-      if (width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION) {
-        if (width > height) {
-          height = Math.round((height * MAX_IMAGE_DIMENSION) / width);
-          width = MAX_IMAGE_DIMENSION;
-        } else {
-          width = Math.round((width * MAX_IMAGE_DIMENSION) / height);
-          height = MAX_IMAGE_DIMENSION;
-        }
-      }
-
-      // Create canvas and draw resized image
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-
-      const ctx = canvas.getContext('2d');
-
-      if (!ctx) {
-        resolve(file); // Fallback to original
-        return;
-      }
-
-      ctx.drawImage(img, 0, 0, width, height);
-
-      // Convert to blob with compression
-      const outputType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
-      const quality = outputType === 'image/png' ? undefined : COMPRESSION_QUALITY;
-
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) {
-            resolve(file);
-            return;
-          }
-
-          // Only use compressed version if it's smaller
-          if (blob.size < file.size) {
-            const compressedFile = new File([blob], file.name, {
-              type: outputType,
-              lastModified: Date.now(),
-            });
-            resolve(compressedFile);
-          } else {
-            resolve(file);
-          }
-        },
-        outputType,
-        quality,
-      );
-    };
-
-    img.onerror = () => reject(new Error('Failed to load image'));
-    img.src = URL.createObjectURL(file);
-  });
-};
-
-/**
- * Compresses an image file.
- * - Returns original file for GIFs (to preserve animation)
- * - Uses Web Worker for large images (>500KB) to avoid blocking UI
- * - Uses main thread for small images (faster, no worker overhead)
- */
-const compressImage = async (file: File): Promise<File> => {
-  // Don't compress GIFs (would break animation)
-  if (file.type === 'image/gif') {
-    return file;
-  }
-
-  // Use worker for large images, main thread for small ones
-  if (file.size > WORKER_COMPRESSION_THRESHOLD) {
-    return compressImageWithWorker(file);
-  }
-
-  return compressImageMainThread(file);
-};
-
-// converts file to base64 data URL
-const fileToDataURL = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-};
-
 export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLoading = false }: ChatProps) => {
   useShortcuts();
 
@@ -518,9 +159,8 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
     }
   }, [initialMessages.length]);
 
-  // Edit message state
-  const [editingMessageIndex, setEditingMessageIndex] = useState<number | null>(null);
-  const [editingMessageContent, setEditingMessageContent] = useState('');
+  // Ref for sendMessage (needed by useMessageEditing hook due to circular dependency)
+  const sendMessageRef = useRef<SendMessageFn | null>(null);
 
   // Auth modal state
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -596,6 +236,22 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
     },
     [initialMessages],
   );
+
+  // Message editing hook (uses ref pattern to avoid circular dependency with sendMessage)
+  const {
+    editingMessageIndex,
+    editingMessageContent,
+    handleEditMessage,
+    handleCancelEdit,
+    handleSaveEdit,
+    handleDeleteMessage,
+    handleRegenerateMessage,
+  } = useMessageEditing({
+    messages,
+    setMessages,
+    sendMessageRef,
+    storeMessageHistory,
+  });
 
   const [streamingContent, setStreamingContent] = useState('');
   const [currentAgent, setCurrentAgent] = useState<string | null>(null);
@@ -1238,6 +894,9 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
     ],
   );
 
+  // Update ref for useMessageEditing hook (must be after sendMessage is defined)
+  sendMessageRef.current = sendMessage;
+
   const [messageRef, scrollRef] = useSnapScroll();
 
   const handleFileSelect = () => {
@@ -1316,98 +975,6 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
       });
     };
   }, []);
-
-  /*
-   * ============================================================================
-   * MESSAGE EDITING - Edit and resend from a specific point
-   * ============================================================================
-   */
-  const handleEditMessage = useCallback(
-    (index: number) => {
-      const message = messages[index];
-
-      if (message && message.role === 'user') {
-        const content = typeof message.content === 'string' ? message.content : '';
-        setEditingMessageIndex(index);
-        setEditingMessageContent(content);
-      }
-    },
-    [messages],
-  );
-
-  const handleCancelEdit = useCallback(() => {
-    setEditingMessageIndex(null);
-    setEditingMessageContent('');
-  }, []);
-
-  const handleSaveEdit = useCallback(
-    async (index: number, newContent: string) => {
-      // Close modal
-      setEditingMessageIndex(null);
-      setEditingMessageContent('');
-
-      /*
-       * Truncate messages up to and including the edited message
-       * Then replace the user message with the new content and resend
-       */
-      const truncatedMessages = messages.slice(0, index);
-      setMessages(truncatedMessages);
-
-      // Wait a tick for state to update
-      await new Promise((resolve) => setTimeout(resolve, 10));
-
-      // Send the new message (this will add it to the messages array)
-      const fakeEvent = {} as React.UIEvent;
-      await sendMessage(fakeEvent, newContent);
-    },
-    [messages, sendMessage],
-  );
-
-  const handleDeleteMessage = useCallback(
-    (index: number) => {
-      // Delete message and all following messages
-      const truncatedMessages = messages.slice(0, index);
-      setMessages(truncatedMessages);
-      storeMessageHistory(truncatedMessages).catch((error) => toast.error(error.message));
-      toast.success('Message supprimé');
-    },
-    [messages, storeMessageHistory],
-  );
-
-  const handleRegenerateMessage = useCallback(
-    async (index: number) => {
-      // Find the last user message before this assistant message
-      let lastUserMessageIndex = -1;
-
-      for (let i = index - 1; i >= 0; i--) {
-        if (messages[i].role === 'user') {
-          lastUserMessageIndex = i;
-          break;
-        }
-      }
-
-      if (lastUserMessageIndex === -1) {
-        toast.error('Impossible de régénérer: aucun message utilisateur trouvé');
-        return;
-      }
-
-      // Get the user message content
-      const userMessage = messages[lastUserMessageIndex];
-      const content = typeof userMessage.content === 'string' ? userMessage.content : '';
-
-      // Truncate to just before the assistant message
-      const truncatedMessages = messages.slice(0, lastUserMessageIndex);
-      setMessages(truncatedMessages);
-
-      // Wait a tick for state to update
-      await new Promise((resolve) => setTimeout(resolve, 10));
-
-      // Resend the user message
-      const fakeEvent = {} as React.UIEvent;
-      await sendMessage(fakeEvent, content);
-    },
-    [messages, sendMessage],
-  );
 
   return (
     <>

@@ -310,6 +310,7 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
 
 /**
  * Generate keyboard forwarding script for iframe
+ * This script handles keyboard input forwarding from parent window to focused elements
  *
  * @returns Keyboard forwarding script HTML string
  */
@@ -326,29 +327,99 @@ export function generateKeyboardForwardingScript(): string {
     currentFocusedElement = e.target;
     var tag = e.target.tagName;
     var isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable;
+
     if (isInput) {
-      console.log('[BAVINI] Input element focused:', tag);
+      console.log('[BAVINI] Input focused:', tag, e.target.type || '', e.target.name || '');
+      // Notify parent that we have focus on an input
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: 'bavini-input-focused', target: tag }, '*');
+      }
     }
   }, true);
 
   document.addEventListener('blur', function(e) {
     if (e.target === currentFocusedElement) {
-      currentFocusedElement = null;
+      // Notify parent that input lost focus
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: 'bavini-input-blurred' }, '*');
+      }
     }
   }, true);
 
   // Listen for forwarded keyboard events from parent
   window.addEventListener('message', function(e) {
-    if (e.data && e.data.type === 'keydown' && currentFocusedElement) {
-      var event = new KeyboardEvent('keydown', {
-        key: e.data.key,
-        code: e.data.code,
-        keyCode: e.data.keyCode,
-        which: e.data.which,
-        bubbles: true,
-        cancelable: true
-      });
-      currentFocusedElement.dispatchEvent(event);
+    if (!e.data || e.data.type !== 'bavini-keyboard-event') return;
+
+    var payload = e.data.payload;
+    var target = currentFocusedElement || document.activeElement;
+
+    if (!target) return;
+
+    var tag = target.tagName;
+    var isInput = tag === 'INPUT' || tag === 'TEXTAREA';
+
+    console.log('[BAVINI] Received keyboard event:', payload.key, 'for', tag);
+
+    // For text inputs, directly manipulate the value
+    if (isInput && payload.eventType === 'keydown') {
+      var inputType = target.type || 'text';
+      var isTextInput = ['text', 'email', 'password', 'search', 'tel', 'url', 'number'].includes(inputType);
+
+      if (isTextInput || tag === 'TEXTAREA') {
+        var currentValue = target.value || '';
+        var selStart = target.selectionStart || currentValue.length;
+        var selEnd = target.selectionEnd || currentValue.length;
+        var newValue = currentValue;
+        var newCursorPos = selStart;
+
+        if (payload.key === 'Backspace') {
+          if (selStart !== selEnd) {
+            newValue = currentValue.slice(0, selStart) + currentValue.slice(selEnd);
+            newCursorPos = selStart;
+          } else if (selStart > 0) {
+            newValue = currentValue.slice(0, selStart - 1) + currentValue.slice(selStart);
+            newCursorPos = selStart - 1;
+          }
+        } else if (payload.key === 'Delete') {
+          if (selStart !== selEnd) {
+            newValue = currentValue.slice(0, selStart) + currentValue.slice(selEnd);
+            newCursorPos = selStart;
+          } else if (selStart < currentValue.length) {
+            newValue = currentValue.slice(0, selStart) + currentValue.slice(selStart + 1);
+            newCursorPos = selStart;
+          }
+        } else if (payload.key.length === 1 && !payload.ctrlKey && !payload.metaKey) {
+          newValue = currentValue.slice(0, selStart) + payload.key + currentValue.slice(selEnd);
+          newCursorPos = selStart + 1;
+        } else if (payload.key === 'Enter' && tag === 'TEXTAREA') {
+          newValue = currentValue.slice(0, selStart) + '\\n' + currentValue.slice(selEnd);
+          newCursorPos = selStart + 1;
+        }
+
+        if (newValue !== currentValue) {
+          // Update value using native setter to trigger React's onChange
+          var nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+            tag === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype,
+            'value'
+          ).set;
+          nativeInputValueSetter.call(target, newValue);
+
+          // Dispatch input event for React
+          var inputEvent = new Event('input', { bubbles: true, cancelable: true });
+          target.dispatchEvent(inputEvent);
+
+          // Also dispatch change event
+          var changeEvent = new Event('change', { bubbles: true, cancelable: true });
+          target.dispatchEvent(changeEvent);
+
+          // Restore cursor position
+          setTimeout(function() {
+            target.setSelectionRange(newCursorPos, newCursorPos);
+          }, 0);
+
+          console.log('[BAVINI] Input updated, new length:', newValue.length);
+        }
+      }
     }
   });
 })();

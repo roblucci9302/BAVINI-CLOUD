@@ -45,26 +45,14 @@ import {
 import type {
   Task,
   TaskResult,
-  TaskStatus,
   AgentType,
   AgentMessage,
-  ToolDefinition,
   OrchestrationDecision,
   ExecutionPlan,
-  ExecutionStep,
-  Artifact,
   ToolExecutionResult,
-  ToolCall,
 } from '../types';
-import { getModelForAgent, MAX_DECOMPOSITION_DEPTH } from '../types';
+import { getModelForAgent } from '../types';
 import { createScopedLogger } from '~/utils/logger';
-import {
-  ParallelExecutor,
-  createParallelExecutor,
-  type SubtaskDefinition,
-  type SubtaskResult,
-} from '../execution/parallel-executor';
-import { getGlobalCircuitBreaker } from '../utils/circuit-breaker';
 import { getCachedRouting, cacheRouting } from '../cache';
 import {
   CheckpointScheduler,
@@ -90,128 +78,29 @@ import {
   type WebSearchServiceConfig,
 } from '../tools/web-tools';
 
+// Phase 1.2 Refactoring - Modular imports
+import {
+  DelegateToAgentTool,
+  CreateSubtasksTool,
+  GetAgentStatusTool,
+  CompleteTaskTool,
+  ORCHESTRATOR_TOOLS,
+} from '../tools/orchestrator-tools';
+import {
+  parseDecision,
+  type DecisionParserLogger,
+} from '../utils/decision-parser';
+import {
+  executeDelegation,
+  executeDecomposition,
+  handleDelegateToAgent,
+  handleCreateSubtasks,
+  handleGetAgentStatus,
+  type DelegationContext,
+  type DecompositionContext,
+} from '../execution/orchestrator-executor';
+
 const logger = createScopedLogger('Orchestrator');
-
-/*
- * ============================================================================
- * OUTILS DE L'ORCHESTRATEUR
- * ============================================================================
- */
-
-/**
- * Outil pour déléguer une tâche à un agent
- */
-const DelegateToAgentTool: ToolDefinition = {
-  name: 'delegate_to_agent',
-  description:
-    'Déléguer une tâche à un agent spécialisé. ' +
-    "Utilise cet outil quand une tâche correspond aux capacités d'un agent.",
-  inputSchema: {
-    type: 'object',
-    properties: {
-      agent: {
-        type: 'string',
-        description: "Nom de l'agent cible (explore, coder, builder, tester, deployer, reviewer, fixer, architect)",
-        enum: ['explore', 'coder', 'builder', 'tester', 'deployer', 'reviewer', 'fixer', 'architect'],
-      },
-      task: {
-        type: 'string',
-        description: "Description précise de la tâche pour l'agent",
-      },
-      context: {
-        type: 'object',
-        description: "Contexte additionnel pour l'agent (fichiers, infos, etc.)",
-      },
-    },
-    required: ['agent', 'task'],
-  },
-};
-
-/**
- * Outil pour créer des sous-tâches
- */
-const CreateSubtasksTool: ToolDefinition = {
-  name: 'create_subtasks',
-  description:
-    'Décomposer une tâche complexe en sous-tâches. ' + 'Utilise quand la tâche nécessite plusieurs agents ou étapes.',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      tasks: {
-        type: 'array',
-        description: 'Liste des sous-tâches à créer',
-        items: {
-          type: 'object',
-          properties: {
-            agent: { type: 'string', description: 'Agent assigné' },
-            description: { type: 'string', description: 'Description de la tâche' },
-            dependsOn: {
-              type: 'array',
-              description: 'Indices des tâches dont celle-ci dépend',
-              items: { type: 'number' },
-            },
-          },
-        },
-      },
-      reasoning: {
-        type: 'string',
-        description: 'Explication de la décomposition',
-      },
-    },
-    required: ['tasks', 'reasoning'],
-  },
-};
-
-/**
- * Outil pour obtenir le statut des agents
- */
-const GetAgentStatusTool: ToolDefinition = {
-  name: 'get_agent_status',
-  description: 'Obtenir le statut et les capacités des agents disponibles.',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      agent: {
-        type: 'string',
-        description: "Nom de l'agent (optionnel, tous si omis)",
-      },
-    },
-    required: [],
-  },
-};
-
-/**
- * Outil pour signaler que la tâche est terminée
- * CRITIQUE: Cet outil permet à l'orchestrateur d'arrêter explicitement
- * au lieu de boucler indéfiniment.
- */
-const CompleteTaskTool: ToolDefinition = {
-  name: 'complete_task',
-  description:
-    "Signaler que la tâche demandée par l'utilisateur est TERMINÉE. " +
-    'Utilise cet outil quand: (1) la demande est satisfaite, (2) le résultat est prêt à être présenté, ' +
-    "(3) aucune action supplémentaire n'est nécessaire. " +
-    'NE PAS utiliser si des étapes restent à faire.',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      result: {
-        type: 'string',
-        description: "Résultat final à présenter à l'utilisateur (résumé clair et concis)",
-      },
-      summary: {
-        type: 'string',
-        description: 'Résumé des actions effectuées',
-      },
-      artifacts: {
-        type: 'array',
-        description: 'Liste des fichiers créés/modifiés (optionnel)',
-        items: { type: 'string' },
-      },
-    },
-    required: ['result'],
-  },
-};
 
 /*
  * ============================================================================
@@ -359,7 +248,8 @@ export class Orchestrator extends BaseAgent {
   private registerOrchestratorTools(): void {
     const orchestratorHandlers: Record<string, ToolHandler> = {
       delegate_to_agent: async (input: Record<string, unknown>): Promise<ToolExecutionResult> => {
-        const result = await this.handleDelegateToAgent(
+        // Use modular handler from orchestrator-executor
+        const result = handleDelegateToAgent(
           input as {
             agent: AgentType;
             task: string;
@@ -370,7 +260,8 @@ export class Orchestrator extends BaseAgent {
       },
 
       create_subtasks: async (input: Record<string, unknown>): Promise<ToolExecutionResult> => {
-        const result = await this.handleCreateSubtasks(
+        // Use modular handler from orchestrator-executor
+        const result = handleCreateSubtasks(
           input as {
             tasks: Array<{
               agent: AgentType;
@@ -384,13 +275,14 @@ export class Orchestrator extends BaseAgent {
       },
 
       get_agent_status: async (input: Record<string, unknown>): Promise<ToolExecutionResult> => {
-        const result = await this.handleGetAgentStatus(input as { agent?: AgentType });
+        // Use modular handler from orchestrator-executor
+        const result = handleGetAgentStatus(input as { agent?: AgentType }, this.registry);
         return { success: true, output: result };
       },
 
       complete_task: async (input: Record<string, unknown>): Promise<ToolExecutionResult> => {
-        // Cet outil signale la fin de la tâche
-        // Le résultat sera utilisé par parseDecision pour générer l'action 'complete'
+        // This tool signals task completion
+        // The result will be used by parseDecision to generate the 'complete' action
         const result = input.result as string;
         const summary = input.summary as string | undefined;
         const artifacts = input.artifacts as string[] | undefined;
@@ -412,11 +304,7 @@ export class Orchestrator extends BaseAgent {
       },
     };
 
-    this.registerTools(
-      [DelegateToAgentTool, CreateSubtasksTool, GetAgentStatusTool, CompleteTaskTool],
-      orchestratorHandlers,
-      'orchestration',
-    );
+    this.registerTools(ORCHESTRATOR_TOOLS, orchestratorHandlers, 'orchestration');
 
     this.log('info', 'Orchestrator tools registered in ToolRegistry');
   }
@@ -738,10 +626,10 @@ export class Orchestrator extends BaseAgent {
       // Exécuter selon la décision
       switch (decision.action) {
         case 'delegate':
-          return await this.executeDelegation(decision, task);
+          return await this.executeDelegationImpl(decision, task);
 
         case 'decompose':
-          return await this.executeDecomposition(decision, task);
+          return await this.executeDecompositionImpl(decision, task);
 
         case 'execute_directly':
           return {
@@ -857,8 +745,12 @@ export class Orchestrator extends BaseAgent {
 
     const response = await this.callLLM(routingMessages);
 
-    // Parser la réponse pour extraire la décision
-    const decision = this.parseDecision(response);
+    // Use modular parseDecision from decision-parser
+    const parserLogger: DecisionParserLogger = {
+      warn: (msg, data) => this.log('warn', msg, data),
+      error: (msg, data) => this.log('error', msg, data),
+    };
+    const decision = parseDecision(response, parserLogger);
 
     // Mettre en cache la décision pour les prompts similaires futurs
     cacheRouting(task.prompt, decision);
@@ -904,633 +796,44 @@ Choisis la meilleure approche.`;
   }
 
   /**
-   * Liste des agents valides pour la validation
+   * Execute delegation to an agent using modular executor
    */
-  private static readonly VALID_AGENTS: AgentType[] = [
-    'explore',
-    'coder',
-    'builder',
-    'tester',
-    'deployer',
-    'reviewer',
-    'fixer',
-    'architect',
-  ];
-
-  /**
-   * Valider qu'un agent est valide
-   */
-  private validateAgent(agent: unknown, context: string): AgentType {
-    if (!agent || typeof agent !== 'string') {
-      throw new Error(`${context}: Agent name is required and must be a string`);
-    }
-
-    const normalizedAgent = agent.toLowerCase().trim() as AgentType;
-    if (!Orchestrator.VALID_AGENTS.includes(normalizedAgent)) {
-      throw new Error(
-        `${context}: Invalid agent "${agent}". ` + `Valid agents are: ${Orchestrator.VALID_AGENTS.join(', ')}`,
-      );
-    }
-
-    return normalizedAgent;
-  }
-
-  /**
-   * Valider une description de tâche
-   */
-  private validateTaskDescription(description: unknown, context: string): string {
-    if (!description || typeof description !== 'string') {
-      throw new Error(`${context}: Task description is required and must be a string`);
-    }
-
-    const trimmed = description.trim();
-    if (trimmed.length === 0) {
-      throw new Error(`${context}: Task description cannot be empty`);
-    }
-
-    if (trimmed.length < 5) {
-      this.log('warn', `${context}: Very short task description`, { length: trimmed.length });
-    }
-
-    return trimmed;
-  }
-
-  /**
-   * Parser la décision du LLM avec validation stricte
-   * Accepte le format retourné par callLLM: { text, toolCalls }
-   */
-  private parseDecision(response: { text: string; toolCalls: ToolCall[] | undefined }): OrchestrationDecision {
-    // Chercher les appels d'outils
-    if (response.toolCalls && response.toolCalls.length > 0) {
-      for (const toolCall of response.toolCalls) {
-        const input = toolCall.input;
-
-        try {
-          if (toolCall.name === 'delegate_to_agent') {
-            // Validation stricte de l'agent
-            const agent = this.validateAgent(input.agent, 'delegate_to_agent');
-
-            // Validation stricte de la tâche
-            const task = this.validateTaskDescription(input.task, 'delegate_to_agent');
-
-            // Validation optionnelle du contexte
-            if (input.context !== undefined && typeof input.context !== 'object') {
-              this.log('warn', 'delegate_to_agent: context should be an object, ignoring', {
-                type: typeof input.context,
-              });
-            }
-
-            return {
-              action: 'delegate',
-              targetAgent: agent,
-              reasoning: `Délégation à ${agent}: ${task}`,
-            };
-          }
-
-          if (toolCall.name === 'create_subtasks') {
-            const tasks = input.tasks as unknown;
-
-            // Validation stricte: tasks doit être un tableau non vide
-            if (!Array.isArray(tasks)) {
-              throw new Error('create_subtasks: "tasks" must be an array');
-            }
-
-            if (tasks.length === 0) {
-              throw new Error('create_subtasks: At least one subtask is required');
-            }
-
-            // Limite le nombre de sous-tâches pour éviter les abus
-            if (tasks.length > 20) {
-              throw new Error(`create_subtasks: Too many subtasks (${tasks.length}). Maximum is 20.`);
-            }
-
-            // Valider chaque sous-tâche
-            const validatedTasks = tasks.map((t, idx) => {
-              if (!t || typeof t !== 'object') {
-                throw new Error(`create_subtasks: Subtask at index ${idx} must be an object`);
-              }
-
-              const subtask = t as Record<string, unknown>;
-
-              // Description est obligatoire
-              const description = this.validateTaskDescription(
-                subtask.description,
-                `create_subtasks[${idx}].description`,
-              );
-
-              // Agent est optionnel mais doit être valide si présent
-              let agent: AgentType | undefined;
-              if (subtask.agent !== undefined && subtask.agent !== null && subtask.agent !== '') {
-                agent = this.validateAgent(subtask.agent, `create_subtasks[${idx}].agent`);
-              }
-
-              // Validation des dépendances
-              let dependsOn: number[] | undefined;
-              if (subtask.dependsOn !== undefined) {
-                if (!Array.isArray(subtask.dependsOn)) {
-                  throw new Error(`create_subtasks[${idx}].dependsOn must be an array of indices`);
-                }
-
-                dependsOn = (subtask.dependsOn as unknown[]).map((dep, depIdx) => {
-                  if (typeof dep !== 'number' || !Number.isInteger(dep) || dep < 0) {
-                    throw new Error(
-                      `create_subtasks[${idx}].dependsOn[${depIdx}] must be a non-negative integer`,
-                    );
-                  }
-                  if (dep >= tasks.length) {
-                    throw new Error(
-                      `create_subtasks[${idx}].dependsOn[${depIdx}] references invalid task index ${dep}`,
-                    );
-                  }
-                  if (dep >= idx) {
-                    this.log('warn', `create_subtasks: Circular or forward dependency detected`, {
-                      taskIndex: idx,
-                      dependsOn: dep,
-                    });
-                  }
-                  return dep;
-                });
-              }
-
-              return {
-                agent,
-                description,
-                dependsOn,
-              };
-            });
-
-            // Validation du reasoning
-            const reasoning = input.reasoning as string | undefined;
-            if (reasoning !== undefined && typeof reasoning !== 'string') {
-              this.log('warn', 'create_subtasks: reasoning should be a string');
-            }
-
-            return {
-              action: 'decompose',
-              subTasks: validatedTasks.map((t, idx) => ({
-                type: t.agent || 'explore',
-                prompt: t.description,
-                dependencies: t.dependsOn?.map((i) => `subtask-${i}`) || [],
-                priority: validatedTasks.length - idx,
-              })),
-              reasoning: (reasoning && typeof reasoning === 'string' ? reasoning : '') || 'Task decomposition',
-            };
-          }
-
-          if (toolCall.name === 'complete_task') {
-            const result = input.result as unknown;
-            const summary = input.summary as string | undefined;
-
-            // Validation stricte du résultat
-            if (!result || typeof result !== 'string') {
-              throw new Error('complete_task: "result" is required and must be a string');
-            }
-
-            const trimmedResult = result.trim();
-            if (trimmedResult.length === 0) {
-              throw new Error('complete_task: "result" cannot be empty');
-            }
-
-            // Validation optionnelle du summary
-            if (summary !== undefined && typeof summary !== 'string') {
-              this.log('warn', 'complete_task: summary should be a string');
-            }
-
-            // Validation optionnelle des artifacts
-            const artifacts = input.artifacts as unknown;
-            if (artifacts !== undefined) {
-              if (!Array.isArray(artifacts)) {
-                this.log('warn', 'complete_task: artifacts should be an array');
-              } else {
-                // Valider que chaque artifact est une string
-                for (const [idx, artifact] of artifacts.entries()) {
-                  if (typeof artifact !== 'string') {
-                    this.log('warn', `complete_task: artifacts[${idx}] should be a string`);
-                  }
-                }
-              }
-            }
-
-            return {
-              action: 'complete',
-              response: trimmedResult,
-              reasoning: (summary && typeof summary === 'string' ? summary : '') || 'Tâche terminée avec succès',
-            };
-          }
-        } catch (error) {
-          // Log l'erreur de validation et propager
-          this.log('error', `Validation error in parseDecision for tool ${toolCall.name}`, {
-            error: error instanceof Error ? error.message : String(error),
-            toolName: toolCall.name,
-            input: JSON.stringify(input).substring(0, 500),
-          });
-          throw error;
-        }
-      }
-    }
-
-    // Si pas d'outil appelé, c'est une réponse directe
-    const textContent = response.text || '';
-
-    // Validation: la réponse directe ne doit pas être vide
-    if (!textContent.trim()) {
-      this.log('warn', 'parseDecision: Empty response without tool use');
-    }
-
-    return {
-      action: 'execute_directly',
-      response: textContent,
-      reasoning: 'Réponse directe sans délégation',
-    };
-  }
-
-  /**
-   * Exécuter une délégation à un agent
-   */
-  private async executeDelegation(decision: OrchestrationDecision, originalTask: Task): Promise<TaskResult> {
-    if (!decision.targetAgent) {
-      throw new Error('No target agent specified for delegation');
-    }
-
-    const circuitBreaker = getGlobalCircuitBreaker();
-
-    // Vérifier le circuit breaker avant de déléguer
-    if (!circuitBreaker.isAllowed(decision.targetAgent)) {
-      const stats = circuitBreaker.getStats(decision.targetAgent);
-      this.log('warn', `Circuit breaker OPEN for agent ${decision.targetAgent}`, {
-        state: stats.state,
-        failureCount: stats.failureCount,
-      });
-
-      return {
-        success: false,
-        output: `Agent '${decision.targetAgent}' temporairement indisponible (circuit ouvert après ${stats.failureCount} échecs)`,
-        errors: [
-          {
-            code: 'CIRCUIT_OPEN',
-            message: `Agent ${decision.targetAgent} circuit breaker is OPEN`,
-            recoverable: true,
-            suggestion: 'Réessayer plus tard ou utiliser un autre agent',
-            context: {
-              state: stats.state,
-              failureCount: stats.failureCount,
-              lastFailure: stats.lastFailure?.toISOString(),
-            },
-          },
-        ],
-      };
-    }
-
-    const agent = this.registry.get(decision.targetAgent);
-
-    if (!agent) {
-      return {
-        success: false,
-        output: `Agent '${decision.targetAgent}' non disponible`,
-        errors: [
-          {
-            code: 'AGENT_NOT_FOUND',
-            message: `Agent ${decision.targetAgent} not found in registry`,
-            recoverable: false,
-          },
-        ],
-      };
-    }
-
-    if (!agent.isAvailable()) {
-      return {
-        success: false,
-        output: `Agent '${decision.targetAgent}' est occupé`,
-        errors: [
-          {
-            code: 'AGENT_BUSY',
-            message: `Agent ${decision.targetAgent} is busy`,
-            recoverable: true,
-            suggestion: "Attendre que l'agent soit disponible",
-          },
-        ],
-      };
-    }
-
-    // Créer la sous-tâche
-    const subTask: Task = {
-      id: `${originalTask.id}-${decision.targetAgent}-${Date.now()}`,
-      type: decision.targetAgent,
-      prompt: decision.reasoning,
-      context: originalTask.context,
-      status: 'pending',
-      metadata: {
-        parentTaskId: originalTask.id,
-        source: 'orchestrator',
-      },
-      createdAt: new Date(),
-    };
-
-    this.log('info', `Delegating to ${decision.targetAgent}`, {
-      subTaskId: subTask.id,
-    });
-
-    // Créer un checkpoint AVANT la délégation
-    await this.checkpointScheduler.createDelegationCheckpoint(originalTask.id, decision.targetAgent, 'before');
-
-    // Exécuter l'agent avec suivi du circuit breaker
-    try {
-      const result = await agent.run(subTask, this.apiKey);
-
-      // Créer un checkpoint APRÈS la délégation (succès ou échec)
-      await this.checkpointScheduler.createDelegationCheckpoint(originalTask.id, decision.targetAgent, 'after');
-
-      // Enregistrer le succès ou l'échec dans le circuit breaker
-      if (result.success) {
-        circuitBreaker.recordSuccess(decision.targetAgent);
-      } else {
-        circuitBreaker.recordFailure(decision.targetAgent, result.output);
-      }
-
-      // Enrichir le résultat
-      return {
-        ...result,
-        output: `[${decision.targetAgent}] ${result.output}`,
-        data: {
-          ...result.data,
-          delegatedTo: decision.targetAgent,
-          subTaskId: subTask.id,
-          circuitState: circuitBreaker.getState(decision.targetAgent),
-        },
-      };
-    } catch (error) {
-      // Créer un checkpoint d'erreur avant de propager
-      await this.checkpointScheduler.createErrorCheckpoint(
-        originalTask.id,
-        error instanceof Error ? error : new Error(String(error)),
-      );
-
-      // Enregistrer l'échec dans le circuit breaker
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      circuitBreaker.recordFailure(decision.targetAgent, errorMessage);
-
-      throw error;
-    }
-  }
-
-  /**
-   * Exécuter une décomposition en sous-tâches avec exécution parallèle
-   */
-  private async executeDecomposition(decision: OrchestrationDecision, originalTask: Task): Promise<TaskResult> {
-    // Check decomposition depth to prevent infinite recursion
-    const currentDepth = originalTask.metadata?.decompositionDepth ?? 0;
-
-    if (currentDepth >= MAX_DECOMPOSITION_DEPTH) {
-      this.log('warn', `Max decomposition depth (${MAX_DECOMPOSITION_DEPTH}) reached, refusing to decompose further`);
-
-      return {
-        success: false,
-        output: `Profondeur maximum de décomposition atteinte (${MAX_DECOMPOSITION_DEPTH}). La tâche est trop complexe pour être décomposée davantage.`,
-        errors: [
-          {
-            code: 'MAX_DEPTH_EXCEEDED',
-            message: `Maximum decomposition depth (${MAX_DECOMPOSITION_DEPTH}) exceeded`,
-            recoverable: false,
-          },
-        ],
-      };
-    }
-
-    if (!decision.subTasks || decision.subTasks.length === 0) {
-      return {
-        success: false,
-        output: 'Aucune sous-tâche définie',
-        errors: [
-          {
-            code: 'NO_SUBTASKS',
-            message: 'Decomposition produced no subtasks',
-            recoverable: false,
-          },
-        ],
-      };
-    }
-
-    this.log('info', `Decomposing into ${decision.subTasks.length} subtasks`, {
-      subtasks: decision.subTasks.map((t) => t.type),
-    });
-
-    // Convertir les sous-tâches en format pour l'exécuteur parallèle
-    // Increment decomposition depth for subtasks to track recursion
-    const subtaskDefinitions: SubtaskDefinition[] = decision.subTasks.map((subTaskDef, i) => ({
-      id: `${originalTask.id}-step-${i}`,
-      agent: (subTaskDef.type || 'explore') as AgentType,
-      task: {
-        id: `${originalTask.id}-step-${i}`,
-        type: subTaskDef.type || 'explore',
-        prompt: subTaskDef.prompt,
-        context: {
-          ...originalTask.context,
-        },
-        status: 'pending' as const,
-        metadata: {
-          parentTaskId: originalTask.id,
-          source: 'orchestrator' as const,
-          decompositionDepth: currentDepth + 1,
-        },
-        createdAt: new Date(),
-      },
-
-      // Convertir les indices en IDs de dépendances
-      dependencies: subTaskDef.dependencies?.map((idx) => `${originalTask.id}-step-${idx}`),
-    }));
-
-    // Créer l'exécuteur parallèle
-    const executor = createParallelExecutor({
-      maxConcurrency: 3, // Limite de 3 agents en parallèle
-      continueOnError: true, // Continuer même si une tâche échoue
-      taskTimeout: 120000, // 2 minutes par tâche
-      onProgress: (completed, total, current) => {
-        this.log('debug', `Progress: ${completed}/${total}`, {
-          subtaskId: current.id,
-          success: current.success,
-        });
-        this.emitEvent('task:progress', {
-          completed,
-          total,
-          current: current.id,
-        });
-      },
-      onLevelStart: (level, taskCount) => {
-        this.log('info', `Starting level ${level} with ${taskCount} task(s)`);
-      },
-      onLevelComplete: (level, results) => {
-        const successful = results.filter((r) => r.success).length;
-        this.log('info', `Level ${level} complete: ${successful}/${results.length} successful`);
-      },
-    });
-
-    // Exécuter avec le callback qui utilise le registry d'agents et le circuit breaker
-    const circuitBreaker = getGlobalCircuitBreaker();
-
-    const results = await executor.execute(subtaskDefinitions, async (task, agentType) => {
-      // Vérifier le circuit breaker
-      if (!circuitBreaker.isAllowed(agentType)) {
-        const stats = circuitBreaker.getStats(agentType);
-        return {
-          success: false,
-          output: `Agent ${agentType} temporairement indisponible (circuit ouvert)`,
-          errors: [
-            {
-              code: 'CIRCUIT_OPEN',
-              message: `Agent ${agentType} circuit breaker is OPEN`,
-              recoverable: true,
-              context: { state: stats.state, failureCount: stats.failureCount },
-            },
-          ],
-        };
-      }
-
-      const agent = this.registry.get(agentType);
-
-      if (!agent) {
-        return {
-          success: false,
-          output: `Agent ${agentType} non disponible`,
-          errors: [
-            {
-              code: 'AGENT_NOT_FOUND',
-              message: `Agent ${agentType} not found in registry`,
-              recoverable: false,
-            },
-          ],
-        };
-      }
-
-      try {
-        const result = await agent.run(task, this.apiKey);
-
-        // Enregistrer succès/échec dans le circuit breaker
-        if (result.success) {
-          circuitBreaker.recordSuccess(agentType);
-        } else {
-          circuitBreaker.recordFailure(agentType, result.output);
-        }
-
-        // Créer un checkpoint après chaque sous-tâche complétée
-        await this.checkpointScheduler.createSubtaskCheckpoint(originalTask.id, task.id, result);
-
-        return result;
-      } catch (error) {
-        // Créer un checkpoint d'erreur pour la sous-tâche
-        await this.checkpointScheduler.createErrorCheckpoint(
-          originalTask.id,
-          error instanceof Error ? error : new Error(String(error)),
-        );
-
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        circuitBreaker.recordFailure(agentType, errorMessage);
-        throw error;
-      }
-    });
-
-    // Agréger les artefacts
-    const artifacts: Artifact[] = [];
-
-    for (const r of results) {
-      if (r.result.artifacts) {
-        artifacts.push(...r.result.artifacts);
-      }
-    }
-
-    // Calculer les statistiques
-    const stats = ParallelExecutor.calculateStats(results);
-
-    // Grouper par niveau pour un meilleur affichage
-    const byLevel = new Map<number, SubtaskResult[]>();
-
-    for (const r of results) {
-      const level = byLevel.get(r.level) || [];
-      level.push(r);
-      byLevel.set(r.level, level);
-    }
-
-    const combinedOutput = Array.from(byLevel.entries())
-      .sort(([a], [b]) => a - b)
-      .map(([level, levelResults]) => {
-        const levelOutput = levelResults.map((r) => `#### ${r.id}\n${r.result.output}`).join('\n\n');
-        return `### Niveau ${level} (${levelResults.length} tâche(s), parallèle)\n${levelOutput}`;
-      })
-      .join('\n\n---\n\n');
-
-    return {
-      success: stats.failed === 0,
-      output:
-        `## Résultat de l'exécution parallèle (${stats.successful}/${stats.total} réussies)\n\n` +
-        `**Niveaux d'exécution:** ${stats.levels}\n` +
-        `**Efficacité parallèle:** ${stats.parallelEfficiency}x\n` +
-        `**Temps total:** ${stats.totalTime}ms\n\n` +
-        combinedOutput,
-      artifacts,
-      data: {
-        subtaskResults: results,
-        reasoning: decision.reasoning,
-        executionStats: stats,
+  private async executeDelegationImpl(decision: OrchestrationDecision, originalTask: Task): Promise<TaskResult> {
+    // Create delegation context for modular executor
+    const context: DelegationContext = {
+      registry: this.registry,
+      apiKey: this.apiKey,
+      checkpointScheduler: this.checkpointScheduler,
+      log: {
+        info: (msg, data) => this.log('info', msg, data),
+        warn: (msg, data) => this.log('warn', msg, data),
+        debug: (msg, data) => this.log('debug', msg, data),
       },
     };
+
+    return executeDelegation(decision, originalTask, context);
   }
 
   /**
-   * Handler: Déléguer à un agent
+   * Execute decomposition into subtasks using modular executor
    */
-  private async handleDelegateToAgent(input: {
-    agent: AgentType;
-    task: string;
-    context?: Record<string, unknown>;
-  }): Promise<{ delegated: boolean; agent: string; task: string }> {
-    /*
-     * Ce handler est utilisé par le LLM pour signaler sa décision
-     * L'exécution réelle se fait dans executeDelegation
-     */
-    return {
-      delegated: true,
-      agent: input.agent,
-      task: input.task,
+  private async executeDecompositionImpl(decision: OrchestrationDecision, originalTask: Task): Promise<TaskResult> {
+    // Create decomposition context for modular executor
+    const context: DecompositionContext = {
+      registry: this.registry,
+      apiKey: this.apiKey,
+      checkpointScheduler: this.checkpointScheduler,
+      log: {
+        info: (msg, data) => this.log('info', msg, data),
+        warn: (msg, data) => this.log('warn', msg, data),
+        debug: (msg, data) => this.log('debug', msg, data),
+      },
+      eventEmitter: {
+        emitEvent: (event, data) => this.emitEvent(event, data),
+      },
     };
-  }
 
-  /**
-   * Handler: Créer des sous-tâches
-   */
-  private async handleCreateSubtasks(input: {
-    tasks: Array<{
-      agent: AgentType;
-      description: string;
-      dependsOn?: number[];
-    }>;
-    reasoning: string;
-  }): Promise<{ created: boolean; count: number; reasoning: string }> {
-    return {
-      created: true,
-      count: input.tasks.length,
-      reasoning: input.reasoning,
-    };
-  }
-
-  /**
-   * Handler: Obtenir le statut des agents
-   */
-  private async handleGetAgentStatus(input: { agent?: AgentType }): Promise<unknown> {
-    if (input.agent) {
-      const agent = this.registry.get(input.agent);
-
-      if (!agent) {
-        return { error: `Agent ${input.agent} not found` };
-      }
-
-      return {
-        name: input.agent,
-        status: agent.getStatus(),
-        description: agent.getDescription(),
-        available: agent.isAvailable(),
-      };
-    }
-
-    return this.registry.getAgentsInfo();
+    return executeDecomposition(decision, originalTask, context);
   }
 }
 

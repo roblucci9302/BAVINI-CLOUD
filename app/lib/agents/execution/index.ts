@@ -20,3 +20,19 @@ export {
   type ParallelExecutorOptions,
   type TaskExecutor,
 } from './parallel-executor';
+
+// Orchestrator execution (Phase 1.2 Refactoring)
+export {
+  executeDelegation,
+  executeDecomposition,
+  handleDelegateToAgent,
+  handleCreateSubtasks,
+  handleGetAgentStatus,
+  type DelegationContext,
+  type DecompositionContext,
+  type ExecutorLogger,
+  type ExecutorEventEmitter,
+  type DelegateToAgentResult,
+  type CreateSubtasksResult,
+  type GetAgentStatusResult,
+} from './orchestrator-executor';

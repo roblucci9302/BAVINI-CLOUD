@@ -27,3 +27,12 @@ export {
 
 // Output parser utilities
 export { safeJSONParse, formatJSONParseError, extractJSONWithErrors, type JSONParseResult, type JSONParseError } from './output-parser';
+
+// Decision parser (Phase 1.2 Refactoring)
+export {
+  VALID_AGENTS,
+  validateAgent,
+  validateTaskDescription,
+  parseDecision,
+  type DecisionParserLogger,
+} from './decision-parser';

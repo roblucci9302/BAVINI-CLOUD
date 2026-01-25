@@ -41,3 +41,15 @@ export { useTemplateLoader } from './useTemplateLoader';
 
 // Todos Sync
 export { useTodosSync, useTodosDisplay } from './useTodosSync';
+
+// Lazy Animate
+export { useLazyAnimate, type AnimateFunction, type AnimationScope } from './useLazyAnimate';
+
+// Message Editing
+export {
+  useMessageEditing,
+  type UseMessageEditingOptions,
+  type UseMessageEditingReturn,
+  type MessageEditingState,
+  type SendMessageFn,
+} from './useMessageEditing';

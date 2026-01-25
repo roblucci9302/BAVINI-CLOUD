@@ -1,25 +1,18 @@
 /**
  * =============================================================================
- * BAVINI CLOUD - Git Tools
+ * BAVINI CLOUD - Git Tools Module
  * =============================================================================
- * Outils Git pour les agents BAVINI.
- * Ces outils permettent de gérer les opérations Git et GitHub.
+ * Barrel export for Git tools submodules.
  *
- * This file re-exports all Git tools from the modular git/ submodules
- * for backwards compatibility.
- *
- * @module lib/agents/tools/git-tools
+ * @module lib/agents/tools/git
  * =============================================================================
  */
 
-// Re-export everything from the modular git/ submodules
+// Types
+export type { GitBranch, GitCommit, GitFileStatus, GitInterface } from './types';
+
+// URL Validation
 export {
-  // Types
-  type GitBranch,
-  type GitCommit,
-  type GitFileStatus,
-  type GitInterface,
-  // URL Validation
   ALLOWED_GIT_HOSTS,
   type GitUrlValidationResult,
   type GitUrlValidationConfig,
@@ -27,7 +20,10 @@ export {
   configureGitUrlValidation,
   addAllowedGitHost,
   getGitUrlValidationConfig,
-  // Tool Definitions
+} from './url-validation';
+
+// Tool Definitions
+export {
   GitInitTool,
   GitCloneTool,
   GitStatusTool,
@@ -39,8 +35,10 @@ export {
   GitLogTool,
   GitDiffTool,
   GIT_TOOLS,
-  // Tool Handlers
-  createGitToolHandlers,
-  // Mock Git
-  createMockGit,
-} from './git';
+} from './tool-definitions';
+
+// Tool Handlers
+export { createGitToolHandlers } from './tool-handlers';
+
+// Mock Git (for testing)
+export { createMockGit } from './mock-git';

@@ -35,6 +35,10 @@ export interface BundleInjectionOptions {
   customTheme?: string;
   /** Whether custom colors are defined */
   hasCustomColors?: boolean;
+  /** Optional HMR client script to inject */
+  hmrClientScript?: string;
+  /** Always inject Tailwind CDN regardless of CSS content (default: true) */
+  alwaysInjectTailwind?: boolean;
 }
 
 /**
@@ -71,7 +75,12 @@ export function injectBundle(
   css: string,
   options: BundleInjectionOptions
 ): string {
-  const { framework, customTheme = '', hasCustomColors = false } = options;
+  const {
+    framework,
+    customTheme = '',
+    hasCustomColors = false,
+    alwaysInjectTailwind = true,
+  } = options;
 
   // Inject base styles in head
   const baseStyles = generateBaseStyles();
@@ -84,9 +93,11 @@ export function injectBundle(
   }
 
   // Determine if we need Tailwind CDN
+  // Default is to always inject to ensure all Tailwind utilities work
   const jitFailed = css?.includes('Tailwind compilation failed');
   const isSfcFramework = ['vue', 'svelte', 'astro'].includes(framework);
-  const needsTailwindCdn = !css || css.length < 100 || jitFailed || hasCustomColors || isSfcFramework;
+  const needsTailwindCdn = alwaysInjectTailwind ||
+    !css || css.length < 100 || jitFailed || hasCustomColors || isSfcFramework;
 
   // For Astro and SFC frameworks, don't remove body inline styles
   const isAstro = framework === 'astro';
@@ -162,6 +173,11 @@ export function injectBundle(
   // Add keyboard forwarding script
   const keyboardScript = generateKeyboardForwardingScript();
   html = html.replace('<head>', `<head>\n${keyboardScript}`);
+
+  // Inject HMR client script if provided
+  if (options.hmrClientScript) {
+    html = html.replace('</body>', `${options.hmrClientScript}\n</body>`);
+  }
 
   return html;
 }

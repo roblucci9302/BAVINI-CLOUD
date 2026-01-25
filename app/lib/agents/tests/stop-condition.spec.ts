@@ -4,9 +4,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { createOrchestrator } from '../agents/orchestrator';
 import type { OrchestrationDecision } from '../types';
 import { ORCHESTRATOR_SYSTEM_PROMPT } from '../prompts/orchestrator-prompt';
+// Import parseDecision from the modular decision-parser (Phase 1.2 refactoring)
+import { parseDecision } from '../utils/decision-parser';
 
 // Mock helper pour simuler les réponses au format { text, toolCalls }
 // Ce format est utilisé par parseDecision après le refactoring SRP
@@ -29,11 +30,7 @@ const mockTextResponse = (text: string) => ({
 describe('Stop Conditions - Phase 1', () => {
   describe('complete_task tool parsing', () => {
     it('should parse complete_task as action "complete"', () => {
-      const orchestrator = createOrchestrator();
-
-      // Accéder à la méthode privée via any (pour le test uniquement)
-      const parseDecision = (orchestrator as any).parseDecision.bind(orchestrator);
-
+      // Use modular parseDecision directly (Phase 1.2 refactoring)
       // Simuler une réponse avec complete_task (nouveau format { text, toolCalls })
       const mockResponse = mockParsedResponse('complete_task', {
         result: 'Le composant Button a été créé avec succès dans src/components/Button.tsx',
@@ -48,9 +45,6 @@ describe('Stop Conditions - Phase 1', () => {
     });
 
     it('should still handle delegate_to_agent correctly', () => {
-      const orchestrator = createOrchestrator();
-      const parseDecision = (orchestrator as any).parseDecision.bind(orchestrator);
-
       const mockResponse = mockParsedResponse('delegate_to_agent', {
         agent: 'coder',
         task: 'Créer un composant Button',
@@ -63,9 +57,6 @@ describe('Stop Conditions - Phase 1', () => {
     });
 
     it('should still handle create_subtasks correctly', () => {
-      const orchestrator = createOrchestrator();
-      const parseDecision = (orchestrator as any).parseDecision.bind(orchestrator);
-
       const mockResponse = mockParsedResponse('create_subtasks', {
         tasks: [
           { agent: 'explore', description: 'Trouver le fichier' },
@@ -81,9 +72,6 @@ describe('Stop Conditions - Phase 1', () => {
     });
 
     it('should handle text-only response as execute_directly', () => {
-      const orchestrator = createOrchestrator();
-      const parseDecision = (orchestrator as any).parseDecision.bind(orchestrator);
-
       // Nouveau format: réponse texte sans toolCalls
       const mockResponse = mockTextResponse('Voici la réponse directe');
 

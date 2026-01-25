@@ -9,3 +9,9 @@
 export { LRUCache, moduleCache, createLRUCache } from './build-cache';
 export { yieldToEventLoop } from './event-loop';
 export { generateHash, normalizePath, isPathSafe } from './path-utils';
+export {
+  BUNDLE_LIMITS,
+  type BundleSizeCheckResult,
+  checkBundleSizeLimits,
+  logBundleSize,
+} from './bundle-limits';

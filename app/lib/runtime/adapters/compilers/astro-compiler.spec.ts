@@ -6,6 +6,14 @@
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { AstroCompiler } from './astro-compiler';
+import {
+  postProcessCode,
+  wrapForBrowser,
+  stripTypeScriptDeclarations,
+  getAstroRuntimeShims,
+  extractStylesFromSource,
+  getComponentName,
+} from './astro';
 
 describe('AstroCompiler', () => {
   let compiler: AstroCompiler;
@@ -51,22 +59,15 @@ describe('AstroCompiler', () => {
 
   describe('Component Name Extraction', () => {
     it('should extract PascalCase component name from filename', () => {
-      // @ts-expect-error - accessing private method for testing
-      const getName = (filename: string) => compiler.getComponentName(filename);
-
-      expect(getName('Header.astro')).toBe('Header');
-      expect(getName('/src/pages/index.astro')).toBe('Index');
-      expect(getName('/src/components/nav-bar.astro')).toBe('NavBar');
-      expect(getName('about-us.astro')).toBe('AboutUs');
+      expect(getComponentName('Header.astro')).toBe('Header');
+      expect(getComponentName('/src/pages/index.astro')).toBe('Index');
+      expect(getComponentName('/src/components/nav-bar.astro')).toBe('NavBar');
+      expect(getComponentName('about-us.astro')).toBe('AboutUs');
     });
   });
 
   describe('Style Extraction', () => {
     it('should extract styles from <style> tags', () => {
-      // @ts-expect-error - accessing private method for testing
-      const extractStyles = (source: string, filename: string) =>
-        compiler.extractStylesFromSource(source, filename);
-
       const source = `
 ---
 const title = "Test";
@@ -78,7 +79,7 @@ const title = "Test";
 </style>
 `;
 
-      const css = extractStyles(source, 'Test.astro');
+      const css = extractStylesFromSource(source, 'Test.astro');
 
       // CSS is now scoped with auto-generated class names like h1.astro-xxxxx
       expect(css).toContain('color: red;');
@@ -87,10 +88,6 @@ const title = "Test";
     });
 
     it('should extract multiple style blocks', () => {
-      // @ts-expect-error - accessing private method for testing
-      const extractStyles = (source: string, filename: string) =>
-        compiler.extractStylesFromSource(source, filename);
-
       const source = `
 <div>Content</div>
 <style>
@@ -101,7 +98,7 @@ const title = "Test";
 </style>
 `;
 
-      const css = extractStyles(source, 'Multi.astro');
+      const css = extractStylesFromSource(source, 'Multi.astro');
 
       // Scoped styles have auto-generated class suffixes
       expect(css).toContain('color: blue;');
@@ -111,13 +108,9 @@ const title = "Test";
     });
 
     it('should return empty string for components without styles', () => {
-      // @ts-expect-error - accessing private method for testing
-      const extractStyles = (source: string, filename: string) =>
-        compiler.extractStylesFromSource(source, filename);
-
       const source = '<h1>No styles here</h1>';
 
-      const css = extractStyles(source, 'NoStyles.astro');
+      const css = extractStylesFromSource(source, 'NoStyles.astro');
 
       expect(css).toBe('');
     });
@@ -125,9 +118,6 @@ const title = "Test";
 
   describe('TypeScript Declaration Stripping', () => {
     it('should remove interface declarations', () => {
-      // @ts-expect-error - accessing private method for testing
-      const stripTS = (code: string) => compiler.stripTypeScriptDeclarations(code);
-
       const code = `
 interface Props {
   title: string;
@@ -136,61 +126,49 @@ interface Props {
 const x = 1;
 `;
 
-      const result = stripTS(code);
+      const result = stripTypeScriptDeclarations(code);
 
       expect(result).not.toContain('interface Props');
       expect(result).toContain('const x = 1');
     });
 
     it('should remove type aliases', () => {
-      // @ts-expect-error - accessing private method for testing
-      const stripTS = (code: string) => compiler.stripTypeScriptDeclarations(code);
-
       const code = `
 type ButtonVariant = 'primary' | 'secondary';
 const variant = 'primary';
 `;
 
-      const result = stripTS(code);
+      const result = stripTypeScriptDeclarations(code);
 
       expect(result).not.toContain('type ButtonVariant');
       expect(result).toContain("const variant = 'primary'");
     });
 
     it('should remove type-only imports', () => {
-      // @ts-expect-error - accessing private method for testing
-      const stripTS = (code: string) => compiler.stripTypeScriptDeclarations(code);
-
       const code = `
 import type { Props } from './types';
 import { something } from './utils';
 `;
 
-      const result = stripTS(code);
+      const result = stripTypeScriptDeclarations(code);
 
       expect(result).not.toContain("import type { Props }");
       expect(result).toContain("import { something }");
     });
 
     it('should remove type annotations from variable declarations', () => {
-      // @ts-expect-error - accessing private method for testing
-      const stripTS = (code: string) => compiler.stripTypeScriptDeclarations(code);
-
       const code = `const title: string = "Hello";`;
 
-      const result = stripTS(code);
+      const result = stripTypeScriptDeclarations(code);
 
       expect(result).toContain('const title = "Hello"');
       expect(result).not.toContain(': string');
     });
 
     it('should remove as Type assertions', () => {
-      // @ts-expect-error - accessing private method for testing
-      const stripTS = (code: string) => compiler.stripTypeScriptDeclarations(code);
-
       const code = `const props = Astro.props as Props;`;
 
-      const result = stripTS(code);
+      const result = stripTypeScriptDeclarations(code);
 
       expect(result).not.toContain('as Props');
     });
@@ -198,8 +176,7 @@ import { something } from './utils';
 
   describe('Astro Shims Generation', () => {
     it('should generate Astro runtime shims', () => {
-      // @ts-expect-error - accessing private method for testing
-      const shims = compiler.getMissingAstroFunctions();
+      const shims = getAstroRuntimeShims();
 
       // Check for key shim functions
       expect(shims).toContain('$$createComponent');
@@ -212,8 +189,7 @@ import { something } from './utils';
     });
 
     it('should attach shims to globalThis', () => {
-      // @ts-expect-error - accessing private method for testing
-      const shims = compiler.getMissingAstroFunctions();
+      const shims = getAstroRuntimeShims();
 
       expect(shims).toContain('globalThis');
       expect(shims).toContain('g.$$createComponent');
@@ -336,19 +312,8 @@ const message = "No styles";
   });
 
   describe('Post-Processing', () => {
-    beforeEach(() => {
-      // @ts-expect-error - accessing private property for testing
-      compiler._compiler = {
-        transform: vi.fn(),
-        initialize: vi.fn(),
-      };
-      // @ts-expect-error - accessing private property for testing
-      compiler._initialized = true;
-    });
-
     it('should remove astro/internal imports', () => {
-      // @ts-expect-error - accessing private method for testing
-      const processed = compiler.postProcessCode(`
+      const processed = postProcessCode(`
 import { $$createComponent, $$render } from "astro/internal";
 const Component = $$createComponent(() => {});
 `, 'Test.astro');
@@ -358,8 +323,7 @@ const Component = $$createComponent(() => {});
     });
 
     it('should remove CSS virtual imports', () => {
-      // @ts-expect-error - accessing private method for testing
-      const processed = compiler.postProcessCode(`
+      const processed = postProcessCode(`
 import "/src/pages/index.astro?astro&type=style&index=0&lang.css";
 const Component = () => {};
 `, 'Test.astro');
@@ -369,8 +333,7 @@ const Component = () => {};
     });
 
     it('should replace $result property access with globalThis', () => {
-      // @ts-expect-error - accessing private method for testing
-      const processed = compiler.postProcessCode(`
+      const processed = postProcessCode(`
 const astro = $result.createAstro(Astro, props);
 `, 'Test.astro');
 
@@ -378,8 +341,7 @@ const astro = $result.createAstro(Astro, props);
     });
 
     it('should replace $$ function calls with globalThis', () => {
-      // @ts-expect-error - accessing private method for testing
-      const processed = compiler.postProcessCode(`
+      const processed = postProcessCode(`
 const comp = $$renderComponent(result, "Button", Button, {});
 const created = $$createComponent(() => {});
 const head = $$maybeRenderHead(result);
@@ -392,8 +354,7 @@ const head = $$maybeRenderHead(result);
     });
 
     it('should handle tagged template literals in shims', () => {
-      // @ts-expect-error - accessing private method for testing
-      const processed = compiler.postProcessCode(`
+      const processed = postProcessCode(`
 const html = $$renderTemplate\`<div>Test</div>\`;
 `, 'Test.astro');
 
@@ -403,8 +364,7 @@ const html = $$renderTemplate\`<div>Test</div>\`;
     });
 
     it('should inject Astro shims at the beginning', () => {
-      // @ts-expect-error - accessing private method for testing
-      const processed = compiler.postProcessCode(`
+      const processed = postProcessCode(`
 const Component = $$createComponent(() => {});
 export default Component;
 `, 'Test.astro');
@@ -415,19 +375,8 @@ export default Component;
   });
 
   describe('Browser Wrapping', () => {
-    beforeEach(() => {
-      // @ts-expect-error - accessing private property for testing
-      compiler._compiler = {
-        transform: vi.fn(),
-        initialize: vi.fn(),
-      };
-      // @ts-expect-error - accessing private property for testing
-      compiler._initialized = true;
-    });
-
     it('should wrap component for browser preview when no default export', () => {
-      // @ts-expect-error - accessing private method for testing
-      const wrapped = compiler.wrapForBrowser(`
+      const wrapped = wrapForBrowser(`
 const Component = $$createComponent(() => {
   return $$renderTemplate\`<div>Hello</div>\`;
 });
