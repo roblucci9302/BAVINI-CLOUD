@@ -83,45 +83,118 @@ export interface LoadedFont {
 
 /**
  * Font category mapping for common fonts
+ *
+ * Organized by:
+ * - DISTINCTIVE: Creative, unique fonts (recommended)
+ * - STANDARD: Common, reliable fonts
+ * - GENERIC: Avoid for creative projects (Inter, Roboto, etc.)
  */
 const FONT_CATEGORIES: Record<string, LoadedFont['category']> = {
-  // Sans-serif
-  Inter: 'sans-serif',
-  Roboto: 'sans-serif',
-  'Open Sans': 'sans-serif',
-  Lato: 'sans-serif',
-  Montserrat: 'sans-serif',
-  Poppins: 'sans-serif',
-  Nunito: 'sans-serif',
-  Raleway: 'sans-serif',
-  'Source Sans Pro': 'sans-serif',
-  'Work Sans': 'sans-serif',
-  'DM Sans': 'sans-serif',
-  Manrope: 'sans-serif',
-  // Serif
-  'Playfair Display': 'serif',
-  Merriweather: 'serif',
-  Lora: 'serif',
-  'Crimson Text': 'serif',
-  'Libre Baskerville': 'serif',
-  'Source Serif Pro': 'serif',
-  'PT Serif': 'serif',
-  // Monospace
-  'Fira Code': 'monospace',
-  'JetBrains Mono': 'monospace',
-  'Source Code Pro': 'monospace',
-  'Roboto Mono': 'monospace',
-  'IBM Plex Mono': 'monospace',
-  Inconsolata: 'monospace',
-  // Display
-  Oswald: 'display',
-  'Bebas Neue': 'display',
-  Pacifico: 'display',
-  'Abril Fatface': 'display',
-  // Handwriting
-  'Dancing Script': 'handwriting',
-  Caveat: 'handwriting',
-  'Great Vibes': 'handwriting',
+  // ==========================================================================
+  // DISTINCTIVE SANS-SERIF (Recommended for creative projects)
+  // ==========================================================================
+  'Space Grotesk': 'sans-serif', // Geometric, techy, distinctive
+  Outfit: 'sans-serif', // Modern, geometric, friendly
+  Syne: 'sans-serif', // Bold, editorial, artistic
+  'Plus Jakarta Sans': 'sans-serif', // Modern, clean, professional
+  'Bricolage Grotesque': 'sans-serif', // Quirky, playful, unique
+  Lexend: 'sans-serif', // Readable, modern, accessible
+  'Albert Sans': 'sans-serif', // Geometric, modern, versatile
+  'General Sans': 'sans-serif', // Clean, modern, editorial
+  Urbanist: 'sans-serif', // Geometric, modern, tech-forward
+  'Clash Display': 'sans-serif', // Bold, impactful, editorial
+  Satoshi: 'sans-serif', // Clean, modern, premium feel
+  'Cabinet Grotesk': 'sans-serif', // Bold, geometric, striking
+  Switzer: 'sans-serif', // Neo-grotesque, professional
+  'Supreme': 'sans-serif', // Modern, versatile, clean
+  'Instrument Sans': 'sans-serif', // Tech, modern, distinctive
+
+  // ==========================================================================
+  // DISTINCTIVE SERIF (Recommended for creative projects)
+  // ==========================================================================
+  Fraunces: 'serif', // Soft serif, playful, unique
+  'Bodoni Moda': 'serif', // High contrast, luxurious, elegant
+  'Cormorant Garamond': 'serif', // Elegant, editorial, refined
+  'DM Serif Display': 'serif', // Modern serif, high contrast
+  'DM Serif Text': 'serif', // Readable serif, modern
+  Newsreader: 'serif', // Editorial, readable, distinctive
+  Spectral: 'serif', // Elegant, readable, refined
+  'Instrument Serif': 'serif', // Modern, editorial, sharp
+  'Young Serif': 'serif', // Friendly, warm, approachable
+  'Libre Caslon Display': 'serif', // Classic, elegant, timeless
+  'Playfair Display': 'serif', // High contrast, elegant, editorial
+  'Cormorant': 'serif', // Elegant, refined, display
+  'Antic Didone': 'serif', // High contrast, elegant
+  'Sorts Mill Goudy': 'serif', // Classic, refined, bookish
+
+  // ==========================================================================
+  // DISTINCTIVE DISPLAY (Headlines, hero text)
+  // ==========================================================================
+  'Archivo Black': 'display', // Bold, impactful, modern
+  'Bebas Neue': 'display', // Condensed, strong, iconic
+  'Big Shoulders Display': 'display', // Industrial, bold, American
+  'Darker Grotesque': 'display', // Dark, condensed, unique
+  'Dela Gothic One': 'display', // Bold, Japanese-inspired
+  'DM Sans': 'display', // Geometric, clean (also body)
+  Unbounded: 'display', // Rounded, friendly, modern
+  'Climate Crisis': 'display', // Artistic, environmental
+  Chivo: 'display', // Grotesque, versatile
+  'Antonio': 'display', // Condensed, modern, strong
+  Oswald: 'display', // Condensed, strong
+  'Abril Fatface': 'display', // High contrast, elegant
+
+  // ==========================================================================
+  // DISTINCTIVE MONOSPACE (Code, technical)
+  // ==========================================================================
+  'Space Mono': 'monospace', // Geometric, distinctive, techy
+  'JetBrains Mono': 'monospace', // Readable, ligatures, modern
+  'Fira Code': 'monospace', // Ligatures, popular, readable
+  'IBM Plex Mono': 'monospace', // Clean, corporate, professional
+  'Azeret Mono': 'monospace', // Geometric, modern
+  'Martian Mono': 'monospace', // Semi-condensed, futuristic
+  'Red Hat Mono': 'monospace', // Friendly, modern
+  'Commit Mono': 'monospace', // Neutral, readable
+
+  // ==========================================================================
+  // DISTINCTIVE HANDWRITING/SCRIPT
+  // ==========================================================================
+  Caveat: 'handwriting', // Natural, casual, friendly
+  Kalam: 'handwriting', // Handwritten, warm, personal
+  'Architects Daughter': 'handwriting', // Sketchy, casual
+  'Permanent Marker': 'handwriting', // Bold, marker style
+  'Rock Salt': 'handwriting', // Rough, edgy, artistic
+  'Shadows Into Light': 'handwriting', // Light, elegant, feminine
+  'Dancing Script': 'handwriting', // Elegant, flowing
+  'Great Vibes': 'handwriting', // Calligraphic, elegant
+  Pacifico: 'handwriting', // Retro, fun, friendly
+
+  // ==========================================================================
+  // STANDARD FONTS (Reliable, safe choices)
+  // ==========================================================================
+  Manrope: 'sans-serif', // Geometric, modern, versatile
+  'Work Sans': 'sans-serif', // Humanist, readable, friendly
+  Nunito: 'sans-serif', // Rounded, friendly
+  'Source Sans Pro': 'sans-serif', // Adobe, professional
+  Raleway: 'sans-serif', // Elegant, thin weights available
+  Poppins: 'sans-serif', // Geometric, popular
+  Montserrat: 'sans-serif', // Geometric, versatile
+  Lato: 'sans-serif', // Humanist, warm
+  Merriweather: 'serif', // Readable, screen-optimized
+  Lora: 'serif', // Contemporary, readable
+  'Crimson Text': 'serif', // Old-style, elegant
+  'Libre Baskerville': 'serif', // Transitional, readable
+  'Source Serif Pro': 'serif', // Adobe, professional
+  'PT Serif': 'serif', // Transitional, readable
+  'Source Code Pro': 'monospace', // Adobe, readable
+  'Roboto Mono': 'monospace', // Google, clean
+  Inconsolata: 'monospace', // Humanist, readable
+
+  // ==========================================================================
+  // GENERIC FONTS (Use sparingly - avoid for creative projects)
+  // ==========================================================================
+  Inter: 'sans-serif', // ⚠️ Overused - avoid for distinctive designs
+  Roboto: 'sans-serif', // ⚠️ Google default - too generic
+  'Open Sans': 'sans-serif', // ⚠️ Safe but boring
 };
 
 /**

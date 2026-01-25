@@ -186,9 +186,9 @@ export function getGuidelinesLevelDescription(level: GuidelinesLevel): string {
     case 'minimal':
       return 'Désactivé - Design par défaut de Claude';
     case 'standard':
-      return 'Standard - Guidelines essentielles (~500 tokens)';
+      return 'Standard - Esthétique + Accessibilité (~1000 tokens)';
     case 'full':
-      return 'Complet - Toutes les guidelines (~1200 tokens)';
+      return 'Complet - Toutes les guidelines (~7500 tokens)';
     default:
       return '';
   }
@@ -202,9 +202,9 @@ export function getEstimatedTokens(level: GuidelinesLevel): number {
     case 'minimal':
       return 0;
     case 'standard':
-      return 500;
+      return 1000;
     case 'full':
-      return 1200;
+      return 7500;
     default:
       return 0;
   }

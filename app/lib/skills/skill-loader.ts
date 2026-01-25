@@ -179,7 +179,7 @@ export function loadFrontendDesignSkill(options: SkillLoaderOptions = {}): Parse
     }
   }
 
-  // Try to load from filesystem
+  // Try to load from filesystem (server-side only)
   try {
     // Dynamic import for server-side only
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -311,11 +311,14 @@ export function formatSkillContent(skill: ParsedSkill, level: GuidelinesLevel): 
 }
 
 /**
- * Version standard : sections essentielles uniquement (~500 tokens)
+ * Version standard : sections essentielles + accessibilité (~1000 tokens)
  */
 function formatStandardGuidelines(content: string): string {
   const designThinking = extractSection(content, 'Design Thinking');
   const aesthetics = extractSection(content, 'Frontend Aesthetics Guidelines');
+  const accessibility = extractSection(content, 'Accessibilité');
+  const focusStates = extractSection(content, 'Focus States');
+  const fontPairings = extractSectionSummary(content, 'Font Pairings Recommandés');
 
   return `
 ## Frontend Design Guidelines (Active)
@@ -324,13 +327,74 @@ ${designThinking}
 
 ${aesthetics}
 
+${fontPairings}
+
+### Accessibilité Critique
+
+${accessibility ? getAccessibilitySummary(accessibility) : '- Tous les inputs doivent avoir un label ou aria-label\n- Les boutons icône doivent avoir aria-label\n- Les éléments interactifs doivent être accessibles au clavier'}
+
+### Focus States (Obligatoire)
+
+${focusStates ? getFocusSummary(focusStates) : '- Tous les éléments interactifs doivent avoir un focus visible\n- Utiliser focus-visible:ring-2 pour les boutons\n- Ne jamais utiliser outline-none sans remplacement'}
+
 ---
 CRITICAL: Apply these guidelines to ALL frontend code. Avoid generic AI aesthetics.
 `.trim();
 }
 
 /**
- * Version complète : tout le contenu (~1200 tokens)
+ * Extrait un résumé court d'une section (pour le niveau standard)
+ */
+function extractSectionSummary(content: string, sectionName: string): string {
+  const section = extractSection(content, sectionName);
+
+  if (!section) return '';
+
+  // Pour Font Pairings, extraire juste les tables de pairings recommandés
+  if (sectionName.includes('Font')) {
+    const lines = section.split('\n');
+    const summaryLines: string[] = ['### Fonts Distinctives Recommandées', ''];
+
+    // Extract key pairings
+    summaryLines.push('**Tech/Startup**: Space Grotesk + Plus Jakarta Sans');
+    summaryLines.push('**Luxury**: Bodoni Moda + Lato, Playfair Display + Source Sans');
+    summaryLines.push('**Editorial**: Instrument Serif + Instrument Sans, Newsreader + Work Sans');
+    summaryLines.push('**Friendly**: Lexend, Nunito, Albert Sans');
+    summaryLines.push('');
+    summaryLines.push('**À éviter**: Inter, Roboto, Open Sans, Arial (trop génériques)');
+
+    return summaryLines.join('\n');
+  }
+
+  return section;
+}
+
+/**
+ * Extrait un résumé de l'accessibilité
+ */
+function getAccessibilitySummary(fullSection: string): string {
+  return `- Tous les \`<input>\` doivent avoir un \`<label>\` associé ou \`aria-label\`
+- Les boutons avec icône seule doivent avoir \`aria-label="description"\`
+- Les éléments interactifs custom doivent avoir \`role\`, \`tabIndex\`, \`onKeyDown\`
+- Utiliser les éléments HTML natifs (\`<button>\`, \`<a>\`) plutôt que \`<div onClick>\`
+- Hiérarchie des titres: un seul \`<h1>\` par page, puis h2 > h3 > h4`;
+}
+
+/**
+ * Extrait un résumé des focus states
+ */
+function getFocusSummary(fullSection: string): string {
+  return `- Pattern boutons: \`focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2\`
+- Pattern inputs: \`focus:ring-2 focus:ring-primary focus:border-transparent\`
+- JAMAIS \`outline-none\` seul sans remplacement par \`ring\`
+- Préférer \`focus-visible\` (clavier) sur boutons, \`focus\` sur inputs`;
+}
+
+/**
+ * Version complète : tout le contenu (~7500 tokens)
+ * Inclut: Design Thinking, Accessibilité, Focus, Mobile-First, Forms,
+ * Animations, Dark Mode, Performance, Navigation, i18n, Font Pairings,
+ * Typographie avancée, Anti-patterns, et Checklist finale
  */
 function formatFullGuidelines(content: string): string {
   return `

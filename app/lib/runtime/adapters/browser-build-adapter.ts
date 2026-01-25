@@ -2623,14 +2623,17 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
       logger.info(`[TAILWIND DEBUG] customTheme preview:\n${customTheme.substring(0, 800)}`);
     }
 
-    // ALWAYS inject Tailwind CDN browser script when:
-    // 1. No compiled CSS is available, OR
-    // 2. CSS contains "Tailwind compilation failed" (JIT explicitly failed), OR
-    // 3. Custom colors are defined in tailwind.config (JIT doesn't know about them), OR
-    // 4. Framework is SFC-based (Vue, Svelte, Astro) - JIT can't properly extract classes from templates
+    // ALWAYS inject Tailwind CDN browser script
+    // Previous logic tried to be "smart" but caused issues:
+    // - Buttons without padding/rounded corners
+    // - Text spacing incorrect
+    // - Classes like px-6, py-3, rounded-lg not rendering
+    //
+    // BAVINI projects almost always use Tailwind, so the ~50KB CDN overhead is acceptable
+    // for guaranteed correct rendering of all utility classes.
     const jitFailed = css?.includes('Tailwind compilation failed');
     const isSfcFramework = ['vue', 'svelte', 'astro'].includes(this._detectedFramework);
-    const needsTailwindCdn = !css || css.length < 100 || jitFailed || hasCustomColors || isSfcFramework;
+    const needsTailwindCdn = true; // Always inject to ensure all Tailwind utilities work
 
     // FIX: For Astro and SFC frameworks, DON'T remove body inline styles
     // SFC frameworks (Vue, Svelte) should control their own styles without BAVINI interference

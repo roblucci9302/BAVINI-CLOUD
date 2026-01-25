@@ -269,13 +269,13 @@ describe('Design Guidelines Store', () => {
     it('should return correct description for standard', () => {
       const desc = getGuidelinesLevelDescription('standard');
       expect(desc).toContain('Standard');
-      expect(desc).toContain('500');
+      expect(desc).toContain('1000');
     });
 
     it('should return correct description for full', () => {
       const desc = getGuidelinesLevelDescription('full');
       expect(desc).toContain('Complet');
-      expect(desc).toContain('1200');
+      expect(desc).toContain('7500');
     });
   });
 
@@ -284,12 +284,12 @@ describe('Design Guidelines Store', () => {
       expect(getEstimatedTokens('minimal')).toBe(0);
     });
 
-    it('should return 500 for standard', () => {
-      expect(getEstimatedTokens('standard')).toBe(500);
+    it('should return 1000 for standard', () => {
+      expect(getEstimatedTokens('standard')).toBe(1000);
     });
 
-    it('should return 1200 for full', () => {
-      expect(getEstimatedTokens('full')).toBe(1200);
+    it('should return 7500 for full', () => {
+      expect(getEstimatedTokens('full')).toBe(7500);
     });
   });
 });
