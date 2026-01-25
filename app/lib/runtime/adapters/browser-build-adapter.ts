@@ -60,6 +60,14 @@ import { withTimeout, TIMEOUTS, TimeoutError } from '../utils/timeout';
 import { HMRManager, createHMRManager, classifyChange } from './hmr-manager';
 // Phase 1.1: Import Build Worker Manager for off-thread compilation
 import { BuildWorkerManager, getBuildWorkerManager } from '../build-worker-manager';
+// Phase 1.3: Import Incremental Build System
+import {
+  IncrementalBuilder,
+  getIncrementalBuilder,
+  type ChangeAnalysis,
+  type FileBuildDecision,
+  type IncrementalBuildMetrics,
+} from './browser-build/incremental';
 // Phase 3 Refactoring: Import modular utilities
 import {
   // Utils (Phase 3.1)
@@ -219,6 +227,14 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
   private _useWorker = true; // Enable by default, falls back if not supported
   private _workerInitialized = false;
 
+  /**
+   * Phase 1.3: Incremental Builder for optimized rebuilds
+   * Tracks dependencies and caches compiled bundles
+   */
+  private _incrementalBuilder: IncrementalBuilder = getIncrementalBuilder();
+  private _lastChangeAnalysis: ChangeAnalysis | null = null;
+  private _incrementalEnabled = true;
+
   get status(): RuntimeStatus {
     return this._status;
   }
@@ -248,6 +264,42 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
     } else if (enabled && this._workerInitialized) {
       logger.info('Worker builds enabled');
     }
+  }
+
+  /**
+   * Phase 1.3: Check if incremental builds are enabled
+   */
+  get isIncrementalEnabled(): boolean {
+    return this._incrementalEnabled;
+  }
+
+  /**
+   * Phase 1.3: Enable or disable incremental builds
+   */
+  setIncrementalEnabled(enabled: boolean): void {
+    this._incrementalEnabled = enabled;
+    logger.info(`Incremental builds ${enabled ? 'enabled' : 'disabled'}`);
+  }
+
+  /**
+   * Phase 1.3: Get incremental build metrics
+   */
+  getIncrementalMetrics(): IncrementalBuildMetrics {
+    return this._incrementalBuilder.getMetrics();
+  }
+
+  /**
+   * Phase 1.3: Get last change analysis for debugging
+   */
+  getLastChangeAnalysis(): ChangeAnalysis | null {
+    return this._lastChangeAnalysis;
+  }
+
+  /**
+   * Phase 1.3: Get combined incremental build statistics
+   */
+  getIncrementalStats(): ReturnType<IncrementalBuilder['getStats']> {
+    return this._incrementalBuilder.getStats();
   }
 
   /**
@@ -432,6 +484,16 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
         logger.warn('Failed to destroy SSR bridge:', error);
       }
       this._ssrBridge = null;
+    }
+
+    // Phase 1.3: Reset incremental builder
+    try {
+      this._incrementalBuilder.reset();
+      this._lastChangeAnalysis = null;
+      logger.debug('Incremental builder reset');
+    } catch (error) {
+      logger.warn('Failed to reset incremental builder:', error);
+      errors.push(error instanceof Error ? error : new Error(String(error)));
     }
 
     // FIX 3.1: Cleanup HMR manager
@@ -691,6 +753,7 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
 
   /**
    * Build the project using esbuild-wasm
+   * Phase 1.3: Now uses incremental build analysis for optimized rebuilds
    */
   async build(options: BuildOptions): Promise<BundleResult> {
     const startTime = performance.now();
@@ -698,6 +761,17 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
     this._status = 'building';
     this.emitStatusChange('building');
     this.emitBuildProgress('starting', 0);
+
+    // Phase 1.3: Analyze changes for incremental build
+    let changeAnalysis: ChangeAnalysis | null = null;
+    if (this._incrementalEnabled) {
+      changeAnalysis = this._incrementalBuilder.analyzeChanges(this._files);
+      this._lastChangeAnalysis = changeAnalysis;
+      logger.info(
+        `Change analysis: ${changeAnalysis.added.length} added, ${changeAnalysis.modified.length} modified, ` +
+        `${changeAnalysis.deleted.length} deleted, ${changeAnalysis.affected.length} affected`
+      );
+    }
 
     // Clear CSS aggregator for fresh build
     this._cssAggregator.clear();
@@ -904,6 +978,30 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
       this._status = 'ready';
       this.emitStatusChange('ready');
 
+      // Phase 1.3: Cache the successful build and update metrics
+      if (this._incrementalEnabled && code) {
+        const wasFullRebuild = changeAnalysis?.requiresFullRebuild ?? true;
+        const cachedCount = changeAnalysis?.skippable.length ?? 0;
+        const rebuiltCount = this._files.size - cachedCount;
+
+        // Cache the bundle for the entry point
+        this._incrementalBuilder.cacheBundle(
+          options.entryPoint,
+          this._files.get(this.normalizePath(options.entryPoint)) || '',
+          code,
+          { css, imports: [], npmDependencies: [] }
+        );
+
+        // Complete the build with metrics
+        this._incrementalBuilder.completeBuild(rebuiltCount, cachedCount, wasFullRebuild);
+
+        const metrics = this._incrementalBuilder.getMetrics();
+        logger.info(
+          `Incremental build: ${metrics.rebuiltFiles} rebuilt, ${metrics.cachedFiles} cached ` +
+          `(${metrics.cacheHitRate.toFixed(1)}% hit rate, ~${metrics.timeSavedEstimate}ms saved)`
+        );
+      }
+
       return {
         code,
         css,
@@ -1052,6 +1150,10 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
    * Phase 1.2: Centralizes dependencies needed by virtual-fs and esm-sh plugins
    */
   private getPluginContext(): PluginContext {
+    // Phase 1.3: Track collected dependencies during build
+    const collectedImports: string[] = [];
+    const collectedNpmDeps: string[] = [];
+
     return {
       files: this._files,
       cssAggregator: this._cssAggregator,
@@ -1066,6 +1168,30 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
         warn: (...args: unknown[]) => logger.warn(...args),
         error: (...args: unknown[]) => logger.error(...args),
       },
+      // Phase 1.3: Callback to track dependencies during resolution
+      onDependencyResolved: this._incrementalEnabled
+        ? (importer: string, resolved: string, isNpm: boolean) => {
+            if (isNpm) {
+              if (!collectedNpmDeps.includes(resolved)) {
+                collectedNpmDeps.push(resolved);
+              }
+            } else {
+              if (!collectedImports.includes(resolved)) {
+                collectedImports.push(resolved);
+              }
+            }
+            // Update dependency graph in real-time
+            const content = this._files.get(importer) || '';
+            if (content) {
+              this._incrementalBuilder.updateDependencyGraph(
+                importer,
+                content,
+                collectedImports,
+                collectedNpmDeps
+              );
+            }
+          }
+        : undefined,
     };
   }
 

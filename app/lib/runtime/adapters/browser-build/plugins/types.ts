@@ -45,6 +45,16 @@ export interface PluginContext {
     warn: (...args: unknown[]) => void;
     error: (...args: unknown[]) => void;
   };
+
+  /**
+   * Phase 1.3: Callback to track dependencies during resolution
+   * Called when a file imports another file (local or npm)
+   */
+  onDependencyResolved?: (
+    importer: string,
+    resolved: string,
+    isNpm: boolean
+  ) => void;
 }
 
 /**

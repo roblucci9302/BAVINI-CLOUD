@@ -218,7 +218,16 @@ export async function warmupCache(
  * @returns esbuild plugin
  */
 export function createEsmShPlugin(context: PluginContext): esbuild.Plugin {
-  const { moduleCache, logger } = context;
+  const { moduleCache, logger, onDependencyResolved } = context;
+
+  // Phase 1.3: Helper to track npm dependencies
+  const trackNpmDependency = (importer: string, packageName: string) => {
+    if (onDependencyResolved) {
+      // Extract base package name (e.g., 'react' from 'react/jsx-runtime')
+      const basePkg = packageName.split('/')[0];
+      onDependencyResolved(importer, basePkg, true);
+    }
+  };
 
   return {
     name: 'esm-sh',
@@ -256,6 +265,11 @@ export function createEsmShPlugin(context: PluginContext): esbuild.Plugin {
         // Handle imports from virtual-fs files (like 'react' from App.tsx)
         // This is the critical case - bare imports need to go to esm.sh
         const packageName = args.path;
+
+        // Phase 1.3: Track npm dependency
+        if (args.importer) {
+          trackNpmDependency(args.importer, packageName);
+        }
 
         // Use esm.sh CDN
         const url = `${ESM_SH_CDN}/${packageName}`;

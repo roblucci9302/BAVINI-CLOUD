@@ -39,7 +39,15 @@ export function createVirtualFsPlugin(context: PluginContext): esbuild.Plugin {
     getLoader,
     nextjsShims,
     logger,
+    onDependencyResolved,
   } = context;
+
+  // Phase 1.3: Helper to track dependencies
+  const trackDependency = (importer: string, resolved: string, isNpm: boolean = false) => {
+    if (onDependencyResolved) {
+      onDependencyResolved(importer, resolved, isNpm);
+    }
+  };
 
   return {
     name: 'virtual-fs',
@@ -132,6 +140,10 @@ export function createVirtualFsPlugin(context: PluginContext): esbuild.Plugin {
           if (foundPath) {
             const resolveDir = foundPath.substring(0, foundPath.lastIndexOf('/')) || '/';
             logger.debug(`Resolving @/ alias: ${args.path} -> ${foundPath}`);
+            // Phase 1.3: Track dependency
+            if (args.importer) {
+              trackDependency(args.importer, foundPath, false);
+            }
             return { path: foundPath, namespace: 'virtual-fs', pluginData: { resolveDir } };
           }
         }
@@ -168,6 +180,11 @@ export function createVirtualFsPlugin(context: PluginContext): esbuild.Plugin {
         const resolvedPath = resolveRelativePath(basePath, args.path);
         logger.debug(`Resolving relative import: ${args.path} from ${basePath} -> ${resolvedPath}`);
 
+        // Phase 1.3: Track dependency
+        if (args.importer) {
+          trackDependency(args.importer, resolvedPath, false);
+        }
+
         const resolveDir = resolvedPath.substring(0, resolvedPath.lastIndexOf('/')) || '/';
         return { path: resolvedPath, namespace: 'virtual-fs', pluginData: { resolveDir } };
       });
@@ -186,6 +203,11 @@ export function createVirtualFsPlugin(context: PluginContext): esbuild.Plugin {
         // Skip CDN-like paths (contain @ version specifiers)
         if (args.path.match(/^\/@?[a-z0-9-]+@/i) || args.path.includes('/es2022/')) {
           return null;
+        }
+
+        // Phase 1.3: Track dependency
+        if (args.importer) {
+          trackDependency(args.importer, args.path, false);
         }
 
         const resolveDir = args.path.substring(0, args.path.lastIndexOf('/')) || '/';

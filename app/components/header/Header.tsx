@@ -4,6 +4,7 @@ import { chatStore } from '~/lib/stores/chat';
 import { classNames } from '~/utils/classNames';
 import { HeaderActionButtons } from './HeaderActionButtons.client';
 import { ChatDescription } from '~/lib/persistence/ChatDescription.client';
+import { ContextIndicatorCompact } from '~/components/chat/ContextIndicator';
 // DISABLED: Auth system temporarily disabled for development
 // import { AuthButtons } from './AuthButtons';
 
@@ -36,9 +37,13 @@ export function Header() {
         {chat.started && (
           <ClientOnly>
             {() => (
-              <div className="mr-1">
-                <HeaderActionButtons />
-              </div>
+              <>
+                {/* Phase 1.4: Context usage indicator */}
+                <ContextIndicatorCompact className="mr-2" />
+                <div className="mr-1">
+                  <HeaderActionButtons />
+                </div>
+              </>
             )}
           </ClientOnly>
         )}
