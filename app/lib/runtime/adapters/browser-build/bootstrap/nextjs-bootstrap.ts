@@ -66,7 +66,7 @@ function getHashPath() {
   return hash.startsWith('#') ? hash.slice(1) : '/';
 }
 
-// Match route to path
+// Match route to path (memoizable pure function)
 function matchRoute(path) {
   const normalizedPath = path || '/';
 
@@ -103,13 +103,49 @@ function matchRoute(path) {
 }
 
 // Next.js App Router Wrapper
+// IMPORTANT: Uses global flag to prevent listener accumulation (fixes freeze issue)
 function NextJSApp() {
   const [currentPath, setCurrentPath] = useState(getHashPath);
 
   useEffect(() => {
+    // CRITICAL FIX: Use global flag to prevent listener accumulation
+    // This fixes the freeze issue in multi-page sites with remounts
+    // NOTE: We ONLY use hashchange - not custom events - to prevent double notifications
+    if (window.__BAVINI_NEXTJS_ROUTER_INITIALIZED__) {
+      // Listeners already setup by first instance, just sync state on hashchange
+      const syncPath = () => setCurrentPath(getHashPath());
+      window.addEventListener('hashchange', syncPath);
+      return () => {
+        window.removeEventListener('hashchange', syncPath);
+      };
+    }
+
+    // First instance - setup global listeners and navigation handler
+    window.__BAVINI_NEXTJS_ROUTER_INITIALIZED__ = true;
+
     const handleHashChange = () => setCurrentPath(getHashPath());
     window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
+
+    // Setup global navigation handler (hash-based for Blob URL compatibility)
+    // NOTE: Only sets hash - hashchange event handles all state updates
+    window.__BAVINI_NAVIGATE__ = (url, options = {}) => {
+      const newHash = '#' + (url.startsWith('/') ? url : '/' + url);
+      if (options.replace) {
+        window.location.replace(newHash);
+      } else {
+        window.location.hash = newHash;
+      }
+      // hashchange event will trigger the state update - no custom event needed
+    };
+
+    // CRITICAL: Set initial hash if not present (prevents blank state)
+    if (!window.location.hash || window.location.hash === '#') {
+      window.location.hash = '#/';
+    }
+
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange);
+    };
   }, []);
 
   const { route, params } = matchRoute(currentPath);

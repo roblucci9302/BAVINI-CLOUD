@@ -383,99 +383,52 @@ export class NextJSCompiler implements FrameworkCompiler {
   }
 
   /**
-   * Transform next/link to regular anchor element
+   * Transform next/link imports
    *
-   * Input: import Link from 'next/link'
-   * Output: const Link = ({ href, children, ...props }) => <a href={href} {...props}>{children}</a>
+   * IMPORTANT: We NO LONGER inline-transform next/link imports.
+   * The esbuild plugin will handle these via nextjs-shims.ts which provides
+   * a hash-based Link component compatible with our bootstrap system.
+   *
+   * Previous behavior (REMOVED):
+   * - Link -> <a href={href}> (caused full page reload)
+   *
+   * New behavior:
+   * - Let esbuild's nextjs-shim plugin handle the import
+   * - nextjs-shims.ts provides a Link component using hash navigation
+   * - Clicking a Link uses window.location.hash instead of full reload
    */
   transformLinkImports(code: string): string {
-    if (!code.includes('next/link')) {
-      return code;
+    // DO NOT transform - let esbuild plugin use nextjs-shims.ts
+    // This ensures hash-based navigation works correctly
+    if (code.includes('next/link')) {
+      logger.debug('next/link import found - will be handled by esbuild shim plugin');
     }
-
-    code = code.replace(
-      /import\s+(\w+)\s+from\s*['"]next\/link['"];?\n?/g,
-      (_, importName) => {
-        logger.debug(`Transforming next/link import: ${importName}`);
-        return `const ${importName} = ({ href, children, className, style, target, rel, ...props }) => {
-  return <a href={href} className={className} style={style} target={target} rel={rel} {...props}>{children}</a>;
-};\n`;
-      }
-    );
-
     return code;
   }
 
   /**
    * Transform next/navigation hooks
    *
-   * Provides client-side shims for:
-   * - useRouter() -> { push, replace, back, forward, refresh, prefetch }
-   * - usePathname() -> window.location.pathname
-   * - useSearchParams() -> URLSearchParams
-   * - useParams() -> {}
+   * IMPORTANT: We NO LONGER inline-transform next/navigation imports.
+   * The esbuild plugin will handle these via nextjs-shims.ts which provides
+   * hash-based routing compatible with our bootstrap system.
+   *
+   * Previous behavior (REMOVED):
+   * - useRouter() -> { push: window.location.href } (caused full reload)
+   * - usePathname() -> window.location.pathname (returned "/" always, not hash)
+   *
+   * New behavior:
+   * - Let esbuild's nextjs-shim plugin handle these imports
+   * - nextjs-shims.ts provides hash-based implementations
+   * - usePathname() returns hash path (e.g., "/about" from "#/about")
+   * - useRouter().push() uses hash navigation
    */
   transformNavigationImports(code: string): string {
-    if (!code.includes('next/navigation')) {
-      return code;
+    // DO NOT transform - let esbuild plugin use nextjs-shims.ts
+    // This ensures hash-based routing works correctly for multi-page sites
+    if (code.includes('next/navigation')) {
+      logger.debug('next/navigation import found - will be handled by esbuild shim plugin');
     }
-
-    // Match: import { useRouter, usePathname } from 'next/navigation'
-    const importMatch = code.match(/import\s*\{([^}]+)\}\s*from\s*['"]next\/navigation['"]/);
-    if (!importMatch) {
-      return code;
-    }
-
-    const imports = importMatch[1].split(',').map(s => s.trim()).filter(Boolean);
-
-    // Build shim code
-    const shims: string[] = [];
-
-    for (const importName of imports) {
-      switch (importName) {
-        case 'useRouter':
-          shims.push(`const useRouter = () => ({
-  push: (url) => { window.location.href = url; },
-  replace: (url) => { window.location.replace(url); },
-  back: () => { window.history.back(); },
-  forward: () => { window.history.forward(); },
-  refresh: () => { window.location.reload(); },
-  prefetch: () => {},
-});`);
-          break;
-
-        case 'usePathname':
-          shims.push(`const usePathname = () => window.location.pathname;`);
-          break;
-
-        case 'useSearchParams':
-          shims.push(`const useSearchParams = () => new URLSearchParams(window.location.search);`);
-          break;
-
-        case 'useParams':
-          shims.push(`const useParams = () => ({});`);
-          break;
-
-        case 'redirect':
-          shims.push(`const redirect = (url) => { window.location.href = url; };`);
-          break;
-
-        case 'notFound':
-          shims.push(`const notFound = () => { throw new Error('Not Found'); };`);
-          break;
-
-        default:
-          logger.warn(`Unknown next/navigation import: ${importName}`);
-      }
-    }
-
-    // Remove original import and add shims
-    code = code.replace(
-      /import\s*\{[^}]+\}\s*from\s*['"]next\/navigation['"];?\n?/g,
-      shims.join('\n') + '\n'
-    );
-
-    logger.debug(`Transformed ${imports.length} next/navigation import(s)`);
     return code;
   }
 

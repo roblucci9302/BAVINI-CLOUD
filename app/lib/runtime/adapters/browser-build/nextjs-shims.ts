@@ -122,23 +122,20 @@ export const NEXTJS_SHIMS: Record<string, string> = {
     // Browser shim for next/link - Uses HASH-BASED routing for Blob URL compatibility
     import React from 'react';
 
-    // Get current path from hash (for Blob URL routing)
-    function getHashPath() {
-      const hash = window.location.hash || '#/';
-      return hash.startsWith('#') ? hash.slice(1) || '/' : '/';
-    }
-
     // Global navigation handler using hash routing
-    window.__BAVINI_NAVIGATE__ = window.__BAVINI_NAVIGATE__ || ((url, options = {}) => {
-      const newHash = '#' + (url.startsWith('/') ? url : '/' + url);
-      if (options.replace) {
-        window.location.replace(newHash);
-      } else {
-        window.location.hash = newHash;
-      }
-      // Dispatch custom event for listeners
-      window.dispatchEvent(new CustomEvent('bavini-navigate', { detail: { path: url } }));
-    });
+    // NOTE: Only sets hash - hashchange event handles all notifications
+    // This prevents double re-renders from multiple event sources
+    if (typeof window !== 'undefined' && !window.__BAVINI_NAVIGATE__) {
+      window.__BAVINI_NAVIGATE__ = (url, options = {}) => {
+        const newHash = '#' + (url.startsWith('/') ? url : '/' + url);
+        if (options.replace) {
+          window.location.replace(newHash);
+        } else {
+          window.location.hash = newHash;
+        }
+        // hashchange event will notify all listeners - no need for custom event
+      };
+    }
 
     function Link({ href, children, className, style, onClick, prefetch, replace, scroll, ...props }) {
       const resolvedHref = typeof href === 'object' ? href.pathname + (href.search || '') + (href.hash || '') : href;
@@ -196,16 +193,17 @@ export const NEXTJS_SHIMS: Record<string, string> = {
     }
 
     // Navigation state store - singleton pattern to prevent duplicate listeners
+    // CRITICAL: Only uses hashchange to prevent double notifications and freeze issues
     const listeners = new Set();
     let isListenerSetup = false;
 
     function subscribe(listener) {
       listeners.add(listener);
-      // Setup listeners only once, lazily
+      // Setup hashchange listener only once, lazily
+      // NOTE: We ONLY listen to hashchange - not custom events - to prevent double notifications
       if (!isListenerSetup && typeof window !== 'undefined') {
         isListenerSetup = true;
         window.addEventListener('hashchange', notifyListeners);
-        window.addEventListener('bavini-navigate', notifyListeners);
       }
       return () => listeners.delete(listener);
     }
@@ -214,7 +212,8 @@ export const NEXTJS_SHIMS: Record<string, string> = {
       listeners.forEach(listener => listener());
     }
 
-    // Set global navigation handler (without adding listeners here - BaviniRouter handles that)
+    // Set global navigation handler if not already set by bootstrap
+    // NOTE: Only sets hash - hashchange event handles all notifications
     if (typeof window !== 'undefined' && !window.__BAVINI_NAVIGATE__) {
       window.__BAVINI_NAVIGATE__ = (url, options = {}) => {
         const newHash = '#' + (url.startsWith('/') ? url : '/' + url);
@@ -223,7 +222,7 @@ export const NEXTJS_SHIMS: Record<string, string> = {
         } else {
           window.location.hash = newHash;
         }
-        notifyListeners();
+        // hashchange event will notify - no direct call needed
       };
     }
 

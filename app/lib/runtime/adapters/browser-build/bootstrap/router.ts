@@ -80,13 +80,12 @@ function BaviniRouter({ children, Layout }) {
     // Use GLOBAL flag to prevent listener accumulation across component instances
     // This fixes the freeze issue in complex projects with multiple remounts
     if (window.__BAVINI_ROUTER_INITIALIZED__) {
-      // Listeners already setup by another instance, just sync state
+      // Listeners already setup by another instance, just sync state on hashchange
+      // NOTE: We ONLY use hashchange - not custom events - to prevent double notifications
       const syncPath = () => setCurrentPath(getHashPath());
       window.addEventListener('hashchange', syncPath);
-      window.addEventListener('bavini-navigate', syncPath);
       return () => {
         window.removeEventListener('hashchange', syncPath);
-        window.removeEventListener('bavini-navigate', syncPath);
       };
     }
 
@@ -97,8 +96,8 @@ function BaviniRouter({ children, Layout }) {
       setCurrentPath(getHashPath());
     };
 
+    // ONLY listen to hashchange - custom events cause double notifications
     window.addEventListener('hashchange', handlePathChange);
-    window.addEventListener('bavini-navigate', handlePathChange);
 
     // Set global navigation handler with hash routing
     window.__BAVINI_NAVIGATE__ = (url, options = {}) => {
@@ -120,7 +119,6 @@ function BaviniRouter({ children, Layout }) {
     // This prevents listener accumulation during hot reloads and remounts
     return () => {
       window.removeEventListener('hashchange', handlePathChange);
-      window.removeEventListener('bavini-navigate', handlePathChange);
     };
   }, []);
 
