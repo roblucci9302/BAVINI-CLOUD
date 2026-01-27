@@ -11,8 +11,6 @@ import {
 } from '~/lib/.server/llm/stream-text';
 import SwitchableStream from '~/lib/.server/llm/switchable-stream';
 import { createScopedLogger } from '~/utils/logger';
-import { ChatModeAgent, type ChatMode } from '~/lib/.server/agents';
-import type { AgentContext } from '~/lib/.server/agents';
 import { handleRouteError } from '~/lib/errors/error-handler';
 import { withRateLimit } from '~/lib/security/rate-limiter';
 import { createStreamingResponse } from '~/lib/api/cache-headers';
@@ -95,45 +93,67 @@ function getLastUserMessage(messages: Messages): string {
 }
 
 /**
- * Traite en mode Chat (analyse sans modification)
- * Retourne un stream compatible avec le AI SDK (useChat)
+ * System prompt pour le mode Chat (analyse sans modification)
  */
-async function handleChatMode(messages: Messages, context: AgentContext | undefined): Promise<Response> {
-  const agent = new ChatModeAgent();
+const CHAT_MODE_SYSTEM_PROMPT = `Tu es BAVINI en MODE CHAT. Dans ce mode, tu es un assistant conversationnel qui aide l'utilisateur à comprendre, analyser et planifier - mais tu ne modifies PAS le projet.
 
-  if (context) {
-    agent.setContext(context);
-  }
+## Ce que tu PEUX faire:
+- Répondre aux questions de l'utilisateur de manière naturelle et conversationnelle
+- Expliquer des concepts de programmation
+- Analyser du code que l'utilisateur partage
+- Proposer des solutions et des approches
+- Donner des conseils et recommandations
+- Aider à planifier des fonctionnalités
+- Faire des revues de code
+- Déboguer des problèmes conceptuellement
 
-  const lastMessage = getLastUserMessage(messages);
+## Ce que tu ne PEUX PAS faire (et ne dois JAMAIS inclure dans tes réponses):
+- Générer des balises <boltArtifact> ou <boltAction>
+- Créer ou modifier des fichiers
+- Exécuter des commandes shell
+- Installer des packages
 
+## Style de réponse:
+- Réponds TOUJOURS en français
+- Sois conversationnel, utile et concis
+- Utilise des exemples de code dans des blocs markdown pour illustrer (mais ne génère pas d'artifacts)
+- Si l'utilisateur demande de créer/modifier du code, explique que tu es en mode Chat et qu'il doit désactiver ce mode pour que tu puisses coder
+
+Tu es un assistant intelligent et amical. Réponds naturellement à la question de l'utilisateur.`;
+
+/**
+ * Traite en mode Chat (analyse sans modification)
+ * Utilise le LLM pour des réponses conversationnelles sans génération de code
+ */
+async function handleChatMode(messages: Messages, env: Env): Promise<Response> {
   try {
-    const response = await agent.process(lastMessage);
+    // Ajouter le system prompt pour le mode chat
+    const chatMessages: Messages = [
+      { role: 'system', content: CHAT_MODE_SYSTEM_PROMPT },
+      ...messages,
+    ];
 
-    /*
-     * Créer un stream compatible avec le AI SDK format
-     * Format: 0:"texte"\n pour les chunks de texte
-     */
-    const encoder = new TextEncoder();
-    const text = response.content || '';
+    logger.debug('Chat mode: calling LLM with system prompt');
 
-    const stream = new ReadableStream({
-      start(controller) {
-        // Envoyer le texte au format AI SDK stream
-        controller.enqueue(encoder.encode(`0:${JSON.stringify(text)}\n`));
-        controller.close();
-      },
+    const result = await streamText(chatMessages, env, {
+      toolChoice: 'none', // Pas d'outils en mode chat
     });
 
-    return new Response(stream, {
+    // Créer le stream de réponse
+    const responseStream = textStreamToReadable(result.textStream);
+
+    return new Response(responseStream, {
       status: 200,
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
         'Cache-Control': 'no-cache, no-store',
+        Connection: 'keep-alive',
+        'X-Chat-Mode': 'enabled',
       },
     });
   } catch (error) {
-    const [response] = handleRouteError(error, 'ChatModeAgent', logger);
+    logger.error('Chat mode error:', error);
+    const [response] = handleRouteError(error, 'ChatMode', logger);
     return response;
   }
 }
@@ -391,7 +411,7 @@ Sois méthodique et explicite sur chaque action que tu entreprends.`,
 
   // Mode Chat : analyse seule, pas de modifications
   if (mode === 'chat') {
-    return handleChatMode(messages, agentContext as AgentContext | undefined);
+    return handleChatMode(messages, context.cloudflare.env);
   }
 
   // Mode 'agent' - comportement existant avec streaming

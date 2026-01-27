@@ -7,6 +7,13 @@ import { createScopedLogger } from '~/utils/logger';
 const logger = createScopedLogger('useMessageParser');
 
 /**
+ * Track processed artifacts and actions to prevent duplicate execution.
+ * Key format: "artifactId" for artifacts, "artifactId:actionId" for actions.
+ */
+const processedArtifacts = new Set<string>();
+const processedActions = new Set<string>();
+
+/**
  * Singleton du parser de messages.
  * IMPORTANT: Une seule instance pour éviter les doublons d'artifacts/actions.
  * Exporté pour être utilisé dans Chat.client.tsx pour le streaming.
@@ -14,6 +21,14 @@ const logger = createScopedLogger('useMessageParser');
 export const sharedMessageParser = new StreamingMessageParser({
   callbacks: {
     onArtifactOpen: (data) => {
+      // Prevent duplicate artifact creation on DEV mode re-parse
+      const artifactKey = `${data.messageId}:${data.id}`;
+      if (processedArtifacts.has(artifactKey)) {
+        logger.debug('Skipping already processed artifact', { id: data.id });
+        return;
+      }
+      processedArtifacts.add(artifactKey);
+
       logger.debug('Artifact detected - Opening workbench', { id: data.id, title: data.title });
 
       workbenchStore.showWorkbench.set(true);
@@ -25,6 +40,14 @@ export const sharedMessageParser = new StreamingMessageParser({
       workbenchStore.updateArtifact(data, { closed: true });
     },
     onActionOpen: (data) => {
+      // Prevent duplicate action execution on DEV mode re-parse
+      const actionKey = `${data.messageId}:${data.artifactId}:${data.actionId}`;
+      if (processedActions.has(actionKey)) {
+        logger.debug('Skipping already processed action', { actionId: data.actionId });
+        return;
+      }
+      processedActions.add(actionKey);
+
       logger.debug('Action started', { type: data.action.type, actionId: data.actionId });
 
       if (data.action.type !== 'shell') {
@@ -32,6 +55,13 @@ export const sharedMessageParser = new StreamingMessageParser({
       }
     },
     onActionClose: (data) => {
+      // Check if action was already processed (via onActionOpen guard)
+      const actionKey = `${data.messageId}:${data.artifactId}:${data.actionId}`;
+      if (!processedActions.has(actionKey)) {
+        // Action wasn't opened (already skipped), skip close too
+        return;
+      }
+
       logger.debug('Action completed', { type: data.action.type, actionId: data.actionId });
 
       if (data.action.type === 'shell') {
@@ -42,6 +72,14 @@ export const sharedMessageParser = new StreamingMessageParser({
     },
   },
 });
+
+/**
+ * Clear processed tracking (call when starting a new chat)
+ */
+export function clearProcessedTracking(): void {
+  processedArtifacts.clear();
+  processedActions.clear();
+}
 
 // Alias pour compatibilité interne
 const messageParser = sharedMessageParser;

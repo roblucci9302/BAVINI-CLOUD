@@ -1,9 +1,10 @@
-import { memo, type ComponentType } from 'react';
+import { memo, type ComponentType, type MemoExoticComponent } from 'react';
 
 // Generic memo wrapper that preserves type information
 export function genericMemo<P extends object>(
   component: ComponentType<P>,
   propsAreEqual?: (prevProps: Readonly<P>, nextProps: Readonly<P>) => boolean,
-): ComponentType<P> & { displayName?: string } {
-  return memo(component, propsAreEqual) as ComponentType<P> & { displayName?: string };
+): MemoExoticComponent<ComponentType<P>> & { displayName?: string } {
+  const memoized = memo(component, propsAreEqual);
+  return memoized as MemoExoticComponent<ComponentType<P>> & { displayName?: string };
 }

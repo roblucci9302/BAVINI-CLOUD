@@ -35,18 +35,13 @@ export function getAstroRuntimeShims(): string {
 // ============================================================================
 (function(g) {
   // Single $ prefix functions
-  if (!g.$createComponent) g.$createComponent = (fn) => {
-    console.log('[BAVINI Astro Shim] $createComponent called, fn type:', typeof fn);
-    return fn;
-  };
+  if (!g.$createComponent) g.$createComponent = (fn) => fn;
 
   // CRITICAL: $render is a TAGGED TEMPLATE LITERAL handler in Astro v2+
   // It must return an object that can be awaited and converted to string
   // Because Astro components are async and return promises
   if (!g.$render) g.$render = function(strings, ...values) {
-    console.log('[BAVINI Astro Shim] $render (tagged template) called with', strings?.length, 'strings and', values?.length, 'values');
     if (!strings || !Array.isArray(strings)) {
-      console.log('[BAVINI Astro Shim] $render fallback mode');
       return strings;
     }
 
@@ -129,7 +124,6 @@ export function getAstroRuntimeShims(): string {
       }
     };
 
-    console.log('[BAVINI Astro Shim] $render returning async-aware object');
     return renderResult;
   };
 
@@ -194,7 +188,6 @@ export function getAstroRuntimeShims(): string {
   });
 
   if (!g.$renderTemplate) g.$renderTemplate = function(strings, ...values) {
-    console.log('[BAVINI Astro Shim] $renderTemplate (single $) called with', strings?.length, 'strings');
     let result = strings[0] || '';
     for (let i = 0; i < values.length; i++) {
       const val = values[i];
@@ -261,10 +254,7 @@ export function getAstroRuntimeShims(): string {
     slots: {},
   });
 
-  if (!g.$$createComponent) g.$$createComponent = (fn) => {
-    console.log('[BAVINI Astro Shim] $$createComponent called');
-    return fn;
-  };
+  if (!g.$$createComponent) g.$$createComponent = (fn) => fn;
   if (!g.$$createMetadata) g.$$createMetadata = (filePathname, opts = {}) => ({
     modules: opts.modules || [],
     hydratedComponents: opts.hydratedComponents || [],
@@ -301,7 +291,6 @@ export function getAstroRuntimeShims(): string {
   // Usage: return $$render(templateStrings, ...values);
   // FIX: Returns an async-aware render result object that properly resolves promises
   if (!g.$$render) g.$$render = function(strings, ...values) {
-    console.log('[BAVINI Astro Shim] $$render (tagged template) called with', strings?.length, 'strings and', values?.length, 'values');
     if (!strings || !Array.isArray(strings)) {
       // Fallback for old-style function calls
       return strings;
@@ -406,8 +395,6 @@ export function getAstroRuntimeShims(): string {
   // CRITICAL: $$renderTemplate - tagged template literal handler
   // FIX: Now returns async-aware render result like $$render
   if (!g.$$renderTemplate) g.$$renderTemplate = function(strings, ...values) {
-    console.log('[BAVINI Astro Shim] $$renderTemplate called with', strings.length, 'strings and', values.length, 'values');
-
     // Reuse the same async-aware pattern as $$render
     const renderResult = {
       strings: strings,

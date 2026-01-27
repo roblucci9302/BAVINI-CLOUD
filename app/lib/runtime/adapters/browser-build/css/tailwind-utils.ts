@@ -5,7 +5,7 @@
  * Utility functions for processing Tailwind CSS in browser builds.
  *
  * Features:
- * - Extract custom colors from tailwind.config
+ * - Extract custom colors AND fonts from tailwind.config
  * - Strip Tailwind imports (handled by CDN)
  * - Google Fonts CSS extraction for Next.js
  * =============================================================================
@@ -16,12 +16,12 @@ import type { createScopedLogger } from '~/utils/logger';
 type Logger = ReturnType<typeof createScopedLogger>;
 
 /**
- * Extract custom color definitions from tailwind.config.js/ts
- * Converts Tailwind color config to CSS variables for runtime use.
+ * Extract custom theme definitions from tailwind.config.js/ts
+ * Extracts both colors AND font families for Tailwind CDN v4 @theme directive.
  *
  * @param files - Virtual file system map
  * @param logger - Scoped logger instance
- * @returns CSS variable definitions string
+ * @returns CSS variable definitions string for @theme
  */
 export function extractTailwindCustomColors(
   files: Map<string, string>,
@@ -32,34 +32,50 @@ export function extractTailwindCustomColors(
     return '';
   }
 
-  const colorDefs: string[] = [];
+  const themeDefs: string[] = [];
 
+  // ===== EXTRACT COLORS =====
+  extractColors(configContent, themeDefs, logger);
+
+  // ===== EXTRACT FONT FAMILIES =====
+  extractFontFamilies(configContent, themeDefs, logger);
+
+  if (themeDefs.length > 0) {
+    logger.info(`Extracted ${themeDefs.length} custom theme values from tailwind.config`);
+  }
+
+  return themeDefs.join('\n    ');
+}
+
+/**
+ * Extract color definitions from tailwind config
+ */
+function extractColors(configContent: string, themeDefs: string[], logger: Logger): void {
   // Try to find the colors object in extend or theme
   // We need to handle nested objects like: cream: { 50: '#fff', 100: '#eee' }
-  const colorsBlockMatch = configContent.match(/colors\s*:\s*\{([\s\S]*?)\n\s{4}\}/);
+  const colorsBlockMatch = configContent.match(/colors\s*:\s*\{([\s\S]*?)\n\s{4,6}\}/);
   if (!colorsBlockMatch) {
     // Try simpler patterns
     const simpleMatch = configContent.match(/colors\s*:\s*\{([^}]+)\}/);
     if (simpleMatch) {
       // Simple color: value pairs
-      const simpleColorRegex = /['"]?(\w+)['"]?\s*:\s*['"]([^'"]+)['"]/g;
+      const simpleColorRegex = /['"]?([\w-]+)['"]?\s*:\s*['"]([^'"]+)['"]/g;
       let match;
       while ((match = simpleColorRegex.exec(simpleMatch[1])) !== null) {
-        colorDefs.push(`--color-${match[1]}: ${match[2]};`);
+        themeDefs.push(`--color-${match[1]}: ${match[2]};`);
       }
     }
-    if (colorDefs.length > 0) {
-      logger.debug(`Extracted ${colorDefs.length} simple custom colors from tailwind.config`);
-      return colorDefs.join('\n    ');
+    if (themeDefs.length > 0) {
+      logger.debug(`Extracted ${themeDefs.length} simple custom colors from tailwind.config`);
     }
-    return '';
+    return;
   }
 
   const colorsBlock = colorsBlockMatch[1];
 
   // Parse nested color objects: colorName: { shade: 'value', ... }
   // Pattern matches: colorName: { ... }
-  const nestedColorRegex = /['"]?(\w+)['"]?\s*:\s*\{([^}]+)\}/g;
+  const nestedColorRegex = /['"]?([\w-]+)['"]?\s*:\s*\{([^}]+)\}/g;
   let nestedMatch;
 
   while ((nestedMatch = nestedColorRegex.exec(colorsBlock)) !== null) {
@@ -76,9 +92,9 @@ export function extractTailwindCustomColors(
 
       // Generate CSS variable: --color-colorName-shade: value
       if (shade === 'DEFAULT') {
-        colorDefs.push(`--color-${colorName}: ${value};`);
+        themeDefs.push(`--color-${colorName}: ${value};`);
       } else {
-        colorDefs.push(`--color-${colorName}-${shade}: ${value};`);
+        themeDefs.push(`--color-${colorName}-${shade}: ${value};`);
       }
     }
   }
@@ -88,17 +104,120 @@ export function extractTailwindCustomColors(
   const lines = colorsBlock.split('\n');
   for (const line of lines) {
     // Match: colorName: 'value' (not followed by {)
-    const simpleMatch = line.match(/^\s*['"]?(\w+)['"]?\s*:\s*['"]([^'"]+)['"]\s*,?\s*$/);
+    // Support kebab-case like 'rca-blue'
+    const simpleMatch = line.match(/^\s*['"]?([\w-]+)['"]?\s*:\s*['"]([^'"]+)['"]\s*,?\s*$/);
     if (simpleMatch) {
-      colorDefs.push(`--color-${simpleMatch[1]}: ${simpleMatch[2]};`);
+      themeDefs.push(`--color-${simpleMatch[1]}: ${simpleMatch[2]};`);
+    }
+  }
+}
+
+/**
+ * Extract font family definitions from tailwind config
+ * Converts fontFamily config to CSS variables for Tailwind CDN v4
+ *
+ * Input format in tailwind.config.js:
+ *   fontFamily: {
+ *     body: ['Georgia', 'serif'],
+ *     display: ['Playfair Display', 'serif'],
+ *     sans: ['Inter', 'system-ui', 'sans-serif'],
+ *   }
+ *
+ * Output format for @theme:
+ *   --font-body: "Georgia", serif;
+ *   --font-display: "Playfair Display", serif;
+ *   --font-sans: "Inter", system-ui, sans-serif;
+ */
+function extractFontFamilies(configContent: string, themeDefs: string[], logger: Logger): void {
+  // Match fontFamily block in config
+  const fontFamilyMatch = configContent.match(/fontFamily\s*:\s*\{([\s\S]*?)\n\s{4,6}\}/);
+  if (!fontFamilyMatch) {
+    // Try simpler single-line pattern
+    const simpleFontMatch = configContent.match(/fontFamily\s*:\s*\{([^}]+)\}/);
+    if (simpleFontMatch) {
+      extractSimpleFontFamilies(simpleFontMatch[1], themeDefs, logger);
+    }
+    return;
+  }
+
+  const fontBlock = fontFamilyMatch[1];
+  let fontCount = 0;
+
+  // Pattern 1: fontName: ['Font Name', 'fallback', ...]
+  const arrayFontRegex = /['"]?(\w+)['"]?\s*:\s*\[([\s\S]*?)\]/g;
+  let match;
+
+  while ((match = arrayFontRegex.exec(fontBlock)) !== null) {
+    const fontName = match[1];
+    const fontsArray = match[2];
+
+    // Extract font names from array, handling quotes
+    const fonts = fontsArray
+      .split(',')
+      .map(f => f.trim())
+      .filter(Boolean)
+      .map(f => {
+        // Remove quotes if present
+        const unquoted = f.replace(/^['"]|['"]$/g, '');
+        // Add quotes back for font names with spaces
+        return unquoted.includes(' ') || unquoted.includes('-') ? `"${unquoted}"` : unquoted;
+      });
+
+    if (fonts.length > 0) {
+      themeDefs.push(`--font-${fontName}: ${fonts.join(', ')};`);
+      fontCount++;
     }
   }
 
-  if (colorDefs.length > 0) {
-    logger.info(`Extracted ${colorDefs.length} custom colors from tailwind.config`);
+  // Pattern 2: fontName: 'Single Font' (single string value)
+  const singleFontRegex = /['"]?(\w+)['"]?\s*:\s*['"]([^'"]+)['"]\s*,/g;
+  while ((match = singleFontRegex.exec(fontBlock)) !== null) {
+    const fontName = match[1];
+    const fontValue = match[2];
+    // Check if not already added (avoid duplicates with array pattern)
+    const varName = `--font-${fontName}`;
+    if (!themeDefs.some(d => d.startsWith(varName))) {
+      themeDefs.push(`${varName}: "${fontValue}", sans-serif;`);
+      fontCount++;
+    }
   }
 
-  return colorDefs.join('\n    ');
+  if (fontCount > 0) {
+    logger.debug(`Extracted ${fontCount} custom font families from tailwind.config`);
+  }
+}
+
+/**
+ * Extract font families from simple single-line config
+ */
+function extractSimpleFontFamilies(fontBlock: string, themeDefs: string[], logger: Logger): void {
+  // Match: fontName: ['font', 'fallback'] or fontName: 'font'
+  const fontRegex = /['"]?(\w+)['"]?\s*:\s*(?:\[([^\]]+)\]|['"]([^'"]+)['"])/g;
+  let match;
+  let count = 0;
+
+  while ((match = fontRegex.exec(fontBlock)) !== null) {
+    const fontName = match[1];
+    const arrayValue = match[2];
+    const stringValue = match[3];
+
+    if (arrayValue) {
+      const fonts = arrayValue
+        .split(',')
+        .map(f => f.trim().replace(/^['"]|['"]$/g, ''))
+        .filter(Boolean)
+        .map(f => (f.includes(' ') ? `"${f}"` : f));
+      themeDefs.push(`--font-${fontName}: ${fonts.join(', ')};`);
+      count++;
+    } else if (stringValue) {
+      themeDefs.push(`--font-${fontName}: "${stringValue}", sans-serif;`);
+      count++;
+    }
+  }
+
+  if (count > 0) {
+    logger.debug(`Extracted ${count} simple font families from tailwind.config`);
+  }
 }
 
 /**

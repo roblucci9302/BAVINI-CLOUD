@@ -100,7 +100,8 @@ describe('util module', () => {
         cb(null, a + b);
       };
 
-      const promisified = util.promisify(callbackFn);
+      // Cast to the expected promisify signature for testing
+      const promisified = util.promisify(callbackFn as unknown as Parameters<typeof util.promisify>[0]);
       const result = await promisified(1, 2);
       expect(result).toBe(3);
     });
@@ -110,20 +111,25 @@ describe('util module', () => {
         cb(new Error('test error'));
       };
 
-      const promisified = util.promisify(callbackFn);
+      // Cast to the expected promisify signature for testing
+      const promisified = util.promisify(callbackFn as unknown as Parameters<typeof util.promisify>[0]);
       await expect(promisified()).rejects.toThrow('test error');
     });
   });
 
   describe('inherits', () => {
     it('should set up inheritance', () => {
-      function Parent() {}
-      Parent.prototype.hello = () => 'hello';
+      // Use class syntax for proper constructor types
+      class Parent {
+        hello() {
+          return 'hello';
+        }
+      }
 
-      function Child() {}
+      class Child {}
       util.inherits(Child, Parent);
 
-      const child = new (Child as new () => { hello: () => string })();
+      const child = new Child() as Parent;
       expect(child.hello()).toBe('hello');
     });
   });

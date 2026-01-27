@@ -227,8 +227,8 @@ function FeaturesSection() {
               <div className="w-12 h-12 bg-gradient-to-br from-violet-500/20 to-pink-500/20 rounded-xl flex items-center justify-center text-2xl mb-4 group-hover:scale-110 transition-transform">
                 {feature.icon}
               </div>
-              <h3 className="text-lg font-semibold text-white mb-2">{feature.title}</h3>
-              <p className="text-slate-400 text-sm">{feature.description}</p>
+              <h3 className="text-lg font-semibold text-white mb-2 truncate">{feature.title}</h3>
+              <p className="text-slate-400 text-sm line-clamp-2">{feature.description}</p>
             </motion.div>
           ))}
         </div>
@@ -269,7 +269,7 @@ function PricingSection() {
                 </div>
               )}
 
-              <h3 className="text-xl font-semibold text-white mb-2">{plan.name}</h3>
+              <h3 className="text-xl font-semibold text-white mb-2 truncate">{plan.name}</h3>
               <div className="mb-6">
                 <span className="text-5xl font-bold text-white">{plan.price}€</span>
                 <span className={plan.highlighted ? 'text-violet-200' : 'text-slate-400'}>/mois</span>

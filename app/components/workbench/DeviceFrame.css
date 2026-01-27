@@ -1,19 +1,6 @@
-/* DeviceFrame - Option B Floating Shadow */
-/* Design épuré avec effet de lévitation prononcé */
+/* DeviceFrame - Simple transitions */
 
-:root {
-  --device-easing: cubic-bezier(0.22, 1, 0.36, 1);
-  --device-duration: 0.4s;
-}
-
-/* FIX: Accessibility - respect user's motion preferences */
-@media (prefers-reduced-motion: reduce) {
-  :root {
-    --device-duration: 0s;
-  }
-}
-
-/* Wrapper - centers the device */
+/* Wrapper */
 .device-frame-wrapper {
   width: 100%;
   height: 100%;
@@ -22,14 +9,10 @@
   justify-content: center;
   overflow: hidden;
   background: transparent;
-  transition: background var(--device-duration) var(--device-easing);
 }
 
-/* Container - holds the device, NO transition to avoid positioning glitches */
+/* Container */
 .device-frame-container {
-  /* FIX: Removed transition: all - it was causing positioning glitches
-     during device type switches (desktop → tablet). The container's role
-     is just to apply classes, the shell handles all visual transitions. */
   width: 100%;
   height: 100%;
   display: flex;
@@ -37,26 +20,18 @@
   justify-content: center;
 }
 
-/* Shell - the device frame, all transitions happen here */
+/* Shell */
 .device-frame-shell {
   position: relative;
   overflow: hidden;
-  transition:
-    width var(--device-duration) var(--device-easing),
-    height var(--device-duration) var(--device-easing),
-    border-radius var(--device-duration) var(--device-easing),
-    padding var(--device-duration) var(--device-easing),
-    background var(--device-duration) var(--device-easing),
-    box-shadow var(--device-duration) var(--device-easing);
 }
 
-/* Screen - the content area */
+/* Screen */
 .device-frame-screen {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: white;
-  transition: border-radius var(--device-duration) var(--device-easing);
+  background: var(--bolt-elements-background-depth-1, #0a0a0b);
 }
 
 /* Dynamic Island */
@@ -68,10 +43,6 @@
   background: #000;
   border-radius: 18px;
   pointer-events: none;
-  transition:
-    width var(--device-duration) var(--device-easing),
-    height var(--device-duration) var(--device-easing),
-    opacity var(--device-duration) var(--device-easing);
   width: 0;
   height: 0;
   opacity: 0;
@@ -87,9 +58,6 @@
   background: rgba(255, 255, 255, 0.25);
   border-radius: 3px;
   pointer-events: none;
-  transition:
-    width var(--device-duration) var(--device-easing),
-    opacity var(--device-duration) var(--device-easing);
   width: 0;
   opacity: 0;
 }
@@ -157,6 +125,7 @@
 .device-frame-wrapper:has(.device-frame-container.tablet),
 .device-frame-wrapper:has(.device-frame-container.mobile) {
   background: var(--bolt-elements-background-depth-3, #0f0f11);
+  overflow-y: auto;
 }
 
 .device-frame-container.tablet .device-frame-shell {
@@ -165,6 +134,8 @@
   background: #18181b;
   border-radius: 24px;
   padding: 10px;
+  margin-top: 280px;
+  margin-bottom: 40px;
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.08),
     0 40px 80px -15px rgba(0, 0, 0, 0.7),
@@ -197,6 +168,8 @@
   background: #18181b;
   border-radius: 44px;
   padding: 12px;
+  margin-top: 280px;
+  margin-bottom: 40px;
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.08),
     0 40px 80px -15px rgba(0, 0, 0, 0.7),
@@ -208,9 +181,9 @@
 }
 
 .device-frame-container.mobile .device-frame-notch {
-  width: 100px;
-  height: 28px;
-  opacity: 1;
+  width: 0;
+  height: 0;
+  opacity: 0;
 }
 
 .device-frame-container.mobile .device-frame-home-bar {
@@ -225,11 +198,9 @@
 }
 
 .device-frame-container.mobile.landscape .device-frame-notch {
-  top: 50%;
-  left: 14px;
-  transform: translateY(-50%);
-  width: 28px;
-  height: 100px;
+  width: 0;
+  height: 0;
+  opacity: 0;
 }
 
 .device-frame-container.mobile.landscape .device-frame-home-bar {

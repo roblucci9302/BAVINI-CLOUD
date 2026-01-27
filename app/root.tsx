@@ -39,13 +39,8 @@ export const links: LinksFunction = () => [
     href: 'https://api.anthropic.com',
   },
 
-  // Preload critical assets
-  {
-    rel: 'preload',
-    href: '/assets/pyodide/pyodide.mjs',
-    as: 'script',
-    type: 'text/javascript',
-  },
+  // NOTE: Removed pyodide preload - it was causing "preloaded but not used" warnings
+  // Pyodide will be loaded on-demand when needed
 
   // Google Fonts - Inter with display=swap for non-blocking rendering
   {

@@ -50,6 +50,25 @@ function setLevel(level: DebugLevel) {
   currentLevel = level;
 }
 
+/**
+ * Convert a log argument to string, properly handling objects
+ */
+function stringifyArg(arg: LogArg): string {
+  if (arg === null) return 'null';
+  if (arg === undefined) return 'undefined';
+  if (typeof arg === 'string') return arg;
+  if (typeof arg === 'number' || typeof arg === 'boolean') return String(arg);
+  if (arg instanceof Error) return `${arg.name}: ${arg.message}`;
+  if (typeof arg === 'object') {
+    try {
+      return JSON.stringify(arg, null, 2);
+    } catch {
+      return String(arg);
+    }
+  }
+  return String(arg);
+}
+
 function log(level: DebugLevel, scope: string | undefined, messages: LogArg[]) {
   const levelOrder: DebugLevel[] = ['trace', 'debug', 'info', 'warn', 'error'];
 
@@ -58,7 +77,7 @@ function log(level: DebugLevel, scope: string | undefined, messages: LogArg[]) {
   }
 
   const allMessages = messages.reduce<string>((acc, current) => {
-    const currentStr = String(current ?? '');
+    const currentStr = stringifyArg(current);
 
     if (acc.endsWith('\n')) {
       return acc + currentStr;

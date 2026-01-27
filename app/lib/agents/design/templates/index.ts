@@ -20,6 +20,9 @@ export { default as ErrorModern, Error404, MaintenancePage } from './error-moder
 
 /**
  * Métadonnées des templates disponibles
+ *
+ * autoLink: true = Template auto-sélectionné par keywords (structurels)
+ * autoLink: false = Template accessible uniquement sur demande explicite (créatifs)
  */
 export const TEMPLATES_METADATA = [
   {
@@ -29,6 +32,7 @@ export const TEMPLATES_METADATA = [
     palette: 'Aurora',
     sections: ['Navbar', 'Hero', 'Features', 'Pricing', 'Footer'],
     useCases: ['SaaS', 'Startup', 'Product launch', 'Marketing'],
+    autoLink: false, // Créatif - design unique recommandé
   },
   {
     name: 'DashboardModern',
@@ -37,6 +41,7 @@ export const TEMPLATES_METADATA = [
     palette: 'Midnight',
     sections: ['Sidebar', 'Header', 'Stats', 'Charts', 'Tables', 'Activity'],
     useCases: ['Admin', 'Analytics', 'CRM', 'Backoffice'],
+    autoLink: true, // Structurel - auto-lié
   },
   {
     name: 'PortfolioModern',
@@ -45,6 +50,7 @@ export const TEMPLATES_METADATA = [
     palette: 'Obsidian',
     sections: ['Navigation', 'Hero', 'Stats', 'Projects', 'Services', 'Skills', 'Testimonials', 'Contact'],
     useCases: ['Portfolio', 'Agence', 'Freelance', 'Creative'],
+    autoLink: false, // Créatif - design unique recommandé
   },
   {
     name: 'EcommerceModern',
@@ -53,6 +59,7 @@ export const TEMPLATES_METADATA = [
     palette: 'Ember',
     sections: ['Header', 'Hero Banner', 'Filters', 'Product Grid', 'Features', 'Newsletter', 'Footer'],
     useCases: ['E-commerce', 'Boutique', 'Marketplace', 'Retail'],
+    autoLink: false, // Créatif - design unique recommandé
   },
   {
     name: 'BlogModern',
@@ -61,6 +68,7 @@ export const TEMPLATES_METADATA = [
     palette: 'Slate',
     sections: ['Header', 'Featured Post', 'Categories', 'Posts Grid', 'Sidebar', 'Newsletter', 'Footer'],
     useCases: ['Blog', 'Magazine', 'News', 'Content'],
+    autoLink: false, // Créatif - design unique recommandé
   },
   {
     name: 'PricingModern',
@@ -69,6 +77,7 @@ export const TEMPLATES_METADATA = [
     palette: 'Aurora',
     sections: ['Header', 'Pricing Cards', 'Comparison Table', 'Testimonials', 'FAQ', 'CTA', 'Footer'],
     useCases: ['SaaS Pricing', 'Plans', 'Subscriptions', 'Enterprise'],
+    autoLink: false, // Créatif - design unique recommandé
   },
   {
     name: 'AgencyModern',
@@ -77,6 +86,7 @@ export const TEMPLATES_METADATA = [
     palette: 'Rose',
     sections: ['Navigation', 'Hero', 'Services', 'Projects', 'Process', 'Team', 'Testimonials', 'Contact', 'Footer'],
     useCases: ['Agency', 'Services', 'Consulting', 'Studio'],
+    autoLink: false, // Créatif - design unique recommandé
   },
   {
     name: 'DocsModern',
@@ -85,6 +95,7 @@ export const TEMPLATES_METADATA = [
     palette: 'Midnight',
     sections: ['Header', 'Sidebar', 'Table of Contents', 'Content', 'Code Blocks', 'Navigation'],
     useCases: ['Documentation', 'API Docs', 'Knowledge Base', 'Technical'],
+    autoLink: true, // Structurel - auto-lié
   },
   {
     name: 'AuthModern',
@@ -93,6 +104,7 @@ export const TEMPLATES_METADATA = [
     palette: 'Slate',
     sections: ['Login', 'Signup', 'Forgot Password', 'Social Login'],
     useCases: ['Authentication', 'Login', 'Registration', 'User Onboarding'],
+    autoLink: true, // Structurel - auto-lié
   },
   {
     name: 'ErrorModern',
@@ -101,6 +113,7 @@ export const TEMPLATES_METADATA = [
     palette: 'Neon',
     sections: ['404', '500', '403', 'Maintenance'],
     useCases: ['Error Pages', '404', 'Maintenance', 'Server Error'],
+    autoLink: true, // Structurel - auto-lié
   },
 ] as const;
 
@@ -113,9 +126,14 @@ export function getTemplateByName(name: string) {
 
 /**
  * Récupère les templates par cas d'usage
+ *
+ * NOTE: Ne retourne QUE les templates avec autoLink: true (structurels)
+ * Les templates créatifs (autoLink: false) ne sont PAS retournés par cette fonction.
  */
 export function getTemplatesByUseCase(useCase: string) {
-  return TEMPLATES_METADATA.filter((t) => t.useCases.some((u) => u.toLowerCase().includes(useCase.toLowerCase())));
+  return TEMPLATES_METADATA.filter(
+    (t) => t.autoLink === true && t.useCases.some((u) => u.toLowerCase().includes(useCase.toLowerCase()))
+  );
 }
 
 /**

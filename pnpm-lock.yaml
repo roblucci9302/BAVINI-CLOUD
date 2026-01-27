@@ -144,6 +144,15 @@ importers:
       '@radix-ui/react-tooltip':
         specifier: ^1.2.8
         version: 1.2.8(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@react-router/cloudflare':
+        specifier: ^7.13.0
+        version: 7.13.0(@cloudflare/workers-types@4.20260115.0)(react-router@7.13.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(typescript@5.9.3)
+      '@react-router/dev':
+        specifier: ^7.13.0
+        version: 7.13.0(@types/node@25.0.8)(react-router@7.13.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(sass-embedded@1.97.2)(sass@1.97.2)(terser@5.44.1)(typescript@5.9.3)(vite@5.4.21(@types/node@25.0.8)(sass-embedded@1.97.2)(sass@1.97.2)(terser@5.44.1))(wrangler@3.114.17(@cloudflare/workers-types@4.20260115.0))
+      '@react-router/fs-routes':
+        specifier: ^7.13.0
+        version: 7.13.0(@react-router/dev@7.13.0(@types/node@25.0.8)(react-router@7.13.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(sass-embedded@1.97.2)(sass@1.97.2)(terser@5.44.1)(typescript@5.9.3)(vite@5.4.21(@types/node@25.0.8)(sass-embedded@1.97.2)(sass@1.97.2)(terser@5.44.1))(wrangler@3.114.17(@cloudflare/workers-types@4.20260115.0)))(typescript@5.9.3)
       '@remix-run/cloudflare':
         specifier: ^2.17.3
         version: 2.17.4(@cloudflare/workers-types@4.20260115.0)(typescript@5.9.3)
@@ -252,6 +261,9 @@ importers:
       react-resizable-panels:
         specifier: ^2.0.20
         version: 2.1.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react-router:
+        specifier: ^7.13.0
+        version: 7.13.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       react-toastify:
         specifier: ^10.0.5
         version: 10.0.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -313,6 +325,9 @@ importers:
       '@types/diff':
         specifier: ^5.2.1
         version: 5.2.3
+      '@types/dotenv':
+        specifier: ^8.2.3
+        version: 8.2.3
       '@types/glob':
         specifier: ^9.0.0
         version: 9.0.0
@@ -328,6 +343,9 @@ importers:
       '@vitest/coverage-v8':
         specifier: ^2.1.9
         version: 2.1.9(vitest@2.1.9(@types/node@25.0.8)(jsdom@27.4.0)(sass-embedded@1.97.2)(sass@1.97.2)(terser@5.44.1))
+      dotenv:
+        specifier: ^17.2.3
+        version: 17.2.3
       fast-glob:
         specifier: ^3.3.3
         version: 3.3.3
@@ -1323,6 +1341,9 @@ packages:
   '@mdx-js/mdx@2.3.0':
     resolution: {integrity: sha512-jLuwRlz8DQfQNiUCJR50Y09CGPq3fLtmtUQfVrj79E0JWu3dvsVcxVIcfhR5h0iXu+/z++zDrYeiJqifRynJkA==}
 
+  '@mjackson/node-fetch-server@0.2.0':
+    resolution: {integrity: sha512-EMlH1e30yzmTpGLQjlFmaDAjyOeZhng1/XCd7DExR8PNAnG/G1tyruZxEoUe11ClnwGhGrtsdnyyUx1frSzjng==}
+
   '@nanostores/react@0.7.3':
     resolution: {integrity: sha512-/XuLAMENRu/Q71biW4AZ4qmU070vkZgiQ28gaTSNRPm2SZF5zGAR81zPE1MaMB4SeOp6ZTst92NBaG75XSspNg==}
     engines: {node: ^18.0.0 || >=20.0.0}
@@ -1899,6 +1920,61 @@ packages:
   '@radix-ui/rect@1.1.1':
     resolution: {integrity: sha512-HPwpGIzkl28mWyZqG52jiqDJ12waP11Pa1lGoiyUkIEuMLBP0oeK/C89esbXrxsky5we7dfd8U58nm0SgAWpVw==}
 
+  '@react-router/cloudflare@7.13.0':
+    resolution: {integrity: sha512-8K7gftcmFYe2kjx6RBWgJxqBgO9JplKZH3NzVSZsHXw/MwLVeHQWwIZJqm/mixEYLCV3DJVl2qfAGV4gIinFdA==}
+    engines: {node: '>=20.0.0'}
+    peerDependencies:
+      '@cloudflare/workers-types': ^4.0.0
+      react-router: ^7.13.0
+      typescript: ^5.1.0
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
+  '@react-router/dev@7.13.0':
+    resolution: {integrity: sha512-0vRfTrS6wIXr9j0STu614Cv2ytMr21evnv1r+DXPv5cJ4q0V2x2kBAXC8TAqEXkpN5vdhbXBlbGQ821zwOfhvg==}
+    engines: {node: '>=20.0.0'}
+    hasBin: true
+    peerDependencies:
+      '@react-router/serve': ^7.13.0
+      '@vitejs/plugin-rsc': ~0.5.7
+      react-router: ^7.13.0
+      react-server-dom-webpack: ^19.2.3
+      typescript: ^5.1.0
+      vite: ^5.1.0 || ^6.0.0 || ^7.0.0
+      wrangler: ^3.28.2 || ^4.0.0
+    peerDependenciesMeta:
+      '@react-router/serve':
+        optional: true
+      '@vitejs/plugin-rsc':
+        optional: true
+      react-server-dom-webpack:
+        optional: true
+      typescript:
+        optional: true
+      wrangler:
+        optional: true
+
+  '@react-router/fs-routes@7.13.0':
+    resolution: {integrity: sha512-S7rilodzsn+8oKHk3VHo+M3gKB2znHZoUJEu1wD6ZTtb1sj+vkV/36M+bfbqXnbpXKs4+z3J4CWj53lpzEDiWA==}
+    engines: {node: '>=20.0.0'}
+    peerDependencies:
+      '@react-router/dev': ^7.13.0
+      typescript: ^5.1.0
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
+  '@react-router/node@7.13.0':
+    resolution: {integrity: sha512-Mhr3fAou19oc/S93tKMIBHwCPfqLpWyWM/m0NWd3pJh/wZin8/9KhAdjwxhYbXw1TrTBZBLDENa35uZ+Y7oh3A==}
+    engines: {node: '>=20.0.0'}
+    peerDependencies:
+      react-router: 7.13.0
+      typescript: ^5.1.0
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
   '@remix-run/cloudflare-pages@2.17.4':
     resolution: {integrity: sha512-RaVwv/2Zc4kz8fRu6QKubL/4Fn1mS2DQjyChILWGZvEk2TyLVvA5ZnqK2+NDPlrenIFlj4VLkPZdU0gSMI5f5g==}
     engines: {node: '>=18.0.0'}
@@ -1938,6 +2014,9 @@ packages:
         optional: true
       wrangler:
         optional: true
+
+  '@remix-run/node-fetch-server@0.13.0':
+    resolution: {integrity: sha512-1EsNo0ZpgXu/90AWoRZf/oE3RVTUS80tiTUpt+hv5pjtAkw7icN4WskDwz/KdAw5ARbJLMhZBrO1NqThmy/McA==}
 
   '@remix-run/node@2.17.4':
     resolution: {integrity: sha512-9A29JaYiGHDEmaiQuD1IlO/TrQxnnkj98GpytihU+Nz6yTt6RwzzyMMqTAoasRd1dPD4OeSaSqbwkcim/eE76Q==}
@@ -2234,6 +2313,10 @@ packages:
 
   '@types/diff@5.2.3':
     resolution: {integrity: sha512-K0Oqlrq3kQMaO2RhfrNQX5trmt+XLyom88zS0u84nnIcLvFnRUMRRHmrGny5GSM+kNO9IZLARsdQHDzkhAgmrQ==}
+
+  '@types/dotenv@8.2.3':
+    resolution: {integrity: sha512-g2FXjlDX/cYuc5CiQvyU/6kkbP1JtmGzh0obW50zD7OKeILVL0NSpPWLXVfqoAGQjom2/SLLx9zHq0KXvD6mbw==}
+    deprecated: This is a stub types definition. dotenv provides its own type definitions, so you do not need this installed.
 
   '@types/emscripten@1.41.5':
     resolution: {integrity: sha512-cMQm7pxu6BxtHyqJ7mQZ2kXWV5SLmugybFdHCBbJ5eHzOo6VhBckEgAT3//rP5FwPHNPeEiq4SmQ5ucBwsOo4Q==}
@@ -2652,6 +2735,9 @@ packages:
     peerDependenciesMeta:
       react-native-b4a:
         optional: true
+
+  babel-dead-code-elimination@1.0.12:
+    resolution: {integrity: sha512-GERT7L2TiYcYDtYk1IpD+ASAYXjKbLTDPhBtYj7X1NuRMDTMtAx9kyBenub1Ev41lo91OHCKdmP+egTDmfQ7Ig==}
 
   bail@2.0.2:
     resolution: {integrity: sha512-0xO6mYd7JB2YesxDKplafRpsiOzPt9V02ddPCLbY1xYGPOX24NTyN50qnUxgCPcSoYMhKpAuBTjQoRZCAkUDRw==}
@@ -3159,6 +3245,10 @@ packages:
 
   dotenv@16.6.1:
     resolution: {integrity: sha512-uBq4egWHTcTt33a72vpSG0z3HnPuIl6NqYcTrKEg2azoEyl2hpW0zqlxysq2pK9HlDIHyHyakeYaYnSAwd8bow==}
+    engines: {node: '>=12'}
+
+  dotenv@17.2.3:
+    resolution: {integrity: sha512-JVUnt+DUIzu87TABbhPmNfVdBDt18BLOWjMUFJMSi/Qqg7NTYtabbvSNJGOJ7afbRuv9D/lngizHtP7QyLQ+9w==}
     engines: {node: '>=12'}
 
   dunder-proto@1.0.1:
@@ -3905,6 +3995,10 @@ packages:
 
   isbot@4.4.0:
     resolution: {integrity: sha512-8ZvOWUA68kyJO4hHJdWjyreq7TYNWTS9y15IzeqVdKxR9pPr3P/3r9AHcoIv9M0Rllkao5qWz2v1lmcyKIVCzQ==}
+    engines: {node: '>=18'}
+
+  isbot@5.1.33:
+    resolution: {integrity: sha512-P4Hgb5NqswjkI0J1CM6XKXon/sxKY1SuowE7Qx2hrBhIwICFyXy54mfgB5eMHXsbe/eStzzpbIGNOvGmz+dlKg==}
     engines: {node: '>=18'}
 
   isexe@2.0.0:
@@ -5049,6 +5143,16 @@ packages:
     engines: {node: '>=14.0.0'}
     peerDependencies:
       react: '>=16.8'
+
+  react-router@7.13.0:
+    resolution: {integrity: sha512-PZgus8ETambRT17BUm/LL8lX3Of+oiLaPuVTRH3l1eLvSPpKO3AvhAEb5N7ihAFZQrYDqkvvWfFh9p0z9VsjLw==}
+    engines: {node: '>=20.0.0'}
+    peerDependencies:
+      react: '>=18'
+      react-dom: '>=18'
+    peerDependenciesMeta:
+      react-dom:
+        optional: true
 
   react-style-singleton@2.2.3:
     resolution: {integrity: sha512-b6jSvxvVnyptAiLjbkWLE/lOnR4lfTtDAl+eUC7RZy+QQWc6wRzIV2CE6xBuMmDxc2qIihtDCZD5NPOFl7fRBQ==}
@@ -7216,6 +7320,8 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@mjackson/node-fetch-server@0.2.0': {}
+
   '@nanostores/react@0.7.3(nanostores@0.10.3)(react@18.3.1)':
     dependencies:
       nanostores: 0.10.3
@@ -7783,6 +7889,74 @@ snapshots:
 
   '@radix-ui/rect@1.1.1': {}
 
+  '@react-router/cloudflare@7.13.0(@cloudflare/workers-types@4.20260115.0)(react-router@7.13.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(typescript@5.9.3)':
+    dependencies:
+      '@cloudflare/workers-types': 4.20260115.0
+      react-router: 7.13.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+    optionalDependencies:
+      typescript: 5.9.3
+
+  '@react-router/dev@7.13.0(@types/node@25.0.8)(react-router@7.13.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(sass-embedded@1.97.2)(sass@1.97.2)(terser@5.44.1)(typescript@5.9.3)(vite@5.4.21(@types/node@25.0.8)(sass-embedded@1.97.2)(sass@1.97.2)(terser@5.44.1))(wrangler@3.114.17(@cloudflare/workers-types@4.20260115.0))':
+    dependencies:
+      '@babel/core': 7.28.6
+      '@babel/generator': 7.28.6
+      '@babel/parser': 7.28.6
+      '@babel/plugin-syntax-jsx': 7.28.6(@babel/core@7.28.6)
+      '@babel/preset-typescript': 7.28.5(@babel/core@7.28.6)
+      '@babel/traverse': 7.28.6
+      '@babel/types': 7.28.6
+      '@react-router/node': 7.13.0(react-router@7.13.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(typescript@5.9.3)
+      '@remix-run/node-fetch-server': 0.13.0
+      arg: 5.0.2
+      babel-dead-code-elimination: 1.0.12
+      chokidar: 4.0.3
+      dedent: 1.7.1
+      es-module-lexer: 1.7.0
+      exit-hook: 2.2.1
+      isbot: 5.1.33
+      jsesc: 3.0.2
+      lodash: 4.17.21
+      p-map: 7.0.4
+      pathe: 1.1.2
+      picocolors: 1.1.1
+      pkg-types: 2.3.0
+      prettier: 3.8.0
+      react-refresh: 0.14.2
+      react-router: 7.13.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      semver: 7.7.3
+      tinyglobby: 0.2.15
+      valibot: 1.2.0(typescript@5.9.3)
+      vite: 5.4.21(@types/node@25.0.8)(sass-embedded@1.97.2)(sass@1.97.2)(terser@5.44.1)
+      vite-node: 3.2.4(@types/node@25.0.8)(sass-embedded@1.97.2)(sass@1.97.2)(terser@5.44.1)
+    optionalDependencies:
+      typescript: 5.9.3
+      wrangler: 3.114.17(@cloudflare/workers-types@4.20260115.0)
+    transitivePeerDependencies:
+      - '@types/node'
+      - babel-plugin-macros
+      - less
+      - lightningcss
+      - sass
+      - sass-embedded
+      - stylus
+      - sugarss
+      - supports-color
+      - terser
+
+  '@react-router/fs-routes@7.13.0(@react-router/dev@7.13.0(@types/node@25.0.8)(react-router@7.13.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(sass-embedded@1.97.2)(sass@1.97.2)(terser@5.44.1)(typescript@5.9.3)(vite@5.4.21(@types/node@25.0.8)(sass-embedded@1.97.2)(sass@1.97.2)(terser@5.44.1))(wrangler@3.114.17(@cloudflare/workers-types@4.20260115.0)))(typescript@5.9.3)':
+    dependencies:
+      '@react-router/dev': 7.13.0(@types/node@25.0.8)(react-router@7.13.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(sass-embedded@1.97.2)(sass@1.97.2)(terser@5.44.1)(typescript@5.9.3)(vite@5.4.21(@types/node@25.0.8)(sass-embedded@1.97.2)(sass@1.97.2)(terser@5.44.1))(wrangler@3.114.17(@cloudflare/workers-types@4.20260115.0))
+      minimatch: 9.0.5
+    optionalDependencies:
+      typescript: 5.9.3
+
+  '@react-router/node@7.13.0(react-router@7.13.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(typescript@5.9.3)':
+    dependencies:
+      '@mjackson/node-fetch-server': 0.2.0
+      react-router: 7.13.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+    optionalDependencies:
+      typescript: 5.9.3
+
   '@remix-run/cloudflare-pages@2.17.4(@cloudflare/workers-types@4.20260115.0)(typescript@5.9.3)':
     dependencies:
       '@cloudflare/workers-types': 4.20260115.0
@@ -7879,6 +8053,8 @@ snapshots:
       - terser
       - ts-node
       - utf-8-validate
+
+  '@remix-run/node-fetch-server@0.13.0': {}
 
   '@remix-run/node@2.17.4(typescript@5.9.3)':
     dependencies:
@@ -8175,6 +8351,10 @@ snapshots:
       '@types/ms': 2.1.0
 
   '@types/diff@5.2.3': {}
+
+  '@types/dotenv@8.2.3':
+    dependencies:
+      dotenv: 17.2.3
 
   '@types/emscripten@1.41.5': {}
 
@@ -8747,6 +8927,15 @@ snapshots:
 
   b4a@1.7.3: {}
 
+  babel-dead-code-elimination@1.0.12:
+    dependencies:
+      '@babel/core': 7.28.6
+      '@babel/parser': 7.28.6
+      '@babel/traverse': 7.28.6
+      '@babel/types': 7.28.6
+    transitivePeerDependencies:
+      - supports-color
+
   bail@2.0.2: {}
 
   balanced-match@3.0.1: {}
@@ -9256,6 +9445,8 @@ snapshots:
   domain-browser@4.22.0: {}
 
   dotenv@16.6.1: {}
+
+  dotenv@17.2.3: {}
 
   dunder-proto@1.0.1:
     dependencies:
@@ -10131,6 +10322,8 @@ snapshots:
   isarray@2.0.5: {}
 
   isbot@4.4.0: {}
+
+  isbot@5.1.33: {}
 
   isexe@2.0.0: {}
 
@@ -11708,6 +11901,14 @@ snapshots:
     dependencies:
       '@remix-run/router': 1.23.2
       react: 18.3.1
+
+  react-router@7.13.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
+    dependencies:
+      cookie: 1.1.1
+      react: 18.3.1
+      set-cookie-parser: 2.7.2
+    optionalDependencies:
+      react-dom: 18.3.1(react@18.3.1)
 
   react-style-singleton@2.2.3(@types/react@18.3.27)(react@18.3.1):
     dependencies:

@@ -179,7 +179,7 @@ const InterfacePanel = memo(() => {
   }, [interfaceSettings]);
 
   const handleToggleBuildEngine = useCallback(() => {
-    const newEngine: BuildEngineType = buildSettings.engine === 'webcontainer' ? 'browser' : 'webcontainer';
+    const newEngine: BuildEngineType = buildSettings.engine === 'bavini-container' ? 'browser' : 'bavini-container';
     setBuildEngine(newEngine);
   }, [buildSettings.engine]);
 

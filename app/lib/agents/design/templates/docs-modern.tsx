@@ -319,8 +319,8 @@ function FeatureCard({ feature }: { feature: { icon: string; title: string; desc
   return (
     <div className="p-6 bg-slate-800/50 rounded-xl border border-slate-700 hover:border-slate-600 transition-colors">
       <span className="text-2xl mb-3 block">{feature.icon}</span>
-      <h4 className="font-semibold text-white mb-1">{feature.title}</h4>
-      <p className="text-sm text-slate-400">{feature.description}</p>
+      <h4 className="font-semibold text-white mb-1 truncate">{feature.title}</h4>
+      <p className="text-sm text-slate-400 line-clamp-2">{feature.description}</p>
     </div>
   );
 }

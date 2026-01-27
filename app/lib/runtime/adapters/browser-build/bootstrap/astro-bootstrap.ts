@@ -48,7 +48,6 @@ async function collectAsyncOutput(gen) {
   // CRITICAL: Handle render result objects with .render() method
   // This is the async-aware format from our $render handler
   if (gen && typeof gen.render === 'function') {
-    console.log('[BAVINI Astro] Detected render result object, calling .render()');
     const rendered = await gen.render();
     return await collectAsyncOutput(rendered);
   }
@@ -57,7 +56,6 @@ async function collectAsyncOutput(gen) {
   // Format: ['string1', 'string2', ..., raw: Array(n)]
   // The actual content is often in the array values, not the raw strings
   if (Array.isArray(gen) && gen.raw !== undefined) {
-    console.log('[BAVINI Astro] Detected template literal array, processing...');
     // This is a tagged template literal result
     // The strings array contains the literal parts, values are interpolated
     // But Astro often puts the HTML content in a specific pattern
@@ -142,6 +140,20 @@ async function collectAsyncOutput(gen) {
   return '';
 }
 
+// Basic HTML sanitizer to prevent XSS in preview
+// Note: In a dev preview environment, users execute their own code,
+// but we sanitize to prevent accidental injection from framework output
+function sanitizeHTML(html) {
+  // Remove script tags and their content
+  let clean = html.replace(/<script\\b[^<]*(?:(?!<\\/script>)<[^<]*)*<\\/script>/gi, '');
+  // Remove event handlers (onclick, onerror, etc.)
+  clean = clean.replace(/\\s*on\\w+\\s*=\\s*["'][^"']*["']/gi, '');
+  clean = clean.replace(/\\s*on\\w+\\s*=\\s*[^\\s>]+/gi, '');
+  // Remove javascript: URLs
+  clean = clean.replace(/javascript\\s*:/gi, 'blocked:');
+  return clean;
+}
+
 // Render Astro component
 async function renderAstro() {
   const container = document.getElementById('root') || document.getElementById('app');
@@ -149,8 +161,6 @@ async function renderAstro() {
     console.error('[BAVINI Astro] Root element not found');
     return;
   }
-
-  console.log('[BAVINI Astro] Starting render, Component type:', typeof Component);
 
   try {
     let html = '';
@@ -167,35 +177,27 @@ async function renderAstro() {
     };
 
     if (typeof Component === 'function') {
-      console.log('[BAVINI Astro] Component is a function, calling with $result...');
       // Try with $result first (Astro v2+ pattern)
       let result = await Component($result, {}, {});
-      console.log('[BAVINI Astro] Component result type:', typeof result, 'length:', String(result).length);
 
       // If result is empty, try without $result (some components are wrapped differently)
       if (!result || (typeof result === 'string' && result.length === 0)) {
-        console.log('[BAVINI Astro] Empty result, trying alternative call patterns...');
         result = await Component({}, {});
       }
 
       html = await collectAsyncOutput(result);
     } else if (Component && Component.default && typeof Component.default === 'function') {
-      console.log('[BAVINI Astro] Using Component.default');
       const result = await Component.default($result, {}, {});
       html = await collectAsyncOutput(result);
     } else if (Component && typeof Component.render === 'function') {
-      console.log('[BAVINI Astro] Using Component.render');
       const result = await Component.render($result, {}, {});
       html = await collectAsyncOutput(result);
-    } else {
-      console.log('[BAVINI Astro] Component structure:', Object.keys(Component || {}));
     }
 
-    console.log('[BAVINI Astro] Rendered HTML length:', html.length);
-
     if (html) {
-      container.innerHTML = html;
-      console.log('[BAVINI Astro] HTML injected successfully');
+      // Sanitize HTML before injecting to prevent XSS
+      const cleanHtml = sanitizeHTML(html);
+      container.innerHTML = cleanHtml;
     } else {
       container.innerHTML = '<div style="padding: 40px; text-align: center; color: #666;"><h2>Astro Preview</h2><p>Component rendered but produced no HTML output.</p><p>Check the console for details.</p></div>';
     }

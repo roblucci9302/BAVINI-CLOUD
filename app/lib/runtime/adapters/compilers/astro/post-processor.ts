@@ -89,11 +89,6 @@ export function stripTypeScriptDeclarations(code: string): string {
 export function postProcessCode(code: string, filename: string): string {
   let processed = code;
 
-  // DEBUG: Log raw compiled code (first 500 chars)
-  logger.info(`[DEBUG] Raw Astro compiled code for ${filename}:`, processed.substring(0, 1500));
-  logger.info(`[DEBUG] Code contains $render tagged template:`, /\$render\s*`/.test(processed));
-  logger.info(`[DEBUG] Code contains $$render tagged template:`, /\$\$render\s*`/.test(processed));
-
   // The Astro compiler v2+ generates code with $$ (double dollar) prefix:
   // - $$createComponent, $$render, $$renderComponent, $$renderTemplate, etc.
   // We need to:
@@ -247,11 +242,6 @@ export function postProcessCode(code: string, filename: string): string {
     processed = processed.replace(regex, `globalThis.$${func}(`);
   }
 
-  // DEBUG: Log processed code (first 800 chars)
-  logger.info(`[DEBUG] Processed code for ${filename}:`, processed.substring(0, 1500));
-  logger.info(`[DEBUG] After processing - globalThis.$render:`, processed.includes('globalThis.$render'));
-  logger.info(`[DEBUG] After processing - globalThis.$$render:`, processed.includes('globalThis.$$render'));
-
   return processed;
 }
 
@@ -342,7 +332,6 @@ export default async function ${componentName}Preview(props = {}) {
     // FIX: Properly resolve async render results
     output = await __resolveRenderResult(output);
 
-    console.log('[BAVINI Astro] wrapForBrowser output type:', typeof output, 'length:', String(output).length);
     return output;
   }
   return null;

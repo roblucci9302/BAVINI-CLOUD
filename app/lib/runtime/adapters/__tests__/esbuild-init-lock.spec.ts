@@ -30,7 +30,7 @@ describe('EsbuildInitLock', () => {
   beforeEach(() => {
     // Reset singleton and global state
     (EsbuildInitLock as any)._instance = null;
-    (globalThis as any).__esbuildInitialized = false;
+    globalThis.__esbuildInitialized = false;
 
     // Reset mock
     vi.mocked(esbuild.initialize).mockReset();
@@ -53,7 +53,7 @@ describe('EsbuildInitLock', () => {
     });
 
     it('should recover state from globalThis', () => {
-      (globalThis as any).__esbuildInitialized = true;
+      globalThis.__esbuildInitialized = true;
       (EsbuildInitLock as any)._instance = null;
 
       const recovered = EsbuildInitLock.getInstance();
@@ -88,7 +88,7 @@ describe('EsbuildInitLock', () => {
     it('should set globalThis flag on success', async () => {
       await lock.initialize();
 
-      expect((globalThis as any).__esbuildInitialized).toBe(true);
+      expect(globalThis.__esbuildInitialized).toBe(true);
     });
   });
 
@@ -188,12 +188,12 @@ describe('EsbuildInitLock', () => {
     it('should force reset all state', async () => {
       await lock.initialize();
       expect(lock.state).toBe('ready');
-      expect((globalThis as any).__esbuildInitialized).toBe(true);
+      expect(globalThis.__esbuildInitialized).toBe(true);
 
       lock._forceReset();
 
       expect(lock.state).toBe('idle');
-      expect((globalThis as any).__esbuildInitialized).toBe(false);
+      expect(globalThis.__esbuildInitialized).toBe(false);
     });
   });
 });

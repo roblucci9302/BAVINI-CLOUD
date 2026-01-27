@@ -17,9 +17,9 @@ describe('TailwindCompiler', () => {
   beforeEach(() => {
     compiler = new TailwindCompiler();
     // Reset global state
-    (globalThis as any).__tailwindInitialized = false;
-    (globalThis as any).__tailwindPromise = null;
-    (globalThis as any).__tailwindProcessor = null;
+    globalThis.__tailwindInitialized = false;
+    globalThis.__tailwindPromise = undefined;
+    globalThis.__tailwindProcessor = undefined;
   });
 
   afterEach(() => {

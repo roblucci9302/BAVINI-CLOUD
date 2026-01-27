@@ -446,7 +446,7 @@ function ProductCard({ product, index }: { product: (typeof config.products)[0];
       {/* Info */}
       <div>
         <p className="text-xs text-stone-400 mb-1">{product.category}</p>
-        <h3 className="font-medium text-stone-900 mb-2 group-hover:text-orange-500 transition-colors">
+        <h3 className="font-medium text-stone-900 mb-2 group-hover:text-orange-500 transition-colors truncate">
           {product.name}
         </h3>
 

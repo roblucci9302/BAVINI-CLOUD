@@ -14,7 +14,6 @@ import {
 import { DiffViewer } from '~/components/editor/DiffViewer';
 import { IconButton } from '~/components/ui/IconButton';
 import { PanelHeader } from '~/components/ui/PanelHeader';
-import { PanelHeaderButton } from '~/components/ui/PanelHeaderButton';
 import { shortcutEventEmitter } from '~/lib/hooks';
 import type { FileMap } from '~/lib/stores/files';
 import { themeStore } from '~/lib/stores/theme';
@@ -23,7 +22,6 @@ import { classNames } from '~/utils/classNames';
 import { WORK_DIR } from '~/utils/constants';
 import { renderLogger } from '~/utils/logger';
 import { isMobile } from '~/utils/mobile';
-import { FileBreadcrumb } from './FileBreadcrumb';
 import { FileTree } from './FileTree';
 import { Terminal, type TerminalRef } from './terminal/Terminal';
 import { EditorAgentOverlay, TerminalAgentIndicator } from './AgentWorkbenchIndicators';
@@ -71,18 +69,6 @@ export const EditorPanel = memo(
 
     const [activeTerminal, setActiveTerminal] = useState(0);
     const [terminalCount, setTerminalCount] = useState(1);
-
-    const activeFileSegments = useMemo(() => {
-      if (!editorDocument) {
-        return undefined;
-      }
-
-      return editorDocument.filePath.split('/');
-    }, [editorDocument]);
-
-    const activeFileUnsaved = useMemo(() => {
-      return editorDocument !== undefined && unsavedFiles?.has(editorDocument.filePath);
-    }, [editorDocument, unsavedFiles]);
 
     // Diff view state
     const [showDiff, setShowDiff] = useState(false);
@@ -200,37 +186,7 @@ export const EditorPanel = memo(
             </Panel>
             <PanelResizeHandle />
             <Panel className="flex flex-col" defaultSize={80} minSize={20}>
-              <PanelHeader className="overflow-x-auto">
-                {activeFileSegments?.length && (
-                  <div className="flex items-center flex-1 text-sm">
-                    <FileBreadcrumb pathSegments={activeFileSegments} files={files} onFileSelect={onFileSelect} />
-                    <div className="flex gap-1 ml-auto -mr-1.5">
-                      {/* Diff toggle button - only show when file has modifications */}
-                      {canShowDiff && (
-                        <PanelHeaderButton
-                          onClick={() => setShowDiff(!showDiff)}
-                          className={classNames({ 'bg-bolt-elements-background-depth-3': showDiff })}
-                        >
-                          <div className="i-ph:git-diff" />
-                          {showDiff ? 'Éditeur' : 'Diff'}
-                        </PanelHeaderButton>
-                      )}
-                      {activeFileUnsaved && (
-                        <>
-                          <PanelHeaderButton onClick={onFileSave}>
-                            <div className="i-ph:floppy-disk-duotone" />
-                            Enregistrer
-                          </PanelHeaderButton>
-                          <PanelHeaderButton onClick={onFileReset}>
-                            <div className="i-ph:clock-counter-clockwise-duotone" />
-                            Réinitialiser
-                          </PanelHeaderButton>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </PanelHeader>
+              {/* Editor content - no header, breadcrumb moved to unified Workbench header */}
               <div className="h-full flex-1 overflow-hidden relative">
                 {showDiff && canShowDiff && editorDocument ? (
                   <DiffViewer
@@ -251,6 +207,22 @@ export const EditorPanel = memo(
                   />
                 )}
                 <EditorAgentOverlay filePath={editorDocument?.filePath} />
+                {/* Floating Diff toggle - shows when file has modifications */}
+                {canShowDiff && (
+                  <button
+                    onClick={() => setShowDiff(!showDiff)}
+                    className={classNames(
+                      'absolute top-2 right-2 z-10 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all',
+                      showDiff
+                        ? 'bg-[rgba(14,165,233,0.2)] text-[#38bdf8]'
+                        : 'bg-bolt-elements-background-depth-2 text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary'
+                    )}
+                    title={showDiff ? 'Retour à l\'éditeur' : 'Voir les modifications'}
+                  >
+                    <div className="i-ph:git-diff text-sm" />
+                    {showDiff ? 'Éditeur' : 'Diff'}
+                  </button>
+                )}
               </div>
             </Panel>
           </PanelGroup>

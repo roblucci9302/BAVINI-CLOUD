@@ -12,6 +12,29 @@
 import * as esbuild from 'esbuild-wasm';
 
 // =============================================================================
+// Global Error Handlers (to capture unhandled errors with details)
+// =============================================================================
+
+self.onerror = (message, filename, lineno, colno, error) => {
+  console.error('[BuildWorker] Uncaught error:', { message, filename, lineno, colno, error: error?.message || error });
+  self.postMessage({
+    type: 'error',
+    error: `Worker error: ${error?.message || message || 'Unknown error'}`,
+  });
+  return true; // Prevent default handling
+};
+
+self.onunhandledrejection = (event) => {
+  const reason = event.reason;
+  const errorMessage = reason instanceof Error ? reason.message : String(reason);
+  console.error('[BuildWorker] Unhandled rejection:', errorMessage);
+  self.postMessage({
+    type: 'error',
+    error: `Unhandled promise rejection: ${errorMessage}`,
+  });
+};
+
+// =============================================================================
 // Types
 // =============================================================================
 
@@ -98,23 +121,28 @@ async function initEsbuild(): Promise<void> {
     try {
       // Check if already initialized globally (for HMR scenarios)
       if ((globalThis as Record<string, unknown>).__esbuildInitialized) {
+        console.log('[BuildWorker] esbuild already initialized globally');
         initialized = true;
         return;
       }
 
+      console.log('[BuildWorker] Initializing esbuild-wasm...');
       await esbuild.initialize({
         wasmURL: 'https://unpkg.com/esbuild-wasm@0.24.2/esbuild.wasm',
         worker: false, // We're already in a worker
       });
 
+      console.log('[BuildWorker] esbuild-wasm initialized successfully');
       (globalThis as Record<string, unknown>).__esbuildInitialized = true;
       initialized = true;
     } catch (error) {
       // Handle "already initialized" error gracefully
       if (error instanceof Error && error.message.includes('already')) {
+        console.log('[BuildWorker] esbuild was already initialized');
         initialized = true;
         (globalThis as Record<string, unknown>).__esbuildInitialized = true;
       } else {
+        console.error('[BuildWorker] Failed to initialize esbuild:', error);
         throw error;
       }
     }

@@ -10,7 +10,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import type {
   RuntimeAdapter,
-  RuntimeCallbacks,
 } from '../adapter';
 import type {
   FileMap,
@@ -22,6 +21,7 @@ import type {
   ConsoleLog,
   RuntimeError,
   Loader,
+  RuntimeCallbacks,
 } from '../types';
 
 /**
@@ -361,7 +361,7 @@ describe('RuntimeAdapter Interface', () => {
     it('should update status during build', async () => {
       const statusChanges: RuntimeStatus[] = [];
       adapter.setCallbacks({
-        onStatusChange: (status) => statusChanges.push(status),
+        onStatusChange: (status: RuntimeStatus) => statusChanges.push(status),
       });
 
       await adapter.writeFile('/src/main.tsx', 'export default 1');
@@ -374,7 +374,7 @@ describe('RuntimeAdapter Interface', () => {
     it('should emit build progress', async () => {
       const progressEvents: { phase: string; progress: number }[] = [];
       adapter.setCallbacks({
-        onBuildProgress: (phase, progress) => progressEvents.push({ phase, progress }),
+        onBuildProgress: (phase: string, progress: number) => progressEvents.push({ phase, progress }),
       });
 
       await adapter.writeFile('/src/main.tsx', 'export default 1');

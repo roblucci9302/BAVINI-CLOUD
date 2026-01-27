@@ -23,7 +23,7 @@ interface MessagesProps {
   /** Contenu du message en cours de streaming (rendu séparément pour éviter les re-renders) */
   streamingContent?: string;
   messages?: Message[];
-  onEditMessage?: (index: number) => void;
+  onSaveEdit?: (index: number, newContent: string) => void;
   onDeleteMessage?: (index: number) => void;
   onRegenerateMessage?: (index: number) => void;
 }
@@ -53,7 +53,7 @@ interface MessageItemProps {
   isFirst: boolean;
   isLast: boolean;
   isStreaming: boolean;
-  onEditMessage?: (index: number) => void;
+  onSaveEdit?: (index: number, newContent: string) => void;
   onDeleteMessage?: (index: number) => void;
   onRegenerateMessage?: (index: number) => void;
 }
@@ -68,7 +68,7 @@ const MessageItem = React.memo(
     isFirst,
     isLast,
     isStreaming,
-    onEditMessage,
+    onSaveEdit,
     onDeleteMessage,
     onRegenerateMessage,
   }: MessageItemProps) => {
@@ -77,20 +77,18 @@ const MessageItem = React.memo(
 
     return (
       <div
-        className={classNames('flex gap-4 w-full', {
-          'p-4 rounded-[calc(0.75rem-1px)] bg-bolt-elements-messages-background': isUserMessage,
-          'py-3 px-4': !isUserMessage,
-          'mt-3': !isFirst,
+        className={classNames('flex w-full', {
+          'justify-end': isUserMessage,
+          'justify-start': !isUserMessage,
+          'mt-4': !isFirst,
         })}
       >
-        {isUserMessage && (
-          <div className="flex items-center justify-center w-[34px] h-[34px] overflow-hidden bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 rounded-full shrink-0 self-start">
-            <div className="i-ph:user-fill text-xl"></div>
-          </div>
-        )}
-        <div className="grid grid-cols-1 w-full">
+        <div className={classNames({
+          'max-w-[85%]': isUserMessage,
+          'max-w-[90%] w-full': !isUserMessage,
+        })}>
           {isUserMessage ? (
-            <UserMessage content={content} messageIndex={index} onEdit={onEditMessage} onDelete={onDeleteMessage} />
+            <UserMessage content={content} messageIndex={index} onSaveEdit={onSaveEdit} onDelete={onDeleteMessage} />
           ) : (
             <AssistantMessage
               content={content}
@@ -111,12 +109,14 @@ const MessageItem = React.memo(
  */
 const StreamingIndicator = React.memo(() => {
   return (
-    <div
-      className="text-center w-full text-bolt-elements-textSecondary i-svg-spinners:3-dots-fade text-4xl mt-4"
-      role="status"
-      aria-live="polite"
-      aria-label="Génération de la réponse en cours"
-    />
+    <div className="flex w-full justify-start mt-4">
+      <div
+        className="text-bolt-elements-textSecondary i-svg-spinners:3-dots-fade text-4xl"
+        role="status"
+        aria-live="polite"
+        aria-label="Génération de la réponse en cours"
+      />
+    </div>
   );
 });
 
@@ -134,11 +134,11 @@ const StreamingMessage = React.memo(({ content, messagesCount }: StreamingMessag
 
   return (
     <div
-      className={classNames('flex gap-4 w-full py-3 px-4', {
-        'mt-3': !isFirst,
+      className={classNames('flex w-full justify-start', {
+        'mt-4': !isFirst,
       })}
     >
-      <div className="grid grid-cols-1 w-full">
+      <div className="max-w-[90%] w-full">
         <AssistantMessage
           content={content}
           messageIndex={messagesCount}
@@ -153,7 +153,7 @@ const StreamingMessage = React.memo(({ content, messagesCount }: StreamingMessag
 StreamingMessage.displayName = 'StreamingMessage';
 
 export const Messages = React.forwardRef<HTMLDivElement, MessagesProps>((props: MessagesProps, ref) => {
-  const { id, isStreaming = false, streamingContent, messages = [], onEditMessage, onDeleteMessage, onRegenerateMessage } = props;
+  const { id, isStreaming = false, streamingContent, messages = [], onSaveEdit, onDeleteMessage, onRegenerateMessage } = props;
 
   // Ref pour le conteneur de scroll (utilisé par le virtualizer)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -258,7 +258,7 @@ export const Messages = React.forwardRef<HTMLDivElement, MessagesProps>((props: 
                   isFirst={isFirst}
                   isLast={isLast}
                   isStreaming={false}
-                  onEditMessage={onEditMessage}
+                  onSaveEdit={onSaveEdit}
                   onDeleteMessage={onDeleteMessage}
                   onRegenerateMessage={onRegenerateMessage}
                 />
@@ -300,7 +300,7 @@ export const Messages = React.forwardRef<HTMLDivElement, MessagesProps>((props: 
                 isFirst={isFirst}
                 isLast={isLast}
                 isStreaming={false} // Les messages existants ne sont jamais "en streaming"
-                onEditMessage={onEditMessage}
+                onSaveEdit={onSaveEdit}
                 onDeleteMessage={onDeleteMessage}
                 onRegenerateMessage={onRegenerateMessage}
               />

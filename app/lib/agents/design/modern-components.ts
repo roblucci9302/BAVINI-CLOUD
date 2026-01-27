@@ -285,8 +285,8 @@ const cardGlass: ComponentSnippet = {
         <div className="w-14 h-14 bg-gradient-to-br from-violet-500 to-pink-500 rounded-xl flex items-center justify-center text-2xl mb-6">
           {icon}
         </div>
-        <h3 className="text-xl font-semibold text-white mb-3">{title}</h3>
-        <p className="text-slate-400 leading-relaxed">{description}</p>
+        <h3 className="text-xl font-semibold text-white mb-3 truncate">{title}</h3>
+        <p className="text-slate-400 leading-relaxed line-clamp-3">{description}</p>
 
         {/* Hover arrow */}
         <div className="mt-6 flex items-center text-violet-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
@@ -342,8 +342,8 @@ export function CardSpotlight({ title, description, children }: { title: string;
 
       {/* Content */}
       <div className="relative z-10">
-        <h3 className="text-xl font-semibold text-white mb-3">{title}</h3>
-        <p className="text-slate-400 mb-4">{description}</p>
+        <h3 className="text-xl font-semibold text-white mb-3 truncate">{title}</h3>
+        <p className="text-slate-400 mb-4 line-clamp-3">{description}</p>
         {children}
       </div>
     </motion.div>
@@ -371,10 +371,10 @@ const cardHoverLift: ComponentSnippet = {
 
         {/* Content */}
         <div className="p-6">
-          <h3 className="text-lg font-semibold text-slate-900 mb-2 group-hover:text-violet-600 transition-colors">
+          <h3 className="text-lg font-semibold text-slate-900 mb-2 group-hover:text-violet-600 transition-colors truncate">
             {title}
           </h3>
-          <p className="text-slate-600 text-sm">{description}</p>
+          <p className="text-slate-600 text-sm line-clamp-2">{description}</p>
         </div>
 
         {/* Bottom gradient bar */}

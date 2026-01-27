@@ -242,7 +242,7 @@ function PricingCard({ plan, isYearly, index }: { plan: (typeof config.plans)[0]
 
       {/* Header */}
       <div className="text-center mb-8">
-        <h3 className="text-xl font-semibold text-white mb-2">{plan.name}</h3>
+        <h3 className="text-xl font-semibold text-white mb-2 truncate">{plan.name}</h3>
         <p className={plan.highlighted ? 'text-violet-200' : 'text-slate-400'}>{plan.description}</p>
       </div>
 
@@ -449,7 +449,7 @@ function Testimonials() {
               transition={{ delay: index * 0.1 }}
               className="p-8 bg-slate-800 rounded-2xl border border-slate-700"
             >
-              <p className="text-lg text-slate-300 mb-6">"{testimonial.quote}"</p>
+              <p className="text-lg text-slate-300 mb-6 line-clamp-3">"{testimonial.quote}"</p>
               <div className="flex items-center gap-4">
                 <img src={testimonial.avatar} alt={testimonial.author} className="w-12 h-12 rounded-full" />
                 <div>
@@ -497,7 +497,7 @@ function FAQ() {
               onClick={() => setOpenIndex(openIndex === index ? null : index)}
               className="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-slate-800/50 transition-colors"
             >
-              <span className="font-medium text-white">{faq.question}</span>
+              <span className="font-medium text-white truncate">{faq.question}</span>
               <svg
                 className={`w-5 h-5 text-slate-400 transition-transform ${openIndex === index ? 'rotate-180' : ''}`}
                 fill="none"

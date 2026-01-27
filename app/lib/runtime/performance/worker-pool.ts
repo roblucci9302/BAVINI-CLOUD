@@ -60,7 +60,8 @@ export class WorkerPool {
     // Create minimum workers
     const initPromises: Promise<void>[] = [];
     for (let i = 0; i < this.config.minWorkers; i++) {
-      initPromises.push(this.createWorker());
+      // Convert Promise<PooledWorker | null> to Promise<void>
+      initPromises.push(this.createWorker().then(() => undefined));
     }
     await Promise.all(initPromises);
 

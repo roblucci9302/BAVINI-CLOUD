@@ -86,8 +86,9 @@ export class ChatModeAgent extends BaseAgent<ChatModeResponse> {
       codeAnalysis: null,
     };
 
-    if (!this.context) {
-      logger.warn('No context available');
+    // Validate that context exists AND has the expected structure
+    if (!this.context || !Array.isArray(this.context.files)) {
+      logger.warn('No valid context available');
       return context;
     }
 

@@ -149,7 +149,8 @@ describe('HMRManager', () => {
       manager.notifyChange('/src/styles.css', 'body { color: red; }');
 
       // Advance past debounce
-      await vi.advanceTimersByTimeAsync(150);
+      // PERF FIX: Updated to match new 300ms debounce
+      await vi.advanceTimersByTimeAsync(350);
 
       expect(onStatusChange).toHaveBeenCalled();
     });
@@ -160,7 +161,8 @@ describe('HMRManager', () => {
 
       manager.notifyChange('/src/styles.css', 'body { color: red; }');
 
-      await vi.advanceTimersByTimeAsync(150);
+      // PERF FIX: Updated to match new 300ms debounce
+      await vi.advanceTimersByTimeAsync(350);
 
       expect(onCSSUpdate).toHaveBeenCalledWith('body { color: red; }');
     });
@@ -171,7 +173,8 @@ describe('HMRManager', () => {
 
       manager.notifyChange('/src/index.js', 'console.log("hello")');
 
-      await vi.advanceTimersByTimeAsync(150);
+      // PERF FIX: Updated to match new 300ms debounce
+      await vi.advanceTimersByTimeAsync(350);
 
       expect(onFullReload).toHaveBeenCalled();
     });
@@ -191,7 +194,8 @@ describe('HMRManager', () => {
       expect(onCSSUpdate).not.toHaveBeenCalled();
 
       // Advance past debounce
-      await vi.advanceTimersByTimeAsync(150);
+      // PERF FIX: Updated to match new 300ms debounce
+      await vi.advanceTimersByTimeAsync(350);
 
       // Should combine all CSS
       expect(onCSSUpdate).toHaveBeenCalledTimes(1);
@@ -208,7 +212,8 @@ describe('HMRManager', () => {
       manager.notifyChange('/src/styles.css', 'css');
       manager.notifyChange('/src/index.js', 'js');
 
-      await vi.advanceTimersByTimeAsync(150);
+      // PERF FIX: Updated to match new 300ms debounce
+      await vi.advanceTimersByTimeAsync(350);
 
       // JS change takes precedence - full reload
       expect(onFullReload).toHaveBeenCalled();
@@ -220,7 +225,8 @@ describe('HMRManager', () => {
 
       manager.notifyChange('/package.json', '{}');
 
-      await vi.advanceTimersByTimeAsync(150);
+      // PERF FIX: Updated to match new 300ms debounce
+      await vi.advanceTimersByTimeAsync(350);
 
       expect(onFullReload).toHaveBeenCalled();
     });

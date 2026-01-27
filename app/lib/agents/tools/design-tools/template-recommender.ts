@@ -11,32 +11,14 @@
 import { TEMPLATES_METADATA, getTemplatesByUseCase } from '../../design/templates';
 
 /**
- * Mapping des mots-clés vers les templates
+ * Mapping des mots-clés vers les templates STRUCTURELS uniquement
+ *
+ * Les templates créatifs (LandingModern, EcommerceModern, PortfolioModern,
+ * BlogModern, PricingModern, AgencyModern) ne sont PAS auto-liés.
+ * Ils restent accessibles manuellement si demandés explicitement.
  */
 const KEYWORD_TO_TEMPLATE: Record<string, string> = {
-  // E-commerce
-  shop: 'EcommerceModern',
-  store: 'EcommerceModern',
-  boutique: 'EcommerceModern',
-  'e-commerce': 'EcommerceModern',
-  ecommerce: 'EcommerceModern',
-  marketplace: 'EcommerceModern',
-  produit: 'EcommerceModern',
-  product: 'EcommerceModern',
-  vente: 'EcommerceModern',
-  panier: 'EcommerceModern',
-  cart: 'EcommerceModern',
-
-  // Landing
-  landing: 'LandingModern',
-  saas: 'LandingModern',
-  startup: 'LandingModern',
-  marketing: 'LandingModern',
-  launch: 'LandingModern',
-  accueil: 'LandingModern',
-  home: 'LandingModern',
-
-  // Dashboard
+  // Dashboard - Template structurel
   dashboard: 'DashboardModern',
   admin: 'DashboardModern',
   backoffice: 'DashboardModern',
@@ -45,43 +27,7 @@ const KEYWORD_TO_TEMPLATE: Record<string, string> = {
   crm: 'DashboardModern',
   gestion: 'DashboardModern',
 
-  // Portfolio
-  portfolio: 'PortfolioModern',
-  cv: 'PortfolioModern',
-  resume: 'PortfolioModern',
-  freelance: 'PortfolioModern',
-  personnel: 'PortfolioModern',
-  personal: 'PortfolioModern',
-  créatif: 'PortfolioModern',
-  creative: 'PortfolioModern',
-
-  // Blog
-  blog: 'BlogModern',
-  article: 'BlogModern',
-  magazine: 'BlogModern',
-  news: 'BlogModern',
-  actualité: 'BlogModern',
-  journal: 'BlogModern',
-  content: 'BlogModern',
-
-  // Pricing
-  pricing: 'PricingModern',
-  tarif: 'PricingModern',
-  prix: 'PricingModern',
-  plan: 'PricingModern',
-  subscription: 'PricingModern',
-  abonnement: 'PricingModern',
-
-  // Agency
-  agency: 'AgencyModern',
-  agence: 'AgencyModern',
-  service: 'AgencyModern',
-  consulting: 'AgencyModern',
-  studio: 'AgencyModern',
-  équipe: 'AgencyModern',
-  team: 'AgencyModern',
-
-  // Docs
+  // Docs - Template structurel
   doc: 'DocsModern',
   documentation: 'DocsModern',
   api: 'DocsModern',
@@ -90,7 +36,7 @@ const KEYWORD_TO_TEMPLATE: Record<string, string> = {
   knowledge: 'DocsModern',
   wiki: 'DocsModern',
 
-  // Auth
+  // Auth - Template structurel
   auth: 'AuthModern',
   login: 'AuthModern',
   connexion: 'AuthModern',
@@ -99,7 +45,7 @@ const KEYWORD_TO_TEMPLATE: Record<string, string> = {
   register: 'AuthModern',
   password: 'AuthModern',
 
-  // Error
+  // Error - Template structurel
   error: 'ErrorModern',
   erreur: 'ErrorModern',
   '404': 'ErrorModern',
@@ -110,23 +56,34 @@ const KEYWORD_TO_TEMPLATE: Record<string, string> = {
 
 /**
  * Recommande le template le plus adapté selon le cas d'usage
+ *
+ * IMPORTANT: Ne retourne QUE des templates STRUCTURELS (autoLink: true)
+ * - Dashboard, Docs, Auth, Error
+ *
+ * Pour les projets CRÉATIFS (landing, e-commerce, portfolio, blog, pricing, agency),
+ * cette fonction retourne null → l'IA doit créer un design unique.
  */
 export function recommendTemplate(useCase: string): (typeof TEMPLATES_METADATA)[number] | null {
   const useCaseLower = useCase.toLowerCase();
 
-  // Chercher le premier mot-clé qui correspond
+  // Chercher le premier mot-clé qui correspond (UNIQUEMENT structurels)
   for (const [keyword, templateName] of Object.entries(KEYWORD_TO_TEMPLATE)) {
     if (useCaseLower.includes(keyword)) {
-      return TEMPLATES_METADATA.find((t) => t.name === templateName) || null;
+      const template = TEMPLATES_METADATA.find((t) => t.name === templateName);
+      // Double vérification: ne retourner que si autoLink est true
+      if (template && template.autoLink === true) {
+        return template;
+      }
     }
   }
 
-  // Essayer avec getTemplatesByUseCase
+  // Fallback: getTemplatesByUseCase ne retourne QUE les templates autoLink: true
   const matches = getTemplatesByUseCase(useCase);
   if (matches.length > 0) {
     return matches[0];
   }
 
+  // Aucun template structurel trouvé → l'IA doit créer un design unique
   return null;
 }
 

@@ -18,8 +18,8 @@ export interface Shortcuts {
 
 /**
  * Build engine type for the runtime.
- * - 'webcontainer': Uses StackBlitz WebContainer (current behavior)
- * - 'browser': Uses esbuild-wasm in browser (future)
+ * - 'browser': Uses esbuild-wasm in browser (default)
+ * - 'bavini-container': Uses BAVINI container runtime
  */
 export type BuildEngineType = RuntimeType;
 
@@ -28,7 +28,7 @@ export interface InterfaceSettings {
 }
 
 export interface BuildSettings {
-  /** Build engine to use: 'webcontainer' or 'browser' */
+  /** Build engine to use: 'browser' or 'bavini-container' */
   engine: BuildEngineType;
 }
 
@@ -192,7 +192,7 @@ export function toggleAgentStatusBadge(): void {
  * Set the build engine to use.
  * This will automatically sync with runtimeTypeStore.
  *
- * @param engine - 'webcontainer' or 'browser'
+ * @param engine - 'browser' or 'bavini-container'
  */
 export function setBuildEngine(engine: BuildEngineType): void {
   buildSettingsStore.set({ engine });

@@ -300,7 +300,7 @@ function ServicesSection() {
               className="group p-8 bg-gray-50 rounded-3xl hover:bg-gradient-to-br hover:from-pink-50 hover:to-rose-50 transition-all duration-300"
             >
               <span className="text-4xl mb-6 block">{service.icon}</span>
-              <h3 className="text-xl font-bold text-gray-900 mb-3">{service.title}</h3>
+              <h3 className="text-xl font-bold text-gray-900 mb-3 truncate">{service.title}</h3>
               <p className="text-gray-500 mb-6">{service.description}</p>
               <div className="flex flex-wrap gap-2">
                 {service.features.map((feature) => (
@@ -377,7 +377,7 @@ function ProjectsSection() {
               {/* Content */}
               <div className="absolute inset-0 flex flex-col justify-end p-8">
                 <span className="text-white/80 text-sm mb-2">{project.category}</span>
-                <h3 className="text-2xl font-bold text-white">{project.title}</h3>
+                <h3 className="text-2xl font-bold text-white truncate">{project.title}</h3>
               </div>
 
               {/* Arrow */}
@@ -475,7 +475,7 @@ function TeamSection() {
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-pink-500/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
               </div>
-              <h3 className="font-semibold text-gray-900">{member.name}</h3>
+              <h3 className="font-semibold text-gray-900 truncate">{member.name}</h3>
               <p className="text-sm text-gray-500">{member.role}</p>
             </motion.div>
           ))}
@@ -512,7 +512,7 @@ function TestimonialsSection() {
               transition={{ delay: index * 0.1 }}
               className="p-8 bg-white rounded-3xl shadow-sm"
             >
-              <p className="text-gray-600 mb-6 leading-relaxed">"{testimonial.quote}"</p>
+              <p className="text-gray-600 mb-6 leading-relaxed line-clamp-3">"{testimonial.quote}"</p>
               <div className="flex items-center gap-4">
                 <img src={testimonial.avatar} alt={testimonial.author} className="w-12 h-12 rounded-full" />
                 <div>

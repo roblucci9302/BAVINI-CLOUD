@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { type ChatHistoryItem } from '~/lib/persistence';
+import { useStore } from '@nanostores/react';
+import { type ChatHistoryItem, chatId } from '~/lib/persistence';
 import { DialogTrigger } from '~/components/ui/Dialog';
+import { classNames } from '~/utils/classNames';
 
 interface HistoryItemProps {
   item: ChatHistoryItem;
@@ -12,57 +14,90 @@ interface HistoryItemProps {
 export function HistoryItem({ item, onDelete }: HistoryItemProps) {
   const [hovering, setHovering] = useState(false);
   const hoverRef = useRef<HTMLDivElement>(null);
+  const currentChatId = useStore(chatId);
+  const isActive = currentChatId === item.id;
 
   useEffect(() => {
     let timeout: NodeJS.Timeout | undefined;
+    const element = hoverRef.current;
+
+    if (!element) return;
 
     function mouseEnter() {
-      setHovering(true);
-
+      // Clear any pending hide timeout
       if (timeout) {
         clearTimeout(timeout);
+        timeout = undefined;
       }
+      setHovering(true);
     }
 
     function mouseLeave() {
-      setHovering(false);
+      // Small delay to prevent flickering when moving between elements
+      timeout = setTimeout(() => {
+        setHovering(false);
+      }, 100);
     }
 
-    hoverRef.current?.addEventListener('mouseenter', mouseEnter);
-    hoverRef.current?.addEventListener('mouseleave', mouseLeave);
+    element.addEventListener('mouseenter', mouseEnter);
+    element.addEventListener('mouseleave', mouseLeave);
 
     return () => {
-      hoverRef.current?.removeEventListener('mouseenter', mouseEnter);
-      hoverRef.current?.removeEventListener('mouseleave', mouseLeave);
+      // Cleanup timeout on unmount
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+      element.removeEventListener('mouseenter', mouseEnter);
+      element.removeEventListener('mouseleave', mouseLeave);
     };
   }, []);
 
   return (
     <div
       ref={hoverRef}
-      className="group rounded-md text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary hover:bg-bolt-elements-background-depth-3 overflow-hidden flex justify-between items-center px-2 py-1"
+      className={classNames(
+        'group relative rounded-lg transition-all',
+        isActive
+          ? 'bg-[#0ea5e9]/10 text-[#38bdf8]'
+          : 'text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary hover:bg-[#0ea5e9]/10'
+      )}
     >
-      <a href={`/chat/${item.urlId}`} className="flex w-full relative truncate block">
-        {item.description}
-        <div className="absolute right-0 z-1 top-0 bottom-0 bg-gradient-to-l from-bolt-elements-background-depth-2 group-hover:from-bolt-elements-background-depth-3 to-transparent w-10 flex justify-end group-hover:w-15 group-hover:from-45%">
-          {hovering && (
-            <div className="flex items-center p-1 text-bolt-elements-textSecondary hover:text-bolt-elements-item-contentDanger">
-              <DialogTrigger asChild>
-                <button
-                  className="i-ph:trash scale-110"
-                  title="Supprimer la conversation"
-                  aria-label="Supprimer la conversation"
-                  onClick={(event) => {
-                    // we prevent the default so we don't trigger the anchor above
-                    event.preventDefault();
-                    onDelete?.(event);
-                  }}
-                />
-              </DialogTrigger>
-            </div>
+      {/* Active indicator bar */}
+      {isActive && (
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-gradient-to-b from-[#0ea5e9] to-[#38bdf8]" />
+      )}
+
+      <a
+        href={`/chat/${item.urlId}`}
+        className="flex items-center gap-2.5 w-full px-2.5 py-2 text-[13px]"
+      >
+        <span
+          className={classNames(
+            'i-ph:chat-circle text-base flex-shrink-0 transition-opacity',
+            isActive ? 'opacity-100 text-[#38bdf8]' : 'opacity-50'
           )}
-        </div>
+        />
+        <span className="truncate flex-1">{item.description}</span>
       </a>
+
+      {/* Delete button - appears on hover */}
+      {hovering && (
+        <div className="absolute right-1.5 top-1/2 -translate-y-1/2">
+          <DialogTrigger asChild>
+            <button
+              className="flex items-center justify-center w-6 h-6 rounded-md text-bolt-elements-textTertiary hover:text-bolt-elements-item-contentDanger hover:bg-bolt-elements-item-backgroundDanger transition-all"
+              title="Supprimer la conversation"
+              aria-label="Supprimer la conversation"
+              onClick={(event) => {
+                event.preventDefault();
+                onDelete?.(event);
+              }}
+            >
+              <span className="i-ph:trash text-sm" />
+            </button>
+          </DialogTrigger>
+        </div>
+      )}
     </div>
   );
 }

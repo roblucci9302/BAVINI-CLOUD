@@ -13,6 +13,7 @@ import type {
   Task,
   TaskResult,
   AgentType,
+  AgentEventType,
   OrchestrationDecision,
   Artifact,
 } from '../types';
@@ -43,7 +44,7 @@ export interface ExecutorLogger {
  * Event emitter interface for executor
  */
 export interface ExecutorEventEmitter {
-  emitEvent: (event: string, data: Record<string, unknown>) => void;
+  emitEvent: (event: AgentEventType, data: Record<string, unknown>) => void;
 }
 
 /**

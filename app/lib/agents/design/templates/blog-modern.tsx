@@ -267,7 +267,7 @@ function PostCard({
         {/* Content */}
         <div>
           <h2
-            className={`font-bold text-gray-900 mb-2 group-hover:text-gray-600 transition-colors ${featured ? 'text-2xl' : 'text-lg'}`}
+            className={`font-bold text-gray-900 mb-2 group-hover:text-gray-600 transition-colors truncate ${featured ? 'text-2xl' : 'text-lg'}`}
           >
             {post.title}
           </h2>
@@ -404,7 +404,7 @@ function MainContent() {
                 </a>
                 <div className="flex-1">
                   <span className="text-xs text-gray-400 font-medium">{post.category}</span>
-                  <h3 className="font-bold text-gray-900 mt-1 mb-2 group-hover:text-gray-600 transition-colors">
+                  <h3 className="font-bold text-gray-900 mt-1 mb-2 group-hover:text-gray-600 transition-colors truncate">
                     <a href="#">{post.title}</a>
                   </h3>
                   <p className="text-sm text-gray-500 line-clamp-2 mb-3">{post.excerpt}</p>

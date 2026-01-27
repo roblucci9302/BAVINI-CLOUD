@@ -8,6 +8,15 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+/** Sass.js compilation result type */
+interface SassResult {
+  status: number;
+  text?: string;
+  message?: string;
+  line?: number;
+  column?: number;
+}
+
 // Mock the global Sass object that would be loaded from CDN
 const mockSass = {
   compile: vi.fn(),
@@ -81,7 +90,7 @@ describe('SCSSCompiler', () => {
   describe('compile', () => {
     beforeEach(() => {
       mockSass.compile.mockImplementation(
-        (source: string, options: unknown, callback: (result: any) => void) => {
+        (source: string, options: unknown, callback: (result: SassResult) => void) => {
           // Simulate successful compilation
           callback({
             status: 0,
@@ -108,7 +117,7 @@ describe('SCSSCompiler', () => {
 
     it('should return warning on compilation error', async () => {
       mockSass.compile.mockImplementation(
-        (source: string, options: unknown, callback: (result: any) => void) => {
+        (source: string, options: unknown, callback: (result: SassResult) => void) => {
           callback({
             status: 1,
             message: 'Syntax error',
@@ -122,13 +131,13 @@ describe('SCSSCompiler', () => {
       const result = await compiler.compile(source, '/src/styles.scss');
 
       expect(result.css).toBe('');
-      expect(result.warnings.length).toBeGreaterThan(0);
-      expect(result.warnings[0]).toContain('Syntax error');
+      expect(result.warnings?.length).toBeGreaterThan(0);
+      expect(result.warnings?.[0]).toContain('Syntax error');
     });
 
     it('should handle empty source', async () => {
       mockSass.compile.mockImplementation(
-        (source: string, options: unknown, callback: (result: any) => void) => {
+        (source: string, options: unknown, callback: (result: SassResult) => void) => {
           callback({ status: 0, text: '' });
         }
       );
@@ -136,7 +145,7 @@ describe('SCSSCompiler', () => {
       const result = await compiler.compile('', '/src/empty.scss');
 
       expect(result.css).toBe('');
-      expect(result.warnings).toHaveLength(0);
+      expect(result.warnings ?? []).toHaveLength(0);
     });
 
     it('should include CSS metadata', async () => {
@@ -153,15 +162,15 @@ describe('SCSSCompiler', () => {
       const result = freshCompiler.compileSync('body {}', '/test.scss');
 
       expect(result.css).toBe('');
-      expect(result.warnings.length).toBeGreaterThan(0);
+      expect(result.warnings?.length).toBeGreaterThan(0);
     });
 
     it('should warn when sync compilation not available', () => {
       // Our mock doesn't have compileSync
       const result = compiler.compileSync('body {}', '/test.scss');
 
-      expect(result.warnings.length).toBeGreaterThan(0);
-      expect(result.warnings[0]).toContain('not available');
+      expect(result.warnings?.length).toBeGreaterThan(0);
+      expect(result.warnings?.[0]).toContain('not available');
     });
   });
 });

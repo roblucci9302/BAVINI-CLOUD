@@ -91,24 +91,26 @@ interface BaseChatProps {
   enhancePrompt?: () => void;
   onFileSelect?: () => void;
   onFileRemove?: (index: number) => void;
-  onEditMessage?: (index: number) => void;
+  onSaveEdit?: (index: number, newContent: string) => void;
   onDeleteMessage?: (index: number) => void;
   onRegenerateMessage?: (index: number) => void;
 }
 
 // Boutons principaux (toujours visibles)
+// NOTE: Ne PAS mentionner de templates pour les projets créatifs (landing, e-commerce, portfolio...)
+// Seul Dashboard peut utiliser un template car c'est un projet structurel.
 const PRIMARY_PROMPTS = [
   {
     label: 'Landing Page',
     icon: 'i-ph:browser',
     prompt:
-      'Utilise le template LandingModern pour créer une landing page SaaS moderne et responsive avec hero, features, pricing et footer.',
+      'Crée une landing page SaaS unique et créative avec un design distinctif. Choisis un style original (minimal, editorial, dark luxe, playful, brutalist ou retro-futuristic) et une palette de couleurs audacieuse. Inclus hero, features, pricing et footer.',
   },
   {
     label: 'E-commerce',
     icon: 'i-ph:shopping-cart',
     prompt:
-      'Utilise le template EcommerceModern pour créer une boutique en ligne avec header, grille de produits, filtres et panier.',
+      'Crée une boutique en ligne avec un design unique et mémorable. Évite les layouts génériques - sois créatif avec la grille de produits, les filtres et le panier. Choisis une direction visuelle distinctive.',
   },
   {
     label: 'Dashboard',
@@ -119,30 +121,31 @@ const PRIMARY_PROMPTS = [
 ];
 
 // Boutons secondaires (visibles après clic sur "Plus...")
+// NOTE: Projets créatifs = designs uniques, pas de templates
 const SECONDARY_PROMPTS = [
   {
     label: 'Portfolio',
     icon: 'i-ph:images',
     prompt:
-      'Utilise le template PortfolioModern pour créer un portfolio créatif avec projets, skills, témoignages et contact.',
+      'Crée un portfolio créatif avec un design original qui se démarque. Explore des layouts asymétriques ou éditoriaux pour présenter les projets, skills, témoignages et contact de manière unique.',
   },
   {
     label: 'Blog',
     icon: 'i-ph:article',
     prompt:
-      'Utilise le template BlogModern pour créer un blog moderne avec articles en grille, catégories et newsletter.',
+      'Crée un blog avec un design distinctif et une typographie soignée. Évite les grilles classiques - sois créatif avec la mise en page des articles, catégories et newsletter.',
   },
   {
     label: 'Pricing',
     icon: 'i-ph:credit-card',
     prompt:
-      'Utilise le template PricingModern pour créer une page de tarification SaaS avec plans, comparaison et FAQ.',
+      'Crée une page de tarification avec un design créatif qui sort de l\'ordinaire. Présente les plans et comparaisons de manière originale, avec une identité visuelle forte.',
   },
   {
     label: 'Agency',
     icon: 'i-ph:buildings',
     prompt:
-      'Utilise le template AgencyModern pour créer un site agence avec services, projets, équipe et formulaire de contact.',
+      'Crée un site agence avec un design premium et distinctif. Mets en valeur les services, projets et équipe avec un style visuel unique qui reflète la créativité de l\'agence.',
   },
 ];
 
@@ -171,7 +174,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       handleStop,
       onFileSelect,
       onFileRemove,
-      onEditMessage,
+      onSaveEdit,
       onDeleteMessage,
       onRegenerateMessage,
     },
@@ -248,6 +251,50 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       [sendMessage],
     );
 
+    // PERF FIX: Extract inline handlers to useCallback
+    const handleFileRemove = useCallback((index: number) => {
+      onFileRemove?.(index);
+    }, [onFileRemove]);
+
+    const handleTextareaKeyDown = useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (event.key === 'Enter') {
+        if (event.shiftKey) {
+          return;
+        }
+        event.preventDefault();
+        handleSendMessage(event);
+      }
+    }, [handleSendMessage]);
+
+    const handleAttachOrTemplatesClick = useCallback(() => {
+      if (effectiveChatStarted) {
+        onFileSelect?.();
+      } else {
+        setShowMoreTemplates((prev) => !prev);
+      }
+    }, [effectiveChatStarted, onFileSelect]);
+
+    const handleEnhanceClick = useCallback(() => {
+      enhancePrompt?.();
+    }, [enhancePrompt]);
+
+    const handleSendClick = useCallback((event: React.MouseEvent) => {
+      if (isStreaming) {
+        handleStop?.();
+        return;
+      }
+      handleSendMessage(event);
+    }, [isStreaming, handleStop, handleSendMessage]);
+
+    const handleToggleMoreTemplates = useCallback(() => {
+      setShowMoreTemplates((prev) => !prev);
+    }, []);
+
+    // PERF FIX: Wrap optional handleInputChange to avoid controlled component warning
+    const handleTextareaChange = useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
+      handleInputChange?.(event);
+    }, [handleInputChange]);
+
     return (
       <div
         ref={ref}
@@ -258,23 +305,11 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
         )}
         data-chat-visible={showChat}
       >
-        {/* ColorBends animated background - only on welcome screen, deferred by 500ms */}
-        {!effectiveChatStarted && (
-          <ClientOnly fallback={<div className={classNames('absolute inset-0', styles.welcomeGradient)} />}>
-            {() =>
-              showColorBends ? (
-                <ColorBends
-                  className="absolute inset-0 z-0"
-                  speed={0.15}
-                  noise={0.08}
-                  mouseInfluence={0.5}
-                  parallax={0.3}
-                />
-              ) : (
-                <div className={classNames('absolute inset-0', styles.welcomeGradient)} />
-              )
-            }
-          </ClientOnly>
+        {!effectiveChatStarted && showColorBends && (
+          <ColorBends className="absolute inset-0" />
+        )}
+        {!effectiveChatStarted && !showColorBends && (
+          <div className={classNames('absolute inset-0', styles.welcomeGradient)} />
         )}
         <ClientOnly>{() => <Menu />}</ClientOnly>
         <PanelGroup ref={panelGroupRef} direction="horizontal" className="w-full h-full">
@@ -346,7 +381,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                       messages={messages}
                       isStreaming={isStreaming}
                       streamingContent={streamingContent}
-                      onEditMessage={onEditMessage}
+                      onSaveEdit={onSaveEdit}
                       onDeleteMessage={onDeleteMessage}
                       onRegenerateMessage={onRegenerateMessage}
                     />
@@ -392,7 +427,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                             className="w-16 h-16 object-cover rounded-lg border border-bolt-elements-borderColor"
                           />
                           <button
-                            onClick={() => onFileRemove?.(index)}
+                            onClick={() => handleFileRemove(index)}
                             className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
                             title="Supprimer"
                           >
@@ -413,21 +448,9 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                       ref={textareaRef}
                       className="w-full pl-4 pt-4 pr-4 pb-3 focus:outline-none resize-none text-md text-bolt-elements-textPrimary placeholder-bolt-elements-textTertiary bg-transparent"
                       onFocus={handleTextareaFocus}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter') {
-                          if (event.shiftKey) {
-                            return;
-                          }
-
-                          event.preventDefault();
-
-                          handleSendMessage(event);
-                        }
-                      }}
+                      onKeyDown={handleTextareaKeyDown}
                       value={input}
-                      onChange={(event) => {
-                        handleInputChange?.(event);
-                      }}
+                      onChange={handleTextareaChange}
                       style={{
                         minHeight: TEXTAREA_MIN_HEIGHT,
                         maxHeight: TEXTAREA_MAX_HEIGHT,
@@ -442,13 +465,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                       <IconButton
                         title={effectiveChatStarted ? "Joindre un fichier" : (showMoreTemplates ? "Moins de templates" : "Plus de templates")}
                         className="text-bolt-elements-textTertiary hover:text-bolt-elements-textSecondary"
-                        onClick={() => {
-                          if (effectiveChatStarted) {
-                            onFileSelect?.();
-                          } else {
-                            setShowMoreTemplates(!showMoreTemplates);
-                          }
-                        }}
+                        onClick={handleAttachOrTemplatesClick}
                       >
                         <div className={effectiveChatStarted ? "i-ph:paperclip text-lg" : "i-ph:plus text-lg"} />
                       </IconButton>
@@ -458,7 +475,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                         className={classNames('text-bolt-elements-textTertiary hover:text-bolt-elements-textSecondary', {
                           'opacity-100!': enhancingPrompt,
                         })}
-                        onClick={() => enhancePrompt?.()}
+                        onClick={handleEnhanceClick}
                       >
                         {enhancingPrompt ? (
                           <div className="i-svg-spinners:90-ring-with-bg text-bolt-elements-loader-progress text-lg"></div>
@@ -474,14 +491,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                         <SendButton
                           hasContent={input.length > 0 || selectedFiles.length > 0}
                           isStreaming={isStreaming}
-                          onClick={(event) => {
-                            if (isStreaming) {
-                              handleStop?.();
-                              return;
-                            }
-
-                            handleSendMessage(event);
-                          }}
+                          onClick={handleSendClick}
                         />
                       )}
                     </ClientOnly>
@@ -508,7 +518,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                       </button>
                     ))}
                     <button
-                      onClick={() => setShowMoreTemplates(!showMoreTemplates)}
+                      onClick={handleToggleMoreTemplates}
                       className={classNames(
                         'px-4 py-2 rounded-full text-sm font-medium transition-all duration-200',
                         'bg-white/85 dark:bg-bolt-elements-background-depth-2 hover:bg-white dark:hover:bg-bolt-elements-background-depth-3',
@@ -551,9 +561,16 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
               )}
             </div>
           </Panel>
-          {(chatStarted && showWorkbench) && (
-            <PanelResizeHandle className="w-1 bg-bolt-elements-borderColor hover:bg-accent-500 transition-colors cursor-col-resize" />
-          )}
+          {/* BUGFIX: Always render PanelResizeHandle when Panel exists to avoid "Missing resize handle" warning
+              Hide it visually when not needed by using w-0 and removing interaction */}
+          <PanelResizeHandle
+            className={classNames(
+              'transition-colors',
+              chatStarted && showWorkbench
+                ? 'w-1 bg-bolt-elements-borderColor hover:bg-accent-500 cursor-col-resize'
+                : 'w-0 pointer-events-none'
+            )}
+          />
           <Panel
             id="workbench-panel"
             defaultSize={chatStarted && showWorkbench ? 60 : 0}

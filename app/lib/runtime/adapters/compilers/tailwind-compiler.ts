@@ -47,17 +47,17 @@ const TAILWIND_JIT_CDN = 'https://esm.sh/@mhsdesign/jit-browser-tailwindcss@0.4.
  * Global flag to track initialization (can only be initialized once)
  * Preserved across HMR and instance recreation
  */
-let globalTailwindInitialized: boolean = (globalThis as any).__tailwindInitialized ?? false;
+let globalTailwindInitialized: boolean = globalThis.__tailwindInitialized ?? false;
 
 /**
  * Global Promise to synchronize concurrent init calls
  */
-let globalTailwindPromise: Promise<void> | null = (globalThis as any).__tailwindPromise ?? null;
+let globalTailwindPromise: Promise<void> | null = globalThis.__tailwindPromise as Promise<void> | null ?? null;
 
 /**
  * Cached TailwindProcessor instance
  */
-let cachedProcessor: TailwindProcessor | null = (globalThis as any).__tailwindProcessor ?? null;
+let cachedProcessor: TailwindProcessor | null = globalThis.__tailwindProcessor as TailwindProcessor | null ?? null;
 
 /**
  * Enhanced LRU Cache for compiled CSS results with better performance
@@ -268,7 +268,7 @@ export class TailwindCompiler implements FrameworkCompiler {
     try {
       // Create the Promise BEFORE calling import to prevent race condition
       globalTailwindPromise = this._loadAndInitialize();
-      (globalThis as any).__tailwindPromise = globalTailwindPromise;
+      globalThis.__tailwindPromise = globalTailwindPromise;
 
       await globalTailwindPromise;
 
@@ -277,7 +277,7 @@ export class TailwindCompiler implements FrameworkCompiler {
     } catch (error) {
       // Reset the Promise on failure to allow retry
       globalTailwindPromise = null;
-      (globalThis as any).__tailwindPromise = null;
+      globalThis.__tailwindPromise = undefined;
 
       // Don't throw - just log and continue with fallback mode
       // This can happen due to CSP restrictions blocking esm.sh
@@ -303,11 +303,11 @@ export class TailwindCompiler implements FrameworkCompiler {
 
     this._processor = processor;
     cachedProcessor = processor;
-    (globalThis as any).__tailwindProcessor = processor;
+    globalThis.__tailwindProcessor = processor;
 
     this._initialized = true;
     globalTailwindInitialized = true;
-    (globalThis as any).__tailwindInitialized = true;
+    globalThis.__tailwindInitialized = true;
   }
 
   /**

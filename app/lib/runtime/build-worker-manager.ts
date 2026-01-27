@@ -12,6 +12,20 @@
 import { createScopedLogger } from '~/utils/logger';
 import type { BuildOptions, BundleResult, BuildError, BuildWarning } from './types';
 
+// Vite worker import - loaded lazily to avoid SSR issues
+let BuildWorkerClass: (new () => Worker) | null = null;
+
+async function getBuildWorkerClass(): Promise<new () => Worker> {
+  if (BuildWorkerClass) {
+    return BuildWorkerClass;
+  }
+
+  // Dynamic import with Vite's ?worker suffix for proper bundling
+  const workerModule = await import('~/workers/build.worker.ts?worker');
+  BuildWorkerClass = workerModule.default;
+  return BuildWorkerClass;
+}
+
 const logger = createScopedLogger('BuildWorkerManager');
 
 // =============================================================================
@@ -102,17 +116,15 @@ export class BuildWorkerManager {
 
     logger.info('Initializing Build Worker...');
 
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       const timeoutId = setTimeout(() => {
         reject(new Error('Worker initialization timed out'));
       }, INIT_TIMEOUT_MS);
 
       try {
-        // Create worker using Vite's worker import syntax
-        this.worker = new Worker(new URL('../../../workers/build.worker.ts', import.meta.url), {
-          type: 'module',
-          name: 'build-worker',
-        });
+        // Create worker using Vite's ?worker import for proper bundling
+        const WorkerClass = await getBuildWorkerClass();
+        this.worker = new WorkerClass();
 
         this.worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
           this.handleMessage(event.data);
@@ -125,7 +137,15 @@ export class BuildWorkerManager {
         };
 
         this.worker.onerror = (error) => {
-          logger.error('Worker error:', error);
+          // Worker errors are non-critical - the system falls back to main thread esbuild
+          // Log as warning instead of error since builds still work
+          const errorDetails = {
+            message: error.message || 'Unknown worker error',
+            filename: error.filename || 'unknown',
+            lineno: error.lineno || 0,
+            colno: error.colno || 0,
+          };
+          logger.warn('Build worker unavailable (using main thread fallback):', errorDetails);
           this.handleWorkerError(error);
         };
 
@@ -158,7 +178,13 @@ export class BuildWorkerManager {
    * Handle incoming messages from the worker
    */
   private handleMessage(data: WorkerResponse): void {
-    if (!data.id) return;
+    // Handle global error messages (no id) - these come from unhandled errors in worker
+    if (!data.id) {
+      if (data.type === 'error' && data.error) {
+        logger.error('Worker global error:', data.error);
+      }
+      return;
+    }
 
     const pending = this.pendingRequests.get(data.id);
     if (!pending) return;

@@ -192,36 +192,35 @@ Retourne les couleurs, gradients, et configurations Tailwind.`,
  */
 export const GetDesignTemplateTool: ToolDefinition = {
   name: 'get_design_template',
-  description: `Obtenir un template de page complet prêt à l'emploi.
+  description: `Obtenir un template de page STRUCTUREL prêt à l'emploi.
 
-⭐ UTILISE CET OUTIL QUAND L'UTILISATEUR DEMANDE:
-- "crée-moi un site e-commerce" → template EcommerceModern
+⭐ UTILISE CET OUTIL UNIQUEMENT POUR CES 4 TYPES:
 - "je veux un dashboard" → template DashboardModern
-- "fais-moi une landing page" → template LandingModern
-- "un portfolio" → template PortfolioModern
-- "une page de tarifs" → template PricingModern
-- "un blog" → template BlogModern
+- "documentation", "docs", "api" → template DocsModern
 - "une page d'authentification" → template AuthModern
 - "une page 404" → template ErrorModern
 
-TEMPLATES DISPONIBLES (10):
-1. LandingModern (Aurora) - Landing page SaaS/Startup
-2. DashboardModern (Midnight) - Dashboard/Admin panel
-3. PortfolioModern (Obsidian) - Portfolio créatif
-4. EcommerceModern (Ember) - Boutique e-commerce
-5. BlogModern (Slate) - Blog/Magazine
-6. PricingModern (Aurora) - Page tarifs SaaS
-7. AgencyModern (Rose) - Page agence/services
-8. DocsModern (Midnight) - Documentation technique
-9. AuthModern (Slate) - Login/Signup/Forgot password
-10. ErrorModern (Neon) - 404/500/Maintenance
+⚠️ NE PAS UTILISER de template pour:
+- Landing pages, sites vitrines, SaaS
+- E-commerce, boutiques, portfolios
+- Blogs, pages tarifs, agences
+→ Pour ces projets CRÉATIFS, générer un design UNIQUE avec le skill frontend-design.
+
+TEMPLATES STRUCTURELS (auto-liés):
+1. DashboardModern (Midnight) - Dashboard/Admin panel
+2. DocsModern (Midnight) - Documentation technique
+3. AuthModern (Slate) - Login/Signup/Forgot password
+4. ErrorModern (Neon) - 404/500/Maintenance
+
+TEMPLATES MANUELS (accessibles sur demande explicite par nom):
+- LandingModern, EcommerceModern, PortfolioModern
+- BlogModern, PricingModern, AgencyModern
 
 Chaque template inclut:
 - Code React/TypeScript complet
 - Tailwind CSS pour le styling
 - Animations Framer Motion
-- Composants responsive
-- Dark mode support`,
+- Composants responsive`,
   inputSchema: {
     type: 'object',
     properties: {
@@ -243,7 +242,7 @@ Chaque template inclut:
       },
       useCase: {
         type: 'string',
-        description: 'Cas d\'usage pour recommandation automatique (ex: "e-commerce", "blog", "portfolio")',
+        description: 'Cas d\'usage STRUCTUREL uniquement (ex: "dashboard", "documentation", "login", "404"). NE PAS utiliser pour landing/e-commerce/portfolio/blog.',
       },
       listAll: {
         type: 'boolean',
@@ -442,6 +441,7 @@ export function createDesignToolHandlersV2(): Record<
 
     /**
      * Handler for get_design_template
+     * Returns the FULL template code, not just metadata
      */
     async get_design_template(input: Record<string, unknown>): Promise<ToolExecutionResult> {
       try {
@@ -494,6 +494,25 @@ export function createDesignToolHandlersV2(): Record<
           };
         }
 
+        // Read the actual template code from filesystem
+        let templateCode = '';
+        try {
+          // Dynamic import for server-side only
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          const fs = require('fs');
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          const path = require('path');
+
+          const templatePath = path.join(process.cwd(), 'app/lib/agents/design/templates', selectedTemplate.file);
+
+          if (fs.existsSync(templatePath)) {
+            templateCode = fs.readFileSync(templatePath, 'utf-8');
+          }
+        } catch (fsError) {
+          // Fallback: if fs is not available (browser), return instructions instead
+          console.warn('Could not read template file, returning metadata only:', fsError);
+        }
+
         const templateInfo = {
           name: selectedTemplate.name,
           file: selectedTemplate.file,
@@ -501,29 +520,39 @@ export function createDesignToolHandlersV2(): Record<
           palette: selectedTemplate.palette,
           sections: selectedTemplate.sections,
           useCases: selectedTemplate.useCases,
-          templatePath: `app/lib/agents/design/templates/${selectedTemplate.file}`,
-          instructions: `
-Pour utiliser ce template:
-1. Copie le code depuis: app/lib/agents/design/templates/${selectedTemplate.file}
-2. IMPORTANT: Le template inclut déjà 'use client' en première ligne (requis pour Next.js 13+)
-3. Adapte les textes et images à ton projet
-4. Modifie les couleurs si tu utilises une palette différente de ${selectedTemplate.palette}
-5. Ajoute framer-motion si les animations sont requises
-
-⚠️ Note Next.js: Ce template utilise des hooks React (useState, etc.) et framer-motion.
-   La directive 'use client' est OBLIGATOIRE en première ligne pour les projets Next.js App Router.
-
-Sections incluses: ${selectedTemplate.sections.join(', ')}
-Cas d'usage: ${selectedTemplate.useCases.join(', ')}
-          `.trim(),
         };
 
+        // If we got the code, return it directly
+        if (templateCode) {
+          return {
+            success: true,
+            output: {
+              template: templateInfo,
+              code: templateCode,
+              recommendation: useCase ? `Template recommandé pour "${useCase}": ${selectedTemplate.name}` : undefined,
+              message: `Template "${selectedTemplate.name}" - Code complet inclus (${templateCode.split('\n').length} lignes)`,
+              instructions: `
+UTILISATION DU TEMPLATE:
+1. Ce code est un template React/TypeScript complet avec Tailwind CSS
+2. 'use client' est déjà inclus en première ligne (requis pour Next.js 13+)
+3. Adapte les textes, images et couleurs selon le projet
+4. Palette utilisée: ${selectedTemplate.palette}
+5. Sections incluses: ${selectedTemplate.sections.join(', ')}
+
+⚠️ IMPORTANT: Copie ce code et adapte-le au projet de l'utilisateur.
+              `.trim(),
+            },
+          };
+        }
+
+        // Fallback without code (browser environment)
         return {
           success: true,
           output: {
             template: templateInfo,
             recommendation: useCase ? `Template recommandé pour "${useCase}": ${selectedTemplate.name}` : undefined,
             message: `Template "${selectedTemplate.name}" - ${selectedTemplate.description}`,
+            note: 'Code non disponible dans cet environnement. Utilise read_file pour lire: app/lib/agents/design/templates/' + selectedTemplate.file,
           },
         };
       } catch (error) {
@@ -573,21 +602,26 @@ ${formatComponentsForPrompt()}
 ${formatAnimationsForPrompt()}
 
 ## 🛠️ Utilisation des Outils
-1. **\`get_design_template\`** - Obtenir un template complet (PRIORITÉ HAUTE pour nouveaux sites)
-2. \`get_palette_2025\` - Obtenir une palette adaptée au projet
-3. \`get_modern_components\` - Trouver des composants prêts à l'emploi
-4. \`generate_design_inspiration\` - Générer un brief de design complet
+1. \`get_palette_2025\` - ⭐ TOUJOURS utiliser pour choisir les couleurs
+2. \`generate_design_inspiration\` - Brief créatif pour projets créatifs
+3. \`get_modern_components\` - Composants prêts à l'emploi
+4. \`get_design_template\` - **UNIQUEMENT** pour dashboard/docs/auth/error
 
-## ⚡ IMPORTANT: Utilisation Automatique des Templates
-Quand l'utilisateur demande de créer un site/page, utilise TOUJOURS \`get_design_template\` d'abord:
-- "crée-moi un site e-commerce" → template EcommerceModern
-- "je veux un dashboard" → template DashboardModern
-- "fais-moi une landing page" → template LandingModern
-- "un portfolio" → template PortfolioModern
-- "une page de tarifs" → template PricingModern
-- "un blog" → template BlogModern
-- "une page d'authentification" → template AuthModern
-- "une page 404" → template ErrorModern
+## ⚡ Templates STRUCTURELS uniquement
+Utiliser \`get_design_template\` UNIQUEMENT pour ces 4 types:
+- "dashboard", "admin", "backoffice" → DashboardModern
+- "documentation", "docs", "api" → DocsModern
+- "login", "signup", "authentification" → AuthModern
+- "page 404", "erreur", "maintenance" → ErrorModern
+
+## 🎨 Projets CRÉATIFS (PAS de template)
+⚠️ Pour ces demandes, créer un design UNIQUE sans template:
+- Landing pages, sites vitrines, SaaS
+- E-commerce, boutiques, marketplaces
+- Portfolios, agences, freelance
+- Blogs, magazines, pricing pages
+
+→ Utiliser \`generate_design_inspiration\` + \`get_palette_2025\` pour créer un design original
 
 ## 🎯 FORMULAIRES - ÉLÉMENTS HTML NATIFS (OBLIGATOIRE)
 Pour tout projet React ou Next.js, utiliser des éléments HTML natifs :

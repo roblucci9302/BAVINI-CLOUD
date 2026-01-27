@@ -41,7 +41,7 @@ import { createScopedLogger, renderLogger } from '~/utils/logger';
 import { BaseChat } from './BaseChat';
 import { EditMessageModal } from './EditMessageModal';
 import { multiAgentEnabledStore } from './MultiAgentToggle';
-import { sharedMessageParser } from '~/lib/hooks/useMessageParser';
+import { sharedMessageParser, clearProcessedTracking } from '~/lib/hooks/useMessageParser';
 import { updateAgentStatus } from '~/lib/stores/agents';
 
 const toastAnimation = cssTransition({
@@ -410,6 +410,11 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
    */
   useEffect(() => {
     chatStore.setKey('started', initialMessages.length > 0);
+
+    // Clear artifact/action tracking for fresh chat (prevents duplicates on DEV mode re-parse)
+    if (initialMessages.length === 0) {
+      clearProcessedTracking();
+    }
   }, []);
 
   useEffect(() => {
@@ -601,7 +606,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
             messages: messagesForApi,
             files: projectFiles,
             mode,
-            context: { continuationContext },
+            continuationContext,
             controlMode: 'strict',
             multiAgent: multiAgentEnabled,
           }),
@@ -691,8 +696,13 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
                       scheduleStreamingUpdate(parsedContent);
                     }
                   } else if (parsed.type === 'agent_status') {
-                    setCurrentAgent(parsed.agent);
-                    updateAgentStatus(parsed.agent, parsed.status);
+                    // Validate agent_status data before updating
+                    if (parsed.agent && parsed.status) {
+                      setCurrentAgent(parsed.agent);
+                      updateAgentStatus(parsed.agent, parsed.status);
+                    } else {
+                      logger.warn('Invalid agent_status: missing agent or status', parsed);
+                    }
                   } else if (parsed.type === 'error') {
                     logger.error('Agent error:', parsed.error);
                     const friendlyError = createUserFriendlyError({ code: 'AGENT_001', message: parsed.error });
@@ -1008,7 +1018,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory, messagesLo
         handleStop={abort}
         onFileSelect={handleFileSelect}
         onFileRemove={handleFileRemove}
-        onEditMessage={handleEditMessage}
+        onSaveEdit={handleSaveEdit}
         onDeleteMessage={handleDeleteMessage}
         onRegenerateMessage={handleRegenerateMessage}
         messages={displayMessages}

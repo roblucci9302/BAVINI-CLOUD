@@ -146,8 +146,8 @@ button {
 
 .glass-intense {
   background: var(--bolt-glass-background-elevated);
-  backdrop-filter: blur(var(--bolt-glass-blur-intense, 32px));
-  -webkit-backdrop-filter: blur(var(--bolt-glass-blur-intense, 32px));
+  backdrop-filter: blur(var(--bolt-glass-blur-intense));
+  -webkit-backdrop-filter: blur(var(--bolt-glass-blur-intense));
   border: 1px solid var(--bolt-glass-border);
   box-shadow: var(--bolt-glass-shadow-lg, var(--bolt-glass-shadow));
 }
@@ -231,11 +231,10 @@ button {
   75% { transform: translate(20px, 10px) scale(1.01); }
 }
 
-/* Noise texture overlay for premium feel */
 .noise-overlay {
   position: absolute;
   inset: 0;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
   opacity: 0.02;
   mix-blend-mode: overlay;
   pointer-events: none;

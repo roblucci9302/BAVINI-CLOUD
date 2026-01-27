@@ -101,7 +101,8 @@ export class PreviewsStore {
    * Called from BrowserBuildAdapter when preview is ready
    */
   setBrowserPreview(info: BrowserPreviewInfo): void {
-    logger.info(`Browser preview ready: ${info.url}${info.srcdoc ? ' (srcdoc mode)' : ''}`);
+    // PERF FIX: Reduced logging to debug level
+    logger.debug(`Browser preview: ${info.srcdoc ? 'srcdoc' : 'url'} mode, ready: ${info.ready}`);
 
     this.#browserPreviewUrl = info.url;
 
@@ -118,6 +119,17 @@ export class PreviewsStore {
     const currentPreviews = this.previews.get();
     const existingIndex = currentPreviews.findIndex((p) => p.port === 0);
 
+    // PERF FIX: Skip update if nothing changed (avoid unnecessary re-renders)
+    if (existingIndex >= 0) {
+      const existing = currentPreviews[existingIndex];
+      if (existing.ready === info.ready &&
+          existing.baseUrl === info.url &&
+          existing.srcdoc === info.srcdoc) {
+        logger.debug('Browser preview unchanged, skipping update');
+        return;
+      }
+    }
+
     let newPreviews: PreviewInfo[];
 
     if (existingIndex >= 0) {
@@ -128,7 +140,6 @@ export class PreviewsStore {
       newPreviews = [...currentPreviews, previewInfo];
     }
 
-    logger.info(`Previews updated: ${newPreviews.length} preview(s), browser preview ready: ${info.ready}`);
     this.previews.set(newPreviews);
   }
 
@@ -193,7 +204,7 @@ export class PreviewsStore {
         if (isNewPreview) {
           previewInfo = { port, ready: isReady, baseUrl: url };
           this.#availablePreviews.set(port, previewInfo);
-          logger.info(`New preview added: port ${port}, ready: ${isReady}`);
+          logger.debug(`New preview: port ${port}`);
         } else {
           // Update existing preview info in place
           previewInfo!.ready = isReady;
@@ -212,7 +223,6 @@ export class PreviewsStore {
           );
         }
 
-        logger.info(`Previews updated: ${newPreviews.length} preview(s), port ${port} ready: ${isReady}`);
         this.previews.set(newPreviews);
       });
     } catch (error) {

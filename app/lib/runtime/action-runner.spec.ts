@@ -145,7 +145,9 @@ describe('ActionRunner', () => {
 
       // Uses BAVINI MountManager
       expect(mockMkdir).toHaveBeenCalledWith('src', { recursive: true });
-      expect(mockWriteFile).toHaveBeenCalledWith('src/index.ts', 'console.log("test");');
+      // Content is now encoded as Uint8Array via TextEncoder
+      const expectedContent = new TextEncoder().encode('console.log("test");');
+      expect(mockWriteFile).toHaveBeenCalledWith('src/index.ts', expectedContent);
     });
 
     it('should create nested directories', async () => {

@@ -29,7 +29,7 @@ interface SvelteCompilerModule {
 interface SvelteCompileOptions {
   filename?: string;
   name?: string;
-  format?: 'esm' | 'cjs';
+  // Note: format option removed in Svelte 4 - only ESM is output now
   generate?: 'dom' | 'ssr' | false;
   dev?: boolean;
   immutable?: boolean;
@@ -235,10 +235,10 @@ export class SvelteCompiler implements FrameworkCompiler {
       const componentName = this.getComponentName(filename);
 
       // Compile the Svelte component
+      // Note: format option removed - Svelte 4+ only outputs ESM
       const result = this._compiler.compile(source, {
         filename,
         name: componentName,
-        format: 'esm',
         generate: 'dom',
         dev: true, // Enable dev mode for better error messages
         css: 'injected', // Inject CSS into the component

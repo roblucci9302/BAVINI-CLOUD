@@ -120,13 +120,13 @@ describe('QuickJSNodeRuntime', () => {
     it('should capture stdout', async () => {
       const stdoutData: string[] = [];
       runtime.setCallbacks({
-        onStdout: (data) => stdoutData.push(data),
+        onStdout: (data: string) => stdoutData.push(data),
       });
 
-      await runtime.eval('console.log("Hello")');
+      const result = await runtime.eval('console.log("Hello")');
 
-      // The mock captures console calls
-      expect(result => result.stdout !== undefined).toBeTruthy();
+      // The mock captures console calls - verify success
+      expect(result.success).toBe(true);
     });
 
     it('should handle errors gracefully', async () => {

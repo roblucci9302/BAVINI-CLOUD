@@ -50,7 +50,7 @@ export class EsbuildInitLock {
 
   private constructor() {
     // Check if esbuild was already initialized (HMR recovery)
-    if ((globalThis as any).__esbuildInitialized === true) {
+    if (globalThis.__esbuildInitialized === true) {
       this._state = 'ready';
       logger.debug('Recovered esbuild initialized state from globalThis');
     }
@@ -132,7 +132,7 @@ export class EsbuildInitLock {
 
       // Success: transition to ready
       this._state = 'ready';
-      (globalThis as any).__esbuildInitialized = true;
+      globalThis.__esbuildInitialized = true;
 
       logger.info('esbuild WASM initialized successfully');
     } catch (error) {
@@ -182,7 +182,7 @@ export class EsbuildInitLock {
     this._state = 'idle';
     this._error = null;
     this._promise = null;
-    (globalThis as any).__esbuildInitialized = false;
+    globalThis.__esbuildInitialized = false;
   }
 }
 

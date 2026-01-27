@@ -3,7 +3,7 @@
  * Gère le statut, les logs, et les tâches des agents
  */
 
-import { atom, map, computed } from 'nanostores';
+import { atom, map, computed, type ReadableAtom, type MapStore } from 'nanostores';
 import type { AgentType, AgentStatus, Task, TaskStatus, LogEntry, AgentEvent, TaskResult } from '../agents/types';
 import { CircularBuffer } from '~/lib/utils/circular-buffer';
 
@@ -238,14 +238,14 @@ function shallowEqual<T>(a: T, b: T): boolean {
  * Create a memoized computed store that only triggers updates when the value actually changes.
  * Uses shallow equality for comparison.
  */
-function memoizedComputed<T, R>(
-  store: { subscribe: (cb: (value: T) => void) => () => void; get: () => T },
+function memoizedComputed<T extends Record<string, unknown>, R>(
+  store: MapStore<T>,
   transform: (value: T) => R,
-): { subscribe: (cb: (value: R) => void) => () => void; get: () => R } {
+): ReadableAtom<R> {
   let lastValue: R | undefined;
   let initialized = false;
 
-  const computedStore = computed(store, (value) => {
+  return computed(store, (value) => {
     const newValue = transform(value);
 
     // On first call or if value changed, update
@@ -257,8 +257,6 @@ function memoizedComputed<T, R>(
     // Return cached value to prevent unnecessary object creation
     return lastValue as R;
   });
-
-  return computedStore;
 }
 
 /*

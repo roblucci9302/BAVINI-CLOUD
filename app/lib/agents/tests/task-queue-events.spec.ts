@@ -7,7 +7,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { TaskQueue } from '../core/task-queue';
 import { AgentRegistry } from '../core/agent-registry';
 import { BaseAgent } from '../core/base-agent';
-import type { Task, TaskResult, AgentConfig } from '../types';
+import type { Task, TaskResult, AgentConfig, AgentType } from '../types';
 
 /*
  * ============================================================================
@@ -22,9 +22,11 @@ class MockAgent extends BaseAgent {
 
   constructor(name: string, result: TaskResult, delay = 0, shouldThrow = false) {
     const config: AgentConfig = {
-      name,
+      // Cast to AgentType for test purposes - this is a mock agent
+      name: name as AgentType,
       description: `Mock agent: ${name}`,
       model: 'claude-sonnet-4-5-20250929',
+      systemPrompt: 'You are a mock test agent.',
       tools: [],
     };
     super(config);

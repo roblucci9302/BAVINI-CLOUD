@@ -388,7 +388,7 @@ function ProjectsSection() {
               {/* Content */}
               <div className="absolute inset-0 flex flex-col justify-end p-8">
                 <span className="text-xs font-medium text-white/70 mb-2">{project.category}</span>
-                <h3 className="text-2xl font-bold text-white mb-2">{project.title}</h3>
+                <h3 className="text-2xl font-bold text-white mb-2 truncate">{project.title}</h3>
                 <p className="text-white/70 text-sm mb-4 line-clamp-2">{project.description}</p>
 
                 {/* Tags */}
@@ -469,7 +469,7 @@ function ServicesSection() {
               className="group p-8 bg-zinc-900 rounded-2xl border border-zinc-800 hover:border-amber-400/30 transition-all duration-300"
             >
               <div className="text-4xl mb-6 group-hover:scale-110 transition-transform">{service.icon}</div>
-              <h3 className="text-lg font-semibold text-white mb-2">{service.title}</h3>
+              <h3 className="text-lg font-semibold text-white mb-2 truncate">{service.title}</h3>
               <p className="text-zinc-400 text-sm">{service.description}</p>
             </motion.div>
           ))}
@@ -578,11 +578,11 @@ function TestimonialsSection() {
               <svg className="w-10 h-10 text-amber-400/30 mb-6" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z" />
               </svg>
-              <p className="text-lg text-zinc-300 mb-6 leading-relaxed">"{testimonial.quote}"</p>
+              <p className="text-lg text-zinc-300 mb-6 leading-relaxed line-clamp-4">"{testimonial.quote}"</p>
               <div className="flex items-center gap-4">
                 <img src={testimonial.avatar} alt={testimonial.author} className="w-12 h-12 rounded-full" />
                 <div>
-                  <p className="font-semibold text-white">{testimonial.author}</p>
+                  <p className="font-semibold text-white truncate">{testimonial.author}</p>
                   <p className="text-sm text-zinc-500">{testimonial.role}</p>
                 </div>
               </div>
@@ -612,7 +612,7 @@ function ContactSection() {
             href={`mailto:${config.personal.email}`}
             className="inline-flex items-center gap-3 text-3xl md:text-4xl font-bold text-white hover:text-amber-400 transition-colors group"
           >
-            {config.personal.email}
+            <span className="truncate">{config.personal.email}</span>
             <svg
               className="w-8 h-8 group-hover:translate-x-2 transition-transform"
               fill="none"

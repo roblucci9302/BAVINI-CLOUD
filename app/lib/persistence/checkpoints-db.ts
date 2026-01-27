@@ -337,7 +337,10 @@ export async function deleteOldCheckpoints(
     return 0;
   }
 
-  // delete all except those to keep
+  // Delete all except those to keep
+  // NOTE: This pattern is SAFE - placeholders ($2, $3, etc.) are dynamically generated
+  // but actual values are passed as parameterized query arguments, preventing SQL injection.
+  // The string interpolation only affects placeholder positions, not values.
   const placeholders = keepIds.map((_, i) => `$${i + 2}`).join(', ');
   const deleteResult = await db.query(`DELETE FROM checkpoints WHERE chat_id = $1 AND id NOT IN (${placeholders})`, [
     chatId,

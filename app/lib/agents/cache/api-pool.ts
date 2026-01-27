@@ -67,6 +67,8 @@ interface QueuedRequest {
   resolve: (client: Anthropic) => void;
   reject: (error: Error) => void;
   timestamp: number;
+  /** PERF FIX: Store timeout ID for cleanup when request resolves */
+  timeoutId?: ReturnType<typeof setTimeout>;
 }
 
 /**
@@ -227,15 +229,27 @@ class AnthropicConnectionPool {
     // Wait for available client with timeout
     return new Promise<Anthropic>((resolve, reject) => {
       const queuedRequest: QueuedRequest = {
-        resolve,
-        reject,
+        resolve: (client: Anthropic) => {
+          // PERF FIX: Clear timeout when resolved to prevent memory leak
+          if (queuedRequest.timeoutId) {
+            clearTimeout(queuedRequest.timeoutId);
+          }
+          resolve(client);
+        },
+        reject: (error: Error) => {
+          // PERF FIX: Clear timeout when rejected
+          if (queuedRequest.timeoutId) {
+            clearTimeout(queuedRequest.timeoutId);
+          }
+          reject(error);
+        },
         timestamp: Date.now(),
       };
 
       queue!.push(queuedRequest);
 
-      // Setup timeout
-      setTimeout(() => {
+      // Setup timeout - PERF FIX: Store timeout ID for cleanup
+      queuedRequest.timeoutId = setTimeout(() => {
         const idx = queue!.indexOf(queuedRequest);
 
         if (idx !== -1) {

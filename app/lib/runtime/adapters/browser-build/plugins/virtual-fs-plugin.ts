@@ -23,6 +23,7 @@ import {
 } from '../../compilers/compiler-registry';
 import type { TailwindCompiler } from '../../compilers/tailwind-compiler';
 import type { CSSType } from '../../css-aggregator';
+import { extractFontImports, generateDynamicFontShim } from '../nextjs-shims';
 
 /**
  * Create the virtual filesystem plugin
@@ -79,6 +80,17 @@ export function createVirtualFsPlugin(context: PluginContext): esbuild.Plugin {
 
       // Load Next.js shims
       build.onLoad({ filter: /.*/, namespace: 'nextjs-shim' }, (args) => {
+        // Special handling for next/font/google - generate dynamic shim
+        if (args.path === 'next/font/google') {
+          const fontNames = extractFontImports(files);
+          const dynamicShim = generateDynamicFontShim(fontNames);
+          logger.debug(
+            `Generated dynamic font shim with ${fontNames.length} fonts:`,
+            fontNames.length > 0 ? fontNames : '(none found, using base loader)'
+          );
+          return { contents: dynamicShim, loader: 'jsx' };
+        }
+
         const shimCode = nextjsShims[args.path];
 
         if (shimCode) {

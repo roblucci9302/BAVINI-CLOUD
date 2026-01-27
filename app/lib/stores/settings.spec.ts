@@ -10,7 +10,7 @@ vi.mock('./workbench', () => ({
 
 // mock runtime module to avoid WebContainer dependency
 vi.mock('~/lib/runtime', () => ({
-  runtimeTypeStore: atom('webcontainer'),
+  runtimeTypeStore: atom('browser'),
 }));
 
 // import after mocking
@@ -98,27 +98,27 @@ describe('settings store', () => {
     });
 
     it('should update engine via setBuildEngine', () => {
-      setBuildEngine('browser');
+      setBuildEngine('bavini-container');
 
-      expect(buildSettingsStore.get().engine).toBe('browser');
+      expect(buildSettingsStore.get().engine).toBe('bavini-container');
 
       // Reset to default
-      setBuildEngine('webcontainer');
+      setBuildEngine('browser');
     });
 
     it('should return current engine via getBuildEngine', () => {
-      expect(getBuildEngine()).toBe('webcontainer');
+      expect(getBuildEngine()).toBe('browser');
     });
 
     it('should sync with settingsStore', () => {
-      setBuildEngine('browser');
+      setBuildEngine('bavini-container');
 
       const settings = settingsStore.get();
 
-      expect(settings.build.engine).toBe('browser');
+      expect(settings.build.engine).toBe('bavini-container');
 
       // Reset to default
-      setBuildEngine('webcontainer');
+      setBuildEngine('browser');
     });
   });
 });

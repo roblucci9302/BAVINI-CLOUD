@@ -759,7 +759,9 @@ export class ActionRunner {
     }
 
     try {
-      await fs.writeFile(action.filePath, action.content);
+      // Convert string content to Uint8Array for MountManager
+      const contentBytes = new TextEncoder().encode(action.content);
+      await fs.writeFile(action.filePath, contentBytes);
       logger.debug(`File written ${action.filePath}`);
     } catch (error) {
       logger.error(`Échec de l'écriture du fichier ${action.filePath}:`, error);

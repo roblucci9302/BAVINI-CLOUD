@@ -5,7 +5,7 @@
  * Provides a complete UI for creating, viewing, and restoring checkpoints.
  */
 
-import { memo, useCallback, useState } from 'react';
+import { memo, useCallback, useState, useRef, useEffect } from 'react';
 import { useStore } from '@nanostores/react';
 import { toast } from 'react-toastify';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -48,6 +48,21 @@ export const CheckpointsPanel = memo(({ className, compact = false, disabled = f
 
   // State for panel visibility
   const [isPanelExpanded, setIsPanelExpanded] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // Close panel when clicking outside
+  useEffect(() => {
+    if (!isPanelExpanded) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (panelRef.current && !panelRef.current.contains(event.target as Node)) {
+        setIsPanelExpanded(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isPanelExpanded]);
 
   // Get files snapshot callback
   const getFilesSnapshot = useCallback((): FileMap => {
@@ -200,7 +215,7 @@ export const CheckpointsPanel = memo(({ className, compact = false, disabled = f
 
   return (
     <>
-      <div className={classNames('flex flex-col h-full', className)}>
+      <div ref={panelRef} className={classNames('flex flex-col h-full', className)}>
         {/* Header */}
         <PanelHeader className="justify-between">
           <div className="flex items-center gap-1.5">

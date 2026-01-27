@@ -154,13 +154,13 @@ import { esbuildInitLock } from './esbuild-init-lock';
  * @deprecated Use esbuildInitLock.isReady instead
  * Kept for backward compatibility checks
  */
-let globalEsbuildInitialized: boolean = (globalThis as any).__esbuildInitialized ?? false;
+let globalEsbuildInitialized: boolean = globalThis.__esbuildInitialized ?? false;
 
 /**
  * @deprecated Use esbuildInitLock.initialize() instead
  * Kept for backward compatibility
  */
-let globalEsbuildPromise: Promise<void> | null = (globalThis as any).__esbuildPromise ?? null;
+let globalEsbuildPromise: Promise<void> | null = globalThis.__esbuildPromise ?? null;
 
 /**
  * BrowserBuildAdapter - Runtime sans WebContainer
@@ -340,8 +340,12 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
 
       logger.info('esbuild-wasm initialized via lock');
 
-      // Phase 1.1: Initialize Build Worker for off-thread compilation (non-blocking)
-      this.initBuildWorker();
+      // Phase 1.1: Build Worker disabled - main thread esbuild is sufficient and more stable
+      // The worker was causing initialization errors and is redundant when main thread works
+      // Keep the code path for future use but disable by default
+      // this.initBuildWorker();
+      this._useWorker = false;
+      logger.debug('Build Worker disabled (main thread esbuild is sufficient)');
 
       // Initialize Service Worker for preview (non-blocking)
       this.initServiceWorker();
@@ -966,9 +970,9 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
       logger.debug(`Build result: code=${code.length} chars, errors=${errors.length}`);
 
       if (code && errors.length === 0) {
-        logger.info('Creating preview...');
+        logger.debug('Creating preview...');
         await this.createPreview(code, css, options);
-        logger.info('Preview creation completed');
+        logger.debug('Preview created');
       } else {
         logger.warn(`Skipping preview: code empty=${!code}, errors=${errors.length}`);
       }
@@ -996,9 +1000,9 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
         this._incrementalBuilder.completeBuild(rebuiltCount, cachedCount, wasFullRebuild);
 
         const metrics = this._incrementalBuilder.getMetrics();
-        logger.info(
-          `Incremental build: ${metrics.rebuiltFiles} rebuilt, ${metrics.cachedFiles} cached ` +
-          `(${metrics.cacheHitRate.toFixed(1)}% hit rate, ~${metrics.timeSavedEstimate}ms saved)`
+        logger.debug(
+          `Incremental: ${metrics.rebuiltFiles} rebuilt, ${metrics.cachedFiles} cached ` +
+          `(${metrics.cacheHitRate.toFixed(1)}% hit rate)`
         );
       }
 
@@ -1324,7 +1328,7 @@ export class BrowserBuildAdapter extends BaseRuntimeAdapter {
         htmlTemplate = generateDefaultHtml();
       }
 
-      logger.info(`[TEMPLATE DEBUG] Using ${templateSource} HTML template`);
+      logger.debug(`Using ${templateSource} HTML template`);
 
       // Try SSR if enabled and available
       let ssrContent: SSRContent | null = null;

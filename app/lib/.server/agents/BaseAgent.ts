@@ -234,7 +234,7 @@ export abstract class BaseAgent<TResponse> {
    */
   protected getRecentErrors(): ProjectError[] {
     this.validateAction('inspect_logs');
-    return this.context?.recentErrors ?? [];
+    return Array.isArray(this.context?.recentErrors) ? this.context.recentErrors : [];
   }
 
   /**
@@ -242,7 +242,7 @@ export abstract class BaseAgent<TResponse> {
    */
   protected getRecentLogs(): string[] {
     this.validateAction('inspect_logs');
-    return this.context?.recentLogs ?? [];
+    return Array.isArray(this.context?.recentLogs) ? this.context.recentLogs : [];
   }
 
   /*
@@ -262,7 +262,7 @@ export abstract class BaseAgent<TResponse> {
    * Détecte la stack technique du projet
    */
   protected detectTechStack(): string[] {
-    if (!this.context) {
+    if (!this.context || !Array.isArray(this.context.files)) {
       return [];
     }
 

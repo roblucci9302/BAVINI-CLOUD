@@ -120,7 +120,9 @@ function NextJSApp() {
     window.__BAVINI_ROUTE_PARAMS__ = params;
   }
 
-  const pageContent = <PageComponent />;
+  // Pass params as prop to PageComponent (Next.js App Router convention)
+  // Pages receive { params: { id: '123' } } for dynamic routes like [id]
+  const pageContent = <PageComponent params={params} />;
 
   ${hasLayout ? 'return <RootLayout>{pageContent}</RootLayout>;' : 'return pageContent;'}
 }

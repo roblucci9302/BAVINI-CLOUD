@@ -33,6 +33,34 @@ export interface WebFetchResult {
 
 /*
  * ============================================================================
+ * BLOCKED DOMAINS - Low-quality design/template sources
+ * ============================================================================
+ * These domains are automatically excluded from search results to prevent
+ * the AI from copying generic/outdated design patterns.
+ */
+const BLOCKED_DESIGN_DOMAINS = [
+  // Generic "design trends" blogs with low-quality examples
+  'involve.me',
+  'templatemonster.com',
+  'colorlib.com',
+  'theme forest.net',
+  'w3layouts.com',
+  'nicepage.com',
+  'mobirise.com',
+  'flaviocopes.com',
+  'freefrontend.com',
+  'bootdey.com',
+  'startbootstrap.com',
+  // Content farms with generic listicles
+  'medium.com', // Often has generic "10 landing page trends" articles
+  'hubspot.com/website/landing-page',
+  'wix.com/blog',
+  'squarespace.com/blog',
+  'webflow.com/blog',
+];
+
+/*
+ * ============================================================================
  * TAVILY API FUNCTIONS
  * ============================================================================
  */
@@ -42,7 +70,11 @@ async function tavilySearch(
   query: string,
   numResults: number = 5,
   includeDomains?: string[],
+  excludeDomains?: string[],
 ): Promise<WebSearchResult[]> {
+  // Merge user-provided excludes with our blocklist
+  const allExcludedDomains = [...BLOCKED_DESIGN_DOMAINS, ...(excludeDomains || [])];
+
   const response = await fetch('https://api.tavily.com/search', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -52,6 +84,7 @@ async function tavilySearch(
       search_depth: 'advanced',
       max_results: Math.min(numResults, 10),
       include_domains: includeDomains || [],
+      exclude_domains: allExcludedDomains,
     }),
   });
 
@@ -81,6 +114,28 @@ async function tavilySearch(
 }
 
 async function tavilyFetch(apiKey: string, url: string): Promise<WebFetchResult> {
+  // Check if URL is from a blocked domain
+  try {
+    const urlObj = new URL(url);
+    const hostname = urlObj.hostname.toLowerCase();
+    const isBlocked = BLOCKED_DESIGN_DOMAINS.some(
+      (domain) => hostname === domain || hostname.endsWith('.' + domain)
+    );
+
+    if (isBlocked) {
+      logger.warn('Blocked domain fetch attempt', { url, hostname });
+      throw new Error(
+        `Ce domaine (${hostname}) est bloqué car il contient des designs génériques. ` +
+          'Utilise les outils design BAVINI (generate_design_inspiration, get_palette_2025) à la place.'
+      );
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message.includes('bloqué')) {
+      throw e;
+    }
+    // URL parsing error - let it proceed and fail naturally
+  }
+
   const response = await fetch('https://api.tavily.com/extract', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -264,8 +319,19 @@ Tu as accès aux outils de recherche web:
 - **web_search**: Rechercher des informations actuelles sur le web
 - **web_fetch**: Récupérer le contenu d'une page spécifique
 
-Utilise ces outils quand l'utilisateur demande des infos sur des technologies récentes,
-de la documentation, ou des solutions à des problèmes techniques.
+### ✅ QUAND UTILISER web_search:
+- Documentation technique officielle (React, Tailwind, etc.)
+- Versions récentes de librairies
+- Solutions à des bugs/erreurs spécifiques
+- APIs et configurations
+
+### ❌ NE JAMAIS UTILISER web_search POUR:
+- **Design UI/UX** - Utilise les guidelines internes BAVINI
+- **Landing pages, e-commerce, portfolios** - Design unique sans copier
+- **Inspiration visuelle** - Utilise generate_design_inspiration
+- **Templates ou exemples de code générique**
+
+⚠️ Pour créer des interfaces: utilise UNIQUEMENT les outils design BAVINI (get_palette_2025, generate_design_inspiration, get_modern_components). Ne cherche PAS d'exemples sur le web.
 
 TOUJOURS inclure les sources avec le format [Titre](URL).`;
   }

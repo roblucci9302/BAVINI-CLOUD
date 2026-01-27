@@ -114,7 +114,9 @@ export class HMRManager {
   private _lastBuildId: string = '';
   private _pendingUpdates: FileChange[] = [];
   private _updateDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-  private _debounceMs = 100;
+  // PERF FIX: Increased from 100ms to 300ms to better sync with build debounce (500ms)
+  // This prevents HMR from triggering before builds complete
+  private _debounceMs = 300;
 
   /**
    * Set callbacks for HMR events
@@ -293,7 +295,6 @@ export class HMRManager {
     if (!event.data || event.data.type !== 'bavini-hmr') return;
 
     var update = event.data;
-    console.log('[BAVINI HMR]', update.action, update.payload);
 
     switch (update.action) {
       case 'css-update':
@@ -320,15 +321,11 @@ export class HMRManager {
     }
 
     style.textContent = css;
-    console.log('[BAVINI HMR] CSS updated');
   }
 
   function handleFullReload() {
-    console.log('[BAVINI HMR] Reloading...');
     window.location.reload();
   }
-
-  console.log('[BAVINI HMR] Client initialized');
 })();
 </script>
 `;

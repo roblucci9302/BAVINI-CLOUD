@@ -88,14 +88,14 @@ function AuthLayout({ children, title, subtitle }: { children: React.ReactNode; 
             transition={{ delay: 0.4 }}
             className="p-6 bg-gray-800/50 backdrop-blur-sm rounded-2xl"
           >
-            <p className="text-gray-300 mb-4">
+            <p className="text-gray-300 mb-4 line-clamp-3">
               "{config.brand.name} a révolutionné notre façon de travailler. L'interface est intuitive et les
               fonctionnalités sont exactement ce dont nous avions besoin."
             </p>
             <div className="flex items-center gap-3">
               <img src="https://i.pravatar.cc/40?img=1" alt="User" className="w-10 h-10 rounded-full" />
               <div>
-                <p className="text-sm font-medium text-white">Marie Laurent</p>
+                <p className="text-sm font-medium text-white truncate">Marie Laurent</p>
                 <p className="text-xs text-gray-400">CEO, TechCorp</p>
               </div>
             </div>

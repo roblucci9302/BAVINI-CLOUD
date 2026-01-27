@@ -2,6 +2,18 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
 
+// Mock esbuild-wasm to avoid environment issues in tests
+vi.mock('esbuild-wasm', () => ({
+  default: {
+    initialize: vi.fn().mockResolvedValue(undefined),
+    build: vi.fn().mockResolvedValue({ outputFiles: [] }),
+    transform: vi.fn().mockResolvedValue({ code: '', map: '' }),
+  },
+  initialize: vi.fn().mockResolvedValue(undefined),
+  build: vi.fn().mockResolvedValue({ outputFiles: [] }),
+  transform: vi.fn().mockResolvedValue({ code: '', map: '' }),
+}));
+
 // Mock atom type
 interface MockAtom<T> {
   get(): T;
@@ -51,6 +63,16 @@ vi.mock('react-toastify', () => ({
     success: vi.fn(),
   },
 }));
+
+// Mock Workbench.client to avoid computed store initialization issues
+vi.mock('./Workbench.client', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { atom } = require('nanostores') as { atom: <T>(value: T) => MockAtom<T> };
+  return {
+    previewReloadTrigger: atom(0),
+    previewOpenNewTabTrigger: atom(0),
+  };
+});
 
 // Mock child components
 vi.mock('~/components/ui/IconButton', () => ({

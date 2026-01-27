@@ -56,6 +56,16 @@ export const NEXTJS_SHIMS: Record<string, string> = {
     export const JetBrains_Mono = createFontLoader('JetBrains_Mono');
 
     // Additional display/accent fonts
+    export const DM_Serif_Display = createFontLoader('DM_Serif_Display');
+    export const DM_Serif_Text = createFontLoader('DM_Serif_Text');
+    export const Playfair = createFontLoader('Playfair');
+    export const Cormorant = createFontLoader('Cormorant');
+    export const Cormorant_Garamond = createFontLoader('Cormorant_Garamond');
+    export const Libre_Baskerville = createFontLoader('Libre_Baskerville');
+    export const Crimson_Text = createFontLoader('Crimson_Text');
+    export const Crimson_Pro = createFontLoader('Crimson_Pro');
+    export const Merriweather = createFontLoader('Merriweather');
+    export const Lora = createFontLoader('Lora');
     export const Antonio = createFontLoader('Antonio');
     export const Archivo = createFontLoader('Archivo');
     export const Archivo_Black = createFontLoader('Archivo_Black');
@@ -322,4 +332,104 @@ export function getNextJsShim(path: string): string | undefined {
  */
 export function hasNextJsShim(path: string): boolean {
   return path in NEXTJS_SHIMS;
+}
+
+// =============================================================================
+// DYNAMIC FONT SHIM GENERATION
+// =============================================================================
+
+/**
+ * Base code for the font loader function.
+ * This is the core logic that creates font configuration objects.
+ */
+export const FONT_LOADER_BASE = `
+// Browser shim for next/font/google - Dynamic font generator
+// Converts font name to CSS-friendly format (e.g., Space_Grotesk -> "Space Grotesk")
+function createFontLoader(fontName) {
+  const cssName = fontName.replace(/_/g, ' ');
+  const varName = fontName.toLowerCase().replace(/_/g, '-');
+  return function(options) {
+    return {
+      className: 'font-' + varName,
+      variable: options?.variable || '--font-' + varName,
+      style: { fontFamily: '"' + cssName + '", system-ui, sans-serif' }
+    };
+  };
+}
+
+// Default export for dynamic imports
+export default createFontLoader;
+`;
+
+/**
+ * Extract font names from import statements in source files.
+ * Handles both simple imports and "as" alias syntax.
+ *
+ * @param files - Map of file paths to their content
+ * @returns Array of unique font names found in imports
+ *
+ * @example
+ * // Handles: import { Inter, Space_Grotesk } from 'next/font/google'
+ * // Handles: import { Inter as MainFont } from 'next/font/google'
+ */
+export function extractFontImports(files: Map<string, string>): string[] {
+  const fontNames = new Set<string>();
+
+  // Regex to match: import { FontName, FontName2 as alias } from 'next/font/google'
+  // Also handles single quotes and double quotes
+  const importRegex = /import\s*\{([^}]+)\}\s*from\s*['"]next\/font\/google['"]/g;
+
+  // Convert to array for TypeScript compatibility
+  const fileContents = Array.from(files.values());
+
+  for (const content of fileContents) {
+    // Reset regex lastIndex for each file
+    importRegex.lastIndex = 0;
+
+    let match;
+    while ((match = importRegex.exec(content)) !== null) {
+      const importClause = match[1];
+
+      // Split by comma and process each import
+      const imports = importClause.split(',');
+
+      for (const importItem of imports) {
+        const trimmed = importItem.trim();
+        if (!trimmed) continue;
+
+        // Handle "FontName as alias" syntax - extract only the font name
+        const fontName = trimmed.split(/\s+as\s+/)[0].trim();
+
+        // Validate it looks like a font name (starts with uppercase)
+        if (fontName && /^[A-Z][A-Za-z0-9_]*$/.test(fontName)) {
+          fontNames.add(fontName);
+        }
+      }
+    }
+  }
+
+  return Array.from(fontNames);
+}
+
+/**
+ * Generate a dynamic font shim with exports for specific fonts.
+ * This creates a complete ES module that exports the requested fonts.
+ *
+ * @param fontNames - Array of font names to export
+ * @returns Complete shim code as a string
+ *
+ * @example
+ * generateDynamicFontShim(['Inter', 'Crimson_Pro'])
+ * // Returns:
+ * // function createFontLoader(fontName) { ... }
+ * // export const Inter = createFontLoader('Inter');
+ * // export const Crimson_Pro = createFontLoader('Crimson_Pro');
+ */
+export function generateDynamicFontShim(fontNames: string[]): string {
+  // Generate export statements for each font
+  const exports = fontNames
+    .map((name) => `export const ${name} = createFontLoader('${name}');`)
+    .join('\n');
+
+  return FONT_LOADER_BASE + '\n' + exports;
 }

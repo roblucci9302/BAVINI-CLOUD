@@ -13,20 +13,24 @@ const logger = createScopedLogger('BundleLimits');
 
 /**
  * Bundle size limits configuration
+ *
+ * Note: Large libraries like Three.js + React Three Fiber can produce
+ * bundles of 20MB+. We set high error limits to allow 3D projects while
+ * still warning users about performance implications.
  */
 export const BUNDLE_LIMITS = {
-  /** Warning threshold for JS bundle (1.5MB) */
-  JS_WARNING_KB: 1500,
-  /** Error threshold for JS bundle (5MB) - browser may freeze */
-  JS_ERROR_KB: 5000,
+  /** Warning threshold for JS bundle (2MB) */
+  JS_WARNING_KB: 2000,
+  /** Error threshold for JS bundle (30MB) - allows Three.js + heavy libs */
+  JS_ERROR_KB: 30000,
   /** Warning threshold for CSS bundle (500KB) */
   CSS_WARNING_KB: 500,
-  /** Error threshold for CSS bundle (2MB) */
-  CSS_ERROR_KB: 2000,
-  /** Warning threshold for total bundle (2MB) */
-  TOTAL_WARNING_KB: 2000,
-  /** Error threshold for total bundle (8MB) */
-  TOTAL_ERROR_KB: 8000,
+  /** Error threshold for CSS bundle (5MB) */
+  CSS_ERROR_KB: 5000,
+  /** Warning threshold for total bundle (3MB) */
+  TOTAL_WARNING_KB: 3000,
+  /** Error threshold for total bundle (35MB) */
+  TOTAL_ERROR_KB: 35000,
 } as const;
 
 /**

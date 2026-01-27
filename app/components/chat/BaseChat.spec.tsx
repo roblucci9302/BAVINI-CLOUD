@@ -341,7 +341,7 @@ describe('BaseChat', () => {
 
       expect(sendMessage).toHaveBeenCalledWith(
         expect.any(Object),
-        'Utilise le template LandingModern pour créer une landing page SaaS moderne et responsive avec hero, features, pricing et footer.',
+        'Crée une landing page SaaS unique et créative avec un design distinctif. Choisis un style original (minimal, editorial, dark luxe, playful, brutalist ou retro-futuristic) et une palette de couleurs audacieuse. Inclus hero, features, pricing et footer.',
       );
     });
   });
